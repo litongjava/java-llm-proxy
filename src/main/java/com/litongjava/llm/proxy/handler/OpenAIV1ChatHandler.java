@@ -84,7 +84,6 @@ public class OpenAIV1ChatHandler {
 
     if (stream != null && stream) {
       // 告诉默认的处理器不要将消息体发送给客户端,因为后面会手动发送
-      httpResponse.setSend(false);
       ChannelContext channelContext = httpRequest.getChannelContext();
       EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse, start);
       AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
