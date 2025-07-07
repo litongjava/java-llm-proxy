@@ -56,7 +56,7 @@ public class OpenAIV1ChatHandler {
         openAiRequestVo = FastJson2Utils.parseObject(bodyString);
         stream = openAiRequestVo.getBoolean("stream");
       }
-      
+
     } else if (requestURI.startsWith("/anthropic")) {
       url = ClaudeClient.CLAUDE_API_URL + "/messages";
       headers.put("x-api-key", httpRequest.getHeader("x-api-key"));
@@ -68,7 +68,7 @@ public class OpenAIV1ChatHandler {
         openAiRequestVo = FastJson2Utils.parseObject(bodyString);
         stream = openAiRequestVo.getBoolean("stream");
       }
-      
+
     } else if (requestURI.startsWith("/google")) {
       String key = httpRequest.getParam("key");
       String modelName1 = requestURI.substring(requestURI.lastIndexOf('/') + 1, requestURI.indexOf(':'));
@@ -84,6 +84,7 @@ public class OpenAIV1ChatHandler {
 
     if (stream != null && stream) {
       // 告诉默认的处理器不要将消息体发送给客户端,因为后面会手动发送
+      httpResponse.setSend(false);
       ChannelContext channelContext = httpRequest.getChannelContext();
       EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse, start);
       AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
