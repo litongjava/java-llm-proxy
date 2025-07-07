@@ -26,7 +26,7 @@ import okhttp3.Response;
 import okhttp3.sse.EventSourceListener;
 
 @Slf4j
-public class OpenAIV1ChatHandler {
+public class LLMProxyHandler {
 
   public HttpResponse completions(HttpRequest httpRequest) {
     long start = System.currentTimeMillis();

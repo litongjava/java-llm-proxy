@@ -60,7 +60,7 @@ llm-proxy-app/
 │  │  │  ├─ com/litongjava/llm/proxy/config/
 │  │  │  │  └─ LLMProxyConfig.java       # 路由配置
 │  │  │  ├─ com/litongjava/llm/proxy/handler/
-│  │  │  │  └─ OpenAIV1ChatHandler.java  # 核心处理器
+│  │  │  │  └─ LLMProxyHandler.java  # 核心处理器
 │  │  │  ├─ com/litongjava/llm/proxy/callback/
 │  │  │  │  └─ SSEProxyCallback...java   # SSE回调处理
 │  │  └─ resources/
@@ -72,7 +72,7 @@ llm-proxy-app/
 
 ## 4. 关键实现
 
-### 4.1 OpenAIV1ChatHandler.java - 请求路由处理器
+### 4.1 LLMProxyHandler.java - 请求路由处理器
 
 ```java
 package com.litongjava.llm.proxy.handler;
@@ -103,7 +103,7 @@ import okhttp3.Response;
 import okhttp3.sse.EventSourceListener;
 
 @Slf4j
-public class OpenAIV1ChatHandler {
+public class LLMProxyHandler  {
 
   public HttpResponse completions(HttpRequest httpRequest) {
     long start = System.currentTimeMillis();
@@ -309,7 +309,7 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 package com.litongjava.llm.proxy.config;
 
 import com.litongjava.context.BootConfiguration;
-import com.litongjava.llm.proxy.handler.OpenAIV1ChatHandler;
+import com.litongjava.llm.proxy.handler.LLMProxyHandler;
 import com.litongjava.tio.boot.server.TioBootServer;
 import com.litongjava.tio.http.server.router.HttpRequestRouter;
 
@@ -320,10 +320,10 @@ public class LLMProxyConfig implements BootConfiguration {
     TioBootServer server = TioBootServer.me();
     HttpRequestRouter requestRouter = server.getRequestRouter();
 
-    OpenAIV1ChatHandler openAIV1ChatHandler = new OpenAIV1ChatHandler();
-    requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler::completions);
-    requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler::completions);
-    requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler::completions);
+    LLMProxyHandler LLMProxyHandler = new LLMProxyHandler();
+    requestRouter.add("/openai/v1/chat/completions", LLMProxyHandler::completions);
+    requestRouter.add("/anthropic/v1/messages", LLMProxyHandler::completions);
+    requestRouter.add("/google/v1beta/models/*", LLMProxyHandler::completions);
   }
 }
 ```
