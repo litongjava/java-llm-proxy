@@ -11,10 +11,12 @@ public class LLMProxyConfig implements BootConfiguration {
 
     TioBootServer server = TioBootServer.me();
     HttpRequestRouter requestRouter = server.getRequestRouter();
-
-    LLMProxyHandler openAIV1ChatHandler = new LLMProxyHandler();
-    requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler::completions);
-    requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler::completions);
-    requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler::completions);
+    if (requestRouter != null) {
+      LLMProxyHandler openAIV1ChatHandler = new LLMProxyHandler();
+      requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler::completions);
+      requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler::completions);
+      requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler::completions);
+      requestRouter.add("/openrouter/v1/chat/completions", openAIV1ChatHandler::completions);
+    }
   }
 }

@@ -10,6 +10,7 @@ import com.litongjava.gemini.GeminiClient;
 import com.litongjava.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
 import com.litongjava.model.body.RespBodyVo;
 import com.litongjava.openai.client.OpenAiClient;
+import com.litongjava.openrouter.OpenRouterConst;
 import com.litongjava.proxy.AiChatProxyClient;
 import com.litongjava.tio.boot.http.TioRequestContext;
 import com.litongjava.tio.core.ChannelContext;
@@ -57,6 +58,18 @@ public class LLMProxyHandler {
         stream = openAiRequestVo.getBoolean("stream");
       }
 
+    } else if (requestURI.startsWith("/openrouter")) {
+      url = OpenRouterConst.API_PERFIX_URL + "/chat/completions";
+
+      headers.put("authorization", httpRequest.getAuthorization());
+
+      JSONObject openAiRequestVo = null;
+
+      if (bodyString != null) {
+        openAiRequestVo = FastJson2Utils.parseObject(bodyString);
+        stream = openAiRequestVo.getBoolean("stream");
+      }
+
     } else if (requestURI.startsWith("/anthropic")) {
       url = ClaudeClient.CLAUDE_API_URL + "/messages";
       headers.put("x-api-key", httpRequest.getHeader("x-api-key"));
@@ -92,10 +105,10 @@ public class LLMProxyHandler {
       try (Response response = AiChatProxyClient.generate(url, headers, bodyString)) {
         //OkHttpResponseUtils.toTioHttpResponse(response, httpResponse);
         try {
-          String string = response.body().string();
-          httpResponse.setString(string, "utf-8", "application/json");
+          String resposneBody = response.body().string();
+          httpResponse.setString(resposneBody, "utf-8", "application/json");
           if (EnvUtils.getBoolean("app.debug", false)) {
-            log.info("chat:{},{}", bodyString, string);
+            log.info("chat:{},{}", bodyString, resposneBody);
           }
 
         } catch (IOException e) {
