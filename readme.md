@@ -19,8 +19,32 @@
   4. 将API返回结果（JSON或SSE流）适配返回给客户端
 
 ---
+## 2. 整合到TioBoot工程
+build
+```
+set JAVA_HOME=D:\java\jdk-1.8_411
+mvn clean install -DskipTests -Dgpg.skip -q
+```
 
-## 2. 环境准备
+add maven dependency
+
+```
+    <dependency>
+      <groupId>com.litongjava</groupId>
+      <artifactId>java-llm-proxy</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+```
+
+config
+
+```
+import com.litongjava.llm.proxy.config.LLMProxyAppConfig;
+
+new LLMProxyAppConfig().config();
+```
+
+## 3. 环境准备
 
 1. **JDK**：Java 8或更高版本
 
@@ -31,7 +55,7 @@
 <dependency>
   <groupId>com.litongjava</groupId>
   <artifactId>tio-boot-admin</artifactId>
-  <version>1.0.4</version>
+  <version>1.0.5</version>
 </dependency>
 <dependency>
   <groupId>com.alibaba.fastjson2</groupId>
@@ -48,7 +72,7 @@
 
 ---
 
-## 3. 项目结构
+## 4. 项目结构
 
 ```
 llm-proxy-app/
@@ -70,9 +94,9 @@ llm-proxy-app/
 
 ---
 
-## 4. 关键实现
+## 5. 关键实现
 
-### 4.1 LLMProxyHandler.java - 请求路由处理器
+### 5.1 LLMProxyHandler.java - 请求路由处理器
 
 ```java
 package com.litongjava.llm.proxy.handler;
@@ -196,7 +220,7 @@ public class LLMProxyHandler  {
 
 ---
 
-### 4.2 SSEProxyCallbackEventSourceListener.java - SSE回调处理器
+### 5.2 SSEProxyCallbackEventSourceListener.java - SSE回调处理器
 
 ```java
 package com.litongjava.llm.proxy.callback;
@@ -303,7 +327,7 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 
 ---
 
-### 4.3 LLMProxyConfig.java - 路由配置
+### 5.3 LLMProxyConfig.java - 路由配置
 
 ```java
 package com.litongjava.llm.proxy.config;
@@ -335,7 +359,7 @@ public class LLMProxyConfig implements BootConfiguration {
 
 ---
 
-### 4.4 LLMProxyApp.java - 应用入口
+### 5.4 LLMProxyApp.java - 应用入口
 
 ```java
 package com.litongjava.llm.proxy;
@@ -355,15 +379,15 @@ public class LLMProxyApp {
 
 ---
 
-## 5. 服务启动与测试
+## 6. 服务启动与测试
 
-### 5.1 启动服务
+### 6.1 启动服务
 ```bash
 mvn clean package -DskipTests
 java -jar target/llm-proxy-app-1.0.0.jar
 ```
 
-### 5.2 多模型测试示例
+### 6.2 多模型测试示例
 
 **OpenAI非流式测试**：
 ```bash
@@ -400,7 +424,7 @@ curl -X POST http://localhost/anthropic/v1/messages \
 
 ---
 
-## 6. 注意事项
+## 7. 注意事项
 
 1. **响应体单次读取**：
    - 在非流式模式中，`response.body().string()`会自动读取并关闭流
@@ -420,7 +444,7 @@ curl -X POST http://localhost/anthropic/v1/messages \
 
 ---
 
-## 7. 技术总结
+## 8. 技术总结
 
 本代理服务基于tio-boot框架实现以下核心功能：
 
