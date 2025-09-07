@@ -15,6 +15,7 @@ public class LLMProxyAppConfig {
       requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler::completions);
       requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler::completions);
       requestRouter.add("/openrouter/v1/chat/completions", openAIV1ChatHandler::completions);
+      requestRouter.add("/cerebras/v1/chat/completions", openAIV1ChatHandler::completions);
     }
   }
 }

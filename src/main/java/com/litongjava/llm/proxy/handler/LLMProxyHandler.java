@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.alibaba.fastjson2.JSONObject;
+import com.litongjava.cerebras.CerebrasConst;
 import com.litongjava.claude.ClaudeClient;
 import com.litongjava.gemini.GeminiClient;
 import com.litongjava.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
@@ -59,7 +60,19 @@ public class LLMProxyHandler {
       }
 
     } else if (requestURI.startsWith("/openrouter")) {
-      url = OpenRouterConst.API_PERFIX_URL + "/chat/completions";
+      url = OpenRouterConst.API_PREFIX_URL + "/chat/completions";
+
+      headers.put("authorization", httpRequest.getAuthorization());
+
+      JSONObject openAiRequestVo = null;
+
+      if (bodyString != null) {
+        openAiRequestVo = FastJson2Utils.parseObject(bodyString);
+        stream = openAiRequestVo.getBoolean("stream");
+      }
+
+    } else if (requestURI.startsWith("/cerebras")) {
+      url = CerebrasConst.API_PREFIX_URL + "/chat/completions";
 
       headers.put("authorization", httpRequest.getAuthorization());
 
@@ -93,17 +106,18 @@ public class LLMProxyHandler {
       }
     }
 
-    //String authorization = httpRequest.getHeader("authorization");
+    // String authorization = httpRequest.getHeader("authorization");
 
     if (stream != null && stream) {
       // 告诉默认的处理器不要将消息体发送给客户端,因为后面会手动发送
       httpResponse.setSend(false);
       ChannelContext channelContext = httpRequest.getChannelContext();
-      EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse, start);
+      EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse,
+          start);
       AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
     } else {
       try (Response response = AiChatProxyClient.generate(url, headers, bodyString)) {
-        //OkHttpResponseUtils.toTioHttpResponse(response, httpResponse);
+        // OkHttpResponseUtils.toTioHttpResponse(response, httpResponse);
         try {
           String resposneBody = response.body().string();
           httpResponse.setString(resposneBody, "utf-8", "application/json");
