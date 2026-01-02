@@ -2,12 +2,12 @@ package com.litongjava.llm.proxy.callback;
 
 import java.io.IOException;
 
-import com.jfinal.kit.StrKit;
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.http.common.HttpResponse;
 import com.litongjava.tio.http.common.sse.SsePacket;
 import com.litongjava.tio.utils.SystemTimer;
+import com.litongjava.tio.utils.hutool.StrUtil;
 
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Response;
@@ -37,9 +37,10 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 
   @Override
   public void onEvent(EventSource eventSource, String id, String type, String data) {
-    if (StrKit.notBlank(data)) {
+
+    if (StrUtil.notBlank(data)) {
       sendPacket(new SsePacket(type, data.getBytes()));
-      // [DONE] 是open ai的数据标识 
+      // [DONE] 是open ai的数据标识
       if ("[DONE]".equals(data)) {
         finish(eventSource);
         return;
