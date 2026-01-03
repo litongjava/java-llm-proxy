@@ -4,8 +4,11 @@ import java.io.IOException;
 
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
+import com.litongjava.tio.http.common.HeaderName;
+import com.litongjava.tio.http.common.HeaderValue;
 import com.litongjava.tio.http.common.HttpResponse;
 import com.litongjava.tio.http.common.sse.SsePacket;
+import com.litongjava.tio.http.server.util.SseEmitter;
 import com.litongjava.tio.utils.SystemTimer;
 import com.litongjava.tio.utils.hutool.StrUtil;
 
@@ -31,15 +34,18 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
   @Override
   public void onOpen(EventSource eventSource, Response response) {
     httpResponse.addServerSentEventsHeader();
-    httpResponse.setSend(true);
-    Tio.send(channelContext, httpResponse);
+    httpResponse.addHeader(HeaderName.Transfer_Encoding, HeaderValue.from("chunked"));
+    httpResponse.addHeader(HeaderName.Keep_Alive, HeaderValue.from("timeout=60"));
+    // 告诉handler不要发送
+    Tio.bSend(channelContext, httpResponse);
+    httpResponse.setSend(false);
   }
 
   @Override
   public void onEvent(EventSource eventSource, String id, String type, String data) {
 
     if (StrUtil.notBlank(data)) {
-      sendPacket(new SsePacket(type, data.getBytes()));
+      sendPacket(type, data);
       // [DONE] 是open ai的数据标识
       if ("[DONE]".equals(data)) {
         finish(eventSource);
@@ -77,13 +83,15 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
   private void finish(EventSource eventSource) {
     log.info("elapse:{}", SystemTimer.currTime - start);
     eventSource.cancel();
-    Tio.close(channelContext, "finish");
+    //Tio.close(channelContext, "finish");
+    SseEmitter.closeChunkConnection(channelContext);
   }
 
-  /** 三次重试发送 SSE，遇断就放弃 */
-  private void sendPacket(SsePacket packet) {
-    if (!continueSend)
+  public void sendPacket(SsePacket packet) {
+    if (!continueSend) {
       return;
+    }
+
     if (!Tio.bSend(channelContext, packet)) {
       if (!Tio.bSend(channelContext, packet)) {
         if (!Tio.bSend(channelContext, packet)) {
@@ -91,5 +99,19 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
         }
       }
     }
+  }
+
+  private void sendPacket(String type, String data) {
+    if (!continueSend) {
+      return;
+    }
+    if (!SseEmitter.pushSSEChunk(channelContext, type, data)) {
+      if (!SseEmitter.pushSSEChunk(channelContext, type, data)) {
+        if (!SseEmitter.pushSSEChunk(channelContext, type, data)) {
+          continueSend = false;
+        }
+      }
+    }
+
   }
 }
