@@ -15,6 +15,9 @@ import com.litongjava.openrouter.OpenRouterConst;
 import com.litongjava.proxy.AiChatProxyClient;
 import com.litongjava.tio.boot.http.TioRequestContext;
 import com.litongjava.tio.core.ChannelContext;
+import com.litongjava.tio.core.Tio;
+import com.litongjava.tio.http.common.HeaderName;
+import com.litongjava.tio.http.common.HeaderValue;
 import com.litongjava.tio.http.common.HttpRequest;
 import com.litongjava.tio.http.common.HttpResponse;
 import com.litongjava.tio.http.common.utils.HttpIpUtils;
@@ -111,9 +114,13 @@ public class LLMProxyHandler implements HttpRequestHandler {
     // String authorization = httpRequest.getHeader("authorization");
 
     if (stream != null && stream) {
+      httpResponse.addServerSentEventsHeader();
+      httpResponse.addHeader(HeaderName.Transfer_Encoding, HeaderValue.from("chunked"));
+      httpResponse.addHeader(HeaderName.Keep_Alive, HeaderValue.from("timeout=60"));
       // 告诉默认的处理器不要将消息体发送给客户端,因为后面会手动发送
       httpResponse.setSend(false);
       ChannelContext channelContext = httpRequest.getChannelContext();
+      Tio.bSend(channelContext, httpResponse);
       EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse, start);
       AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
     } else {

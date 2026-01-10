@@ -4,8 +4,6 @@ import java.io.IOException;
 
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
-import com.litongjava.tio.http.common.HeaderName;
-import com.litongjava.tio.http.common.HeaderValue;
 import com.litongjava.tio.http.common.HttpResponse;
 import com.litongjava.tio.http.common.sse.SsePacket;
 import com.litongjava.tio.http.server.util.SseEmitter;
@@ -33,12 +31,6 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 
   @Override
   public void onOpen(EventSource eventSource, Response response) {
-    httpResponse.addServerSentEventsHeader();
-    httpResponse.addHeader(HeaderName.Transfer_Encoding, HeaderValue.from("chunked"));
-    httpResponse.addHeader(HeaderName.Keep_Alive, HeaderValue.from("timeout=60"));
-    // 告诉handler不要发送
-    Tio.bSend(channelContext, httpResponse);
-    httpResponse.setSend(false);
   }
 
   @Override

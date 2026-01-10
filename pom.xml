@@ -13,7 +13,7 @@
     <!-- 版本属性 -->
     <lombok-version>1.18.30</lombok-version>
     <fastjson2.version>2.0.52</fastjson2.version>
-    <tio-boot.version>2.0.5</tio-boot.version>
+    <tio-boot.version>2.0.6</tio-boot.version>
 
     <!-- 应用程序属性 -->
     <final.name>web-hello</final.name>
@@ -47,7 +47,7 @@
     <dependency>
       <groupId>com.litongjava</groupId>
       <artifactId>java-openai</artifactId>
-      <version>1.2.5</version>
+      <version>1.2.6</version>
     </dependency>
     <!-- Tio Boot 框架 -->
     <dependency>
