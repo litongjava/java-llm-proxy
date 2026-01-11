@@ -40,6 +40,7 @@ public class LLMProxyHandler implements HttpRequestHandler {
     HttpResponse httpResponse = TioRequestContext.getResponse();
     CORSUtils.enableCORS(httpResponse);
 
+    Long id = httpRequest.getId();
     String requestURI = httpRequest.getRequestURI();
 
     String bodyString = httpRequest.getBodyString();
@@ -49,7 +50,7 @@ public class LLMProxyHandler implements HttpRequestHandler {
     }
 
     String realIp = HttpIpUtils.getRealIp(httpRequest);
-    log.info("from:{},requestURI:{}", realIp, requestURI);
+    log.info("id:{},from:{},requestURI:{}", id, realIp, requestURI);
     Boolean stream = false;
     String url = null;
     Map<String, String> headers = new HashMap<>();
@@ -121,14 +122,15 @@ public class LLMProxyHandler implements HttpRequestHandler {
       httpResponse.setSend(false);
       ChannelContext channelContext = httpRequest.getChannelContext();
       Tio.bSend(channelContext, httpResponse);
-      EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse, start);
+      EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(id, channelContext,
+          httpResponse, start);
       AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
     } else {
       try (Response response = AiChatProxyClient.generate(url, headers, bodyString)) {
         // OkHttpResponseUtils.toTioHttpResponse(response, httpResponse);
         int code = response.code();
         httpResponse.setStatus(code);
-        
+
         try {
           String resposneBody = response.body().string();
           httpResponse.setString(resposneBody, "utf-8", "application/json");

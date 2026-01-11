@@ -1,6 +1,7 @@
 package com.litongjava.llm.proxy.callback;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
@@ -21,9 +22,13 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
   private ChannelContext channelContext;
   private HttpResponse httpResponse;
   private long start;
+  private Long id;
   private boolean continueSend = true;
+  private AtomicBoolean hasFinished = new AtomicBoolean(false);
 
-  public SSEProxyCallbackEventSourceListener(ChannelContext channelContext, HttpResponse httpResponse, long start) {
+  public SSEProxyCallbackEventSourceListener(Long id, ChannelContext channelContext, HttpResponse httpResponse,
+      long start) {
+    this.id = id;
     this.channelContext = channelContext;
     this.httpResponse = httpResponse;
     this.start = start;
@@ -73,10 +78,14 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
   }
 
   private void finish(EventSource eventSource) {
-    log.info("elapse:{}", SystemTimer.currTime - start);
-    eventSource.cancel();
-    //Tio.close(channelContext, "finish");
-    SseEmitter.closeChunkConnection(channelContext);
+    if (!hasFinished.get()) {
+      log.info("id:{},elapse:{}", id, SystemTimer.currTime - start);
+      eventSource.cancel();
+      // Tio.close(channelContext, "finish");
+      SseEmitter.closeChunkConnection(channelContext);
+      hasFinished.set(true);
+    }
+
   }
 
   public void sendPacket(SsePacket packet) {
