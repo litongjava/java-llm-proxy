@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
+import com.litongjava.tio.http.common.HeaderName;
+import com.litongjava.tio.http.common.HeaderValue;
 import com.litongjava.tio.http.common.HttpResponse;
 import com.litongjava.tio.http.common.sse.SsePacket;
 import com.litongjava.tio.http.server.util.SseEmitter;
@@ -25,6 +27,7 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
   private Long id;
   private boolean continueSend = true;
   private AtomicBoolean hasFinished = new AtomicBoolean(false);
+  private AtomicBoolean hasSentChunkHead = new AtomicBoolean(false);
 
   public SSEProxyCallbackEventSourceListener(Long id, ChannelContext channelContext, HttpResponse httpResponse,
       long start) {
@@ -36,6 +39,11 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 
   @Override
   public void onOpen(EventSource eventSource, Response response) {
+    httpResponse.addServerSentEventsHeader();
+    httpResponse.addHeader(HeaderName.Transfer_Encoding, HeaderValue.from("chunked"));
+    httpResponse.addHeader(HeaderName.Keep_Alive, HeaderValue.from("timeout=60"));
+    Tio.bSend(channelContext, httpResponse);
+    hasSentChunkHead.set(true);
   }
 
   @Override
@@ -43,9 +51,8 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 
     if (StrUtil.notBlank(data)) {
       sendPacket(type, data);
-      // [DONE] 是open ai的数据标识
+      // [DONE] 是openai的数据标识
       if ("[DONE]".equals(data)) {
-        finish(eventSource);
         return;
       }
     }
@@ -59,17 +66,18 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
 
   @Override
   public void onFailure(EventSource eventSource, Throwable t, Response response) {
-    log.error(t.getMessage(), t);
+    if (t != null) {
+      log.error(t.getMessage(), t);
+    }
     try {
       int code = response.code();
       String string = response.body().string();
       httpResponse.status(code);
       httpResponse.body(string);
-
-      httpResponse.setSend(true);
-      Tio.send(channelContext, httpResponse);
+      httpResponse.setSend(false);
+      Tio.bSend(channelContext, httpResponse);
     } catch (IOException e) {
-      e.printStackTrace();
+      log.error(e.getMessage(), e);
     } finally {
       response.close();
     }
@@ -82,7 +90,9 @@ public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
       log.info("id:{},elapse:{}", id, SystemTimer.currTime - start);
       eventSource.cancel();
       // Tio.close(channelContext, "finish");
-      SseEmitter.closeChunkConnection(channelContext);
+      if(hasSentChunkHead.get()) {
+        SseEmitter.closeChunkConnection(channelContext);
+      }
       hasFinished.set(true);
     }
 

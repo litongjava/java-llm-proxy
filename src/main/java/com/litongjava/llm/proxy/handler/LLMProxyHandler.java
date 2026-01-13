@@ -115,13 +115,9 @@ public class LLMProxyHandler implements HttpRequestHandler {
     // String authorization = httpRequest.getHeader("authorization");
 
     if (stream != null && stream) {
-      httpResponse.addServerSentEventsHeader();
-      httpResponse.addHeader(HeaderName.Transfer_Encoding, HeaderValue.from("chunked"));
-      httpResponse.addHeader(HeaderName.Keep_Alive, HeaderValue.from("timeout=60"));
       // 告诉默认的处理器不要将消息体发送给客户端,因为后面会手动发送
       httpResponse.setSend(false);
       ChannelContext channelContext = httpRequest.getChannelContext();
-      Tio.bSend(channelContext, httpResponse);
       EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(id, channelContext,
           httpResponse, start);
       AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
