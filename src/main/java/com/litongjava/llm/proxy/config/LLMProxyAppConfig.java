@@ -1,7 +1,9 @@
 package com.litongjava.llm.proxy.config;
 
+import com.litongjava.llm.proxy.handler.GeminiLiveWsHandler;
 import com.litongjava.llm.proxy.handler.LLMProxyHandler;
 import com.litongjava.tio.boot.server.TioBootServer;
+import com.litongjava.tio.boot.websocket.WebSocketRouter;
 import com.litongjava.tio.http.server.router.HttpRequestRouter;
 
 public class LLMProxyAppConfig {
@@ -16,6 +18,13 @@ public class LLMProxyAppConfig {
       requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler);
       requestRouter.add("/openrouter/v1/chat/completions", openAIV1ChatHandler);
       requestRouter.add("/cerebras/v1/chat/completions", openAIV1ChatHandler);
+    }
+    WebSocketRouter webSocketRouter = server.getWebSocketRouter();
+    if (webSocketRouter != null) {
+      GeminiLiveWsHandler geminiLiveWsHandler = new GeminiLiveWsHandler();
+      //GOOGLE_GEMINI_BASE_URL=http://localhost:8080/google/gemini
+      String path = "/google/gemini/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+      webSocketRouter.add(path, geminiLiveWsHandler);
     }
   }
 }
