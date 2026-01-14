@@ -21,9 +21,11 @@ public class LLMProxyAppConfig {
     }
     WebSocketRouter webSocketRouter = server.getWebSocketRouter();
     if (webSocketRouter != null) {
-      GeminiLiveWsHandler geminiLiveWsHandler = new GeminiLiveWsHandler();
-      //GOOGLE_GEMINI_BASE_URL=http://localhost:8080/google/gemini
-      String path = "/google/gemini/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+      String uri = "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+      String url = "wss://generativelanguage.googleapis.com" + uri;
+      GeminiLiveWsHandler geminiLiveWsHandler = new GeminiLiveWsHandler(url);
+      // GOOGLE_GEMINI_BASE_URL=http://localhost:8080/google/gemini
+      String path = "/google/gemini" + uri;
       webSocketRouter.add(path, geminiLiveWsHandler);
     }
   }
