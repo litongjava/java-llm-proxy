@@ -3,22 +3,14 @@ package com.litongjava.llm.proxy.handler;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import com.litongjava.llm.proxy.mode.GoogleWsConnectParam;
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.http.common.HttpRequest;
 import com.litongjava.tio.http.common.HttpResponse;
-import com.litongjava.tio.websocket.client.WebSocket;
-import com.litongjava.tio.websocket.client.WebsocketClient;
-import com.litongjava.tio.websocket.client.config.WebsocketClientConfig;
-import com.litongjava.tio.websocket.client.event.CloseEvent;
-import com.litongjava.tio.websocket.client.event.ErrorEvent;
-import com.litongjava.tio.websocket.client.event.MessageEvent;
-import com.litongjava.tio.websocket.client.event.OpenEvent;
 import com.litongjava.tio.websocket.common.WebSocketRequest;
-import com.litongjava.tio.websocket.common.WebSocketResponse;
 import com.litongjava.tio.websocket.common.WebSocketSessionContext;
 import com.litongjava.tio.websocket.server.handler.IWebSocketHandler;
 
@@ -57,11 +49,16 @@ public class GeminiLiveWsHandler implements IWebSocketHandler {
       throws Exception {
     String key = channelKey(channelContext);
 
+    String apiKey = httpRequest.getHeader("x-goog-api-key");
+    String apiClient = httpRequest.getHeader("x-goog-api-client");
+    String userAgent = httpRequest.getHeader("user-agent");
+    GoogleWsConnectParam googleWsConnectParam = new GoogleWsConnectParam(apiKey, apiClient, userAgent);
+
     // 避免重复创建
     downstreamMap.computeIfAbsent(key, k -> {
-      Downstream ds = new Downstream(forwardWsUri, channelContext);
+      Downstream ds = new Downstream(forwardWsUri, googleWsConnectParam, channelContext);
       try {
-        ds.connect(8, TimeUnit.SECONDS);
+        ds.connect(30, TimeUnit.SECONDS);
         log.info("上游{}握手完成，已连接下游: {}", k, forwardWsUri);
       } catch (Exception e) {
         log.error("上游{}握手完成，但连接下游失败: {}", k, forwardWsUri, e);

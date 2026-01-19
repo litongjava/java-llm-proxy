@@ -1,11 +1,16 @@
 package com.litongjava.llm.proxy.handler;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import com.litongjava.llm.proxy.mode.GoogleWsConnectParam;
 import com.litongjava.tio.consts.TioConst;
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
+import com.litongjava.tio.proxy.ProxyInfo;
+import com.litongjava.tio.utils.environment.EnvUtils;
 import com.litongjava.tio.websocket.client.WebSocket;
 import com.litongjava.tio.websocket.client.WebsocketClient;
 import com.litongjava.tio.websocket.client.config.WebsocketClientConfig;
@@ -22,16 +27,23 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public class Downstream {
-  private final String uri;
-  private final ChannelContext upstreamCtx;
+  private String uri;
+  private ChannelContext upstreamCtx;
 
-  private volatile WebsocketClient client;
-  private volatile WebSocket ws;
+  private WebsocketClient client;
+  private WebSocket ws;
+  private GoogleWsConnectParam googleWsConnectParam;
 
   private final CountDownLatch openLatch = new CountDownLatch(1);
 
-  Downstream(String uri, ChannelContext upstreamCtx) {
+  public Downstream(String uri, ChannelContext upstreamCtx) {
     this.uri = uri;
+    this.upstreamCtx = upstreamCtx;
+  }
+
+  public Downstream(String uri, GoogleWsConnectParam googleWsConnectParam, ChannelContext upstreamCtx) {
+    this.uri = uri;
+    this.googleWsConnectParam = googleWsConnectParam;
     this.upstreamCtx = upstreamCtx;
   }
 
@@ -86,7 +98,30 @@ public class Downstream {
     };
 
     WebsocketClientConfig config = new WebsocketClientConfig(onOpen, onMessage, onClose, onError, onThrows);
-    client = WebsocketClient.create(uri, config);
+    String proxyHost = EnvUtils.getStr("http.proxyHost");
+    int proxyPort = EnvUtils.getInt("http.proxyPort");
+    if (proxyHost != null) {
+      config.setProxyInfo(new ProxyInfo(proxyHost, proxyPort));
+    }
+
+    Map<String, String> headers = new HashMap<>();
+
+    if (googleWsConnectParam != null && googleWsConnectParam.getUserAgent() != null) {
+      headers.put("User-Agent", googleWsConnectParam.getUserAgent());
+    }
+
+    // 例：把 apiKey 放到 Authorization（按你下游协议要求决定）
+    if (googleWsConnectParam != null && googleWsConnectParam.getApiKey() != null) {
+      headers.put("x-goog-api-key", googleWsConnectParam.getApiKey());
+    }
+
+    // 例：其它自定义头
+    if (googleWsConnectParam != null && googleWsConnectParam.getApiClient() != null) {
+      headers.put("x-goog-api-client", googleWsConnectParam.getApiClient());
+    }
+
+    // 注意：Host / Upgrade / Connection / Sec-WebSocket-* 这些在 handshake() 里会被设置，
+    client = WebsocketClient.create(uri, headers, config);
     ws = client.connect();
 
     boolean opened = openLatch.await(timeout, unit);
