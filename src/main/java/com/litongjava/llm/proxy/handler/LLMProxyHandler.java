@@ -85,8 +85,19 @@ public class LLMProxyHandler implements HttpRequestHandler {
         openAiRequestVo = FastJson2Utils.parseObject(bodyString);
         stream = openAiRequestVo.getBoolean("stream");
       }
+    } else if (requestURI.startsWith("/anthropic") && requestURI.endsWith("completions")) {
+      url = ClaudeClient.CLAUDE_API_URL + "/chat/completions";
 
-    } else if (requestURI.startsWith("/anthropic")) {
+      headers.put("authorization", httpRequest.getAuthorization());
+
+      JSONObject openAiRequestVo = null;
+
+      if (bodyString != null) {
+        openAiRequestVo = FastJson2Utils.parseObject(bodyString);
+        stream = openAiRequestVo.getBoolean("stream");
+      }
+      
+    } else if (requestURI.startsWith("/anthropic") && requestURI.endsWith("messages")) {
       url = ClaudeClient.CLAUDE_API_URL + "/messages";
       headers.put("x-api-key", httpRequest.getHeader("x-api-key"));
       headers.put("anthropic-version", httpRequest.getHeader("anthropic-version"));
