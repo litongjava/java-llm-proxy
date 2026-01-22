@@ -58,7 +58,7 @@ public class GeminiLiveWsHandler implements IWebSocketHandler {
     downstreamMap.computeIfAbsent(key, k -> {
       Downstream ds = new Downstream(forwardWsUri, googleWsConnectParam, channelContext);
       try {
-        ds.connect(30, TimeUnit.SECONDS);
+        ds.connect(60, TimeUnit.SECONDS);
         log.info("上游{}握手完成，已连接下游: {}", k, forwardWsUri);
       } catch (Exception e) {
         log.error("上游{}握手完成，但连接下游失败: {}", k, forwardWsUri, e);
