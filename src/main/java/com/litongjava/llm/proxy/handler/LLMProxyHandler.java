@@ -51,9 +51,10 @@ public class LLMProxyHandler implements HttpRequestHandler {
     Boolean stream = false;
     String url = null;
     Map<String, String> headers = new HashMap<>();
+    String authorization = httpRequest.getAuthorization();
     if (requestURI.startsWith("/openai")) {
       url = OpenAiClient.OPENAI_API_URL + "/chat/completions";
-      headers.put("authorization", httpRequest.getAuthorization());
+      headers.put("authorization", authorization);
 
       JSONObject openAiRequestVo = null;
 
@@ -65,7 +66,7 @@ public class LLMProxyHandler implements HttpRequestHandler {
     } else if (requestURI.startsWith("/openrouter")) {
       url = OpenRouterConst.API_PREFIX_URL + "/chat/completions";
 
-      headers.put("authorization", httpRequest.getAuthorization());
+      headers.put("authorization", authorization);
 
       JSONObject openAiRequestVo = null;
 
@@ -77,7 +78,7 @@ public class LLMProxyHandler implements HttpRequestHandler {
     } else if (requestURI.startsWith("/cerebras")) {
       url = CerebrasConst.API_PREFIX_URL + "/chat/completions";
 
-      headers.put("authorization", httpRequest.getAuthorization());
+      headers.put("authorization", authorization);
 
       JSONObject openAiRequestVo = null;
 
@@ -88,7 +89,7 @@ public class LLMProxyHandler implements HttpRequestHandler {
     } else if (requestURI.startsWith("/anthropic") && requestURI.endsWith("completions")) {
       url = ClaudeClient.CLAUDE_API_URL + "/chat/completions";
 
-      headers.put("authorization", httpRequest.getAuthorization());
+      headers.put("authorization", authorization);
 
       JSONObject openAiRequestVo = null;
 
@@ -96,7 +97,7 @@ public class LLMProxyHandler implements HttpRequestHandler {
         openAiRequestVo = FastJson2Utils.parseObject(bodyString);
         stream = openAiRequestVo.getBoolean("stream");
       }
-      
+
     } else if (requestURI.startsWith("/anthropic") && requestURI.endsWith("messages")) {
       url = ClaudeClient.CLAUDE_API_URL + "/messages";
       headers.put("x-api-key", httpRequest.getHeader("x-api-key"));
@@ -112,12 +113,29 @@ public class LLMProxyHandler implements HttpRequestHandler {
     } else if (requestURI.startsWith("/google")) {
       String key = httpRequest.getParam("key");
       String modelName1 = requestURI.substring(requestURI.lastIndexOf('/') + 1, requestURI.indexOf(':'));
-      if (requestURI.endsWith("streamGenerateContent")) {
-        url = GeminiClient.GEMINI_API_URL + modelName1 + ":streamGenerateContent?alt=sse&key=" + key;
-        stream = true;
+      if (key != null) {
+        if (requestURI.endsWith("streamGenerateContent")) {
+          url = GeminiClient.GEMINI_API_URL + modelName1 + ":streamGenerateContent?alt=sse&key=" + key;
+          stream = true;
+        } else {
+          url = GeminiClient.GEMINI_API_URL + modelName1 + ":generateContent?key=" + key;
+        }
       } else {
-        url = GeminiClient.GEMINI_API_URL + modelName1 + ":generateContent?key=" + key;
+        if (requestURI.endsWith("streamGenerateContent")) {
+          url = GeminiClient.GEMINI_API_URL + modelName1 + ":streamGenerateContent?alt=sse";
+          stream = true;
+        } else {
+          url = GeminiClient.GEMINI_API_URL + modelName1 + ":generateContent";
+        }
+        if (authorization != null) {
+          headers.put("authorization", authorization);
+        }
+        String googleApiKey = httpRequest.getHeader("x-goog-api-key");
+        if (googleApiKey != null) {
+          headers.put("x-goog-api-key", googleApiKey);
+        }
       }
+
     }
 
     // String authorization = httpRequest.getHeader("authorization");
