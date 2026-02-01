@@ -29,7 +29,7 @@ import okhttp3.Response;
 import okhttp3.sse.EventSourceListener;
 
 @Slf4j
-public class LLMProxyHandler implements HttpRequestHandler {
+public class LLMChatProxyHandler implements HttpRequestHandler {
 
   @Override
   public HttpResponse handle(HttpRequest httpRequest) throws Exception {

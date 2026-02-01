@@ -19,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class GeminiLiveWsHandler implements IWebSocketHandler {
 
-  /** 下游转发目标（构造函数传入） */
   private final String forwardWsUri;
 
   /**
@@ -37,7 +36,7 @@ public class GeminiLiveWsHandler implements IWebSocketHandler {
   @Override
   public HttpResponse handshake(HttpRequest httpRequest, HttpResponse response, ChannelContext channelContext)
       throws Exception {
-    log.info("请求信息: {}", httpRequest);
+    log.info("request: {}", httpRequest);
     return response;
   }
 
@@ -126,9 +125,6 @@ public class GeminiLiveWsHandler implements IWebSocketHandler {
 
     if (ds == null || !ds.isOpen()) {
       log.warn("下游未就绪，无法转发文本，上游={}", key);
-      // 你也可以选择给上游回一条错误提示
-      // Tio.send(channelContext, WebSocketResponse.fromText("{\"error\":\"downstream
-      // not ready\"}", CHARSET));
       return null;
     }
 
