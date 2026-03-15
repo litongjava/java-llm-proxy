@@ -22,7 +22,6 @@ public class LLMProxyAppConfig {
       requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler);
       requestRouter.add("/openrouter/v1/chat/completions", openAIV1ChatHandler);
       requestRouter.add("/cerebras/v1/chat/completions", openAIV1ChatHandler);
-      requestRouter.add("/cerebras/v1/chat/completions", openAIV1ChatHandler);
       requestRouter.add("/anthropic/v1/chat/completions", openAIV1ChatHandler);
       
       requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler);
