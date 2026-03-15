@@ -1,6 +1,7 @@
 package com.litongjava.llm.proxy.config;
 
 import com.litongjava.llm.proxy.handler.GeminiLiveWsHandler;
+import com.litongjava.llm.proxy.handler.LLMChatHandler;
 import com.litongjava.llm.proxy.handler.LLMChatProxyHandler;
 import com.litongjava.llm.proxy.handler.LLModelProxyHandler;
 import com.litongjava.tio.boot.server.TioBootServer;
@@ -13,7 +14,11 @@ public class LLMProxyAppConfig {
     TioBootServer server = TioBootServer.me();
     HttpRequestRouter requestRouter = server.getRequestRouter();
     if (requestRouter != null) {
+      LLMChatHandler llmChatHandler = new LLMChatHandler();
+      requestRouter.add("/v1/chat/completions", llmChatHandler);
+      
       LLMChatProxyHandler openAIV1ChatHandler = new LLMChatProxyHandler();
+      
       requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler);
       requestRouter.add("/openrouter/v1/chat/completions", openAIV1ChatHandler);
       requestRouter.add("/cerebras/v1/chat/completions", openAIV1ChatHandler);
@@ -22,9 +27,11 @@ public class LLMProxyAppConfig {
       
       requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler);
       requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler);
+      requestRouter.add("/vertexai/v1beta/models/*", openAIV1ChatHandler);
       
       LLModelProxyHandler llModelProxyHandler = new LLModelProxyHandler();
       requestRouter.add("/openai/v1/models", llModelProxyHandler);
+      
       
     }
     WebSocketRouter webSocketRouter = server.getWebSocketRouter();

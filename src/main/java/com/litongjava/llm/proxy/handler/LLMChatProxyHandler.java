@@ -23,6 +23,7 @@ import com.litongjava.tio.http.server.util.CORSUtils;
 import com.litongjava.tio.utils.environment.EnvUtils;
 import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.json.FastJson2Utils;
+import com.litongjava.vertexai.VertexAiConsts;
 
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Response;
@@ -115,17 +116,17 @@ public class LLMChatProxyHandler implements HttpRequestHandler {
       String modelName1 = requestURI.substring(requestURI.lastIndexOf('/') + 1, requestURI.indexOf(':'));
       if (key != null) {
         if (requestURI.endsWith("streamGenerateContent")) {
-          url = GeminiClient.GEMINI_API_URL + modelName1 + ":streamGenerateContent?alt=sse&key=" + key;
+          url = GeminiClient.GEMINI_API_URL + "/" + modelName1 + ":streamGenerateContent?alt=sse&key=" + key;
           stream = true;
         } else {
-          url = GeminiClient.GEMINI_API_URL + modelName1 + ":generateContent?key=" + key;
+          url = GeminiClient.GEMINI_API_URL + "/" + modelName1 + ":generateContent?key=" + key;
         }
       } else {
         if (requestURI.endsWith("streamGenerateContent")) {
-          url = GeminiClient.GEMINI_API_URL + modelName1 + ":streamGenerateContent?alt=sse";
+          url = GeminiClient.GEMINI_API_URL + "/" + modelName1 + ":streamGenerateContent?alt=sse";
           stream = true;
         } else {
-          url = GeminiClient.GEMINI_API_URL + modelName1 + ":generateContent";
+          url = GeminiClient.GEMINI_API_URL + "/" + modelName1 + ":generateContent";
         }
         if (authorization != null) {
           headers.put("authorization", authorization);
@@ -136,6 +137,31 @@ public class LLMChatProxyHandler implements HttpRequestHandler {
         }
       }
 
+    } else if (requestURI.startsWith("/vertexai")) {
+      String key = httpRequest.getParam("key");
+      String modelName1 = requestURI.substring(requestURI.lastIndexOf('/') + 1, requestURI.indexOf(':'));
+      if (key != null) {
+        if (requestURI.endsWith("streamGenerateContent")) {
+          url = VertexAiConsts.API_MODEL_BASE + "/" + modelName1 + ":streamGenerateContent?alt=sse&key=" + key;
+          stream = true;
+        } else {
+          url = VertexAiConsts.API_MODEL_BASE + "/" + modelName1 + ":generateContent?key=" + key;
+        }
+      } else {
+        if (requestURI.endsWith("streamGenerateContent")) {
+          url = VertexAiConsts.API_MODEL_BASE + "/" + modelName1 + ":streamGenerateContent?alt=sse";
+          stream = true;
+        } else {
+          url = VertexAiConsts.API_MODEL_BASE + "/" + modelName1 + ":generateContent";
+        }
+        if (authorization != null) {
+          headers.put("authorization", authorization);
+        }
+        String googleApiKey = httpRequest.getHeader("x-goog-api-key");
+        if (googleApiKey != null) {
+          headers.put("x-goog-api-key", googleApiKey);
+        }
+      }
     }
 
     // String authorization = httpRequest.getHeader("authorization");
