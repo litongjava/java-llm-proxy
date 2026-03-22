@@ -53,7 +53,7 @@ public class Downstream {
         }
         String text = e.data.getWsBodyText();
         if (text != null) {
-          WebSocketResponse resp = WebSocketResponse.fromText(text, TioConst.CHARSET_NAME);
+          WebSocketResponse resp = WebSocketResponse.fromText(text, TioConst.UTF_8);
           Tio.send(upstreamCtx, resp);
         } else {
           byte[] bs = e.data.getBody();

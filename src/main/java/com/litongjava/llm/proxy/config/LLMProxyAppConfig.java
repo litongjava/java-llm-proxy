@@ -3,6 +3,7 @@ package com.litongjava.llm.proxy.config;
 import com.litongjava.llm.proxy.handler.GeminiLiveWsHandler;
 import com.litongjava.llm.proxy.handler.LLMChatHandler;
 import com.litongjava.llm.proxy.handler.LLMChatProxyHandler;
+import com.litongjava.llm.proxy.handler.LLMTestChatHandler;
 import com.litongjava.llm.proxy.handler.LLModelProxyHandler;
 import com.litongjava.tio.boot.server.TioBootServer;
 import com.litongjava.tio.boot.websocket.WebSocketRouter;
@@ -17,6 +18,9 @@ public class LLMProxyAppConfig {
       LLMChatHandler llmChatHandler = new LLMChatHandler();
       requestRouter.add("/v1/chat/completions", llmChatHandler);
       
+      requestRouter.add("/test/v1/chat/completions", new LLMTestChatHandler());
+      
+      
       LLMChatProxyHandler openAIV1ChatHandler = new LLMChatProxyHandler();
       
       requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler);
@@ -30,6 +34,7 @@ public class LLMProxyAppConfig {
       
       LLModelProxyHandler llModelProxyHandler = new LLModelProxyHandler();
       requestRouter.add("/openai/v1/models", llModelProxyHandler);
+      
       
       
     }
