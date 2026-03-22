@@ -15,7 +15,7 @@
     <!-- 版本属性 -->
     <lombok-version>1.18.30</lombok-version>
     <fastjson2.version>2.0.52</fastjson2.version>
-    <tio-boot.version>2.0.8</tio-boot.version>
+    <tio-boot.version>2.0.9</tio-boot.version>
     <java-openai.version>1.3.0</java-openai.version>
 
     <!-- 应用程序属性 -->
