@@ -9,7 +9,6 @@ import com.litongjava.cerebras.CerebrasConst;
 import com.litongjava.claude.ClaudeClient;
 import com.litongjava.gemini.GeminiClient;
 import com.litongjava.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
-import com.litongjava.model.body.RespBodyVo;
 import com.litongjava.openai.client.OpenAiClient;
 import com.litongjava.openrouter.OpenRouterConst;
 import com.litongjava.proxy.AiChatProxyClient;
@@ -26,6 +25,7 @@ import com.litongjava.tio.utils.json.FastJson2Utils;
 import com.litongjava.vertexai.VertexAiConsts;
 
 import lombok.extern.slf4j.Slf4j;
+import nexus.io.model.body.RespBodyVo;
 import okhttp3.Response;
 import okhttp3.sse.EventSourceListener;
 

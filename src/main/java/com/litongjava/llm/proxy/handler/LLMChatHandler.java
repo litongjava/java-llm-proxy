@@ -7,7 +7,6 @@ import java.util.Map;
 import com.alibaba.fastjson2.JSONObject;
 import com.litongjava.chat.UniChatClient;
 import com.litongjava.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
-import com.litongjava.model.body.RespBodyVo;
 import com.litongjava.proxy.AiChatProxyClient;
 import com.litongjava.tio.boot.http.TioRequestContext;
 import com.litongjava.tio.core.ChannelContext;
@@ -21,6 +20,7 @@ import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.json.FastJson2Utils;
 
 import lombok.extern.slf4j.Slf4j;
+import nexus.io.model.body.RespBodyVo;
 import okhttp3.Response;
 import okhttp3.sse.EventSourceListener;
 

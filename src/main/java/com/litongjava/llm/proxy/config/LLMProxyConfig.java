@@ -1,6 +1,6 @@
 package com.litongjava.llm.proxy.config;
 
-import com.litongjava.context.BootConfiguration;
+import nexus.io.context.BootConfiguration;
 
 public class LLMProxyConfig implements BootConfiguration {
 
