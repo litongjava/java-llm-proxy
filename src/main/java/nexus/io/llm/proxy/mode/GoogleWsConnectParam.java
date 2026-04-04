@@ -1,4 +1,4 @@
-package com.litongjava.llm.proxy.mode;
+package nexus.io.llm.proxy.mode;
 
 public class GoogleWsConnectParam {
 

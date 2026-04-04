@@ -1,11 +1,10 @@
-package com.litongjava.llm.proxy.config;
+package nexus.io.llm.proxy.config;
 
-import com.litongjava.llm.proxy.handler.GeminiLiveWsHandler;
-import com.litongjava.llm.proxy.handler.LLMChatHandler;
-import com.litongjava.llm.proxy.handler.LLMChatProxyHandler;
-import com.litongjava.llm.proxy.handler.LLMTestChatHandler;
-import com.litongjava.llm.proxy.handler.LLModelProxyHandler;
-
+import nexus.io.llm.proxy.handler.GeminiLiveWsHandler;
+import nexus.io.llm.proxy.handler.LLMChatHandler;
+import nexus.io.llm.proxy.handler.LLMChatProxyHandler;
+import nexus.io.llm.proxy.handler.LLMTestChatHandler;
+import nexus.io.llm.proxy.handler.LLModelProxyHandler;
 import nexus.io.tio.boot.server.TioBootServer;
 import nexus.io.tio.boot.websocket.WebSocketRouter;
 import nexus.io.tio.http.server.router.HttpRequestRouter;

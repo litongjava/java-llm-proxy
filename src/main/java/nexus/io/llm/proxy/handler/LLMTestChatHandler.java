@@ -1,4 +1,4 @@
-package com.litongjava.llm.proxy.handler;
+package nexus.io.llm.proxy.handler;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -6,13 +6,13 @@ import java.util.Map;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.litongjava.chat.UniChatClient;
-import com.litongjava.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
 import com.litongjava.proxy.AiChatProxyClient;
 import com.litongjava.tio.utils.environment.EnvUtils;
 import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.json.FastJson2Utils;
 
 import lombok.extern.slf4j.Slf4j;
+import nexus.io.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
 import nexus.io.model.body.RespBodyVo;
 import nexus.io.tio.boot.http.TioRequestContext;
 import nexus.io.tio.core.ChannelContext;
@@ -25,7 +25,7 @@ import okhttp3.Response;
 import okhttp3.sse.EventSourceListener;
 
 @Slf4j
-public class LLMChatHandler implements HttpRequestHandler {
+public class LLMTestChatHandler implements HttpRequestHandler {
 
   @Override
   public HttpResponse handle(HttpRequest httpRequest) throws Exception {
@@ -43,7 +43,7 @@ public class LLMChatHandler implements HttpRequestHandler {
     }
 
     String realIp = HttpIpUtils.getRealIp(httpRequest);
-    log.info("id:{},from:{},requestURI:{}", id, realIp, requestURI);
+    log.info("id:{},from:{},requestURI:{},body:\n{}", id, realIp, requestURI, bodyString);
     Boolean stream = false;
     Map<String, String> headers = new HashMap<>();
     String authorization = httpRequest.getAuthorization();

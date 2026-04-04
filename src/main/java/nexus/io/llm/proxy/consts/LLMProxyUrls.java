@@ -1,4 +1,4 @@
-package com.litongjava.llm.proxy.consts;
+package nexus.io.llm.proxy.consts;
 
 public interface LLMProxyUrls {
 

@@ -1,4 +1,4 @@
-package com.litongjava.llm.proxy.callback;
+package nexus.io.llm.proxy.callback;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;

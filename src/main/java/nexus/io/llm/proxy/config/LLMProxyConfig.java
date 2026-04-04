@@ -1,4 +1,4 @@
-package com.litongjava.llm.proxy.config;
+package nexus.io.llm.proxy.config;
 
 import nexus.io.context.BootConfiguration;
 
