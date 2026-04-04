@@ -1,7 +1,8 @@
 package com.litongjava.llm.proxy;
 
 import com.litongjava.llm.proxy.config.LLMProxyConfig;
-import com.litongjava.tio.boot.TioApplication;
+
+import nexus.io.tio.boot.TioApplication;
 
 public class LLMProxyApp {
   public static void main(String[] args) {

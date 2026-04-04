@@ -6,21 +6,21 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import com.litongjava.llm.proxy.mode.GoogleWsConnectParam;
-import com.litongjava.tio.consts.TioConst;
-import com.litongjava.tio.core.ChannelContext;
-import com.litongjava.tio.core.Tio;
-import com.litongjava.tio.proxy.ProxyInfo;
 import com.litongjava.tio.utils.environment.EnvUtils;
-import com.litongjava.tio.websocket.client.WebSocket;
-import com.litongjava.tio.websocket.client.WebsocketClient;
-import com.litongjava.tio.websocket.client.config.WebsocketClientConfig;
-import com.litongjava.tio.websocket.client.event.CloseEvent;
-import com.litongjava.tio.websocket.client.event.ErrorEvent;
-import com.litongjava.tio.websocket.client.event.MessageEvent;
-import com.litongjava.tio.websocket.client.event.OpenEvent;
-import com.litongjava.tio.websocket.common.WebSocketResponse;
 
 import lombok.extern.slf4j.Slf4j;
+import nexus.io.tio.consts.TioConst;
+import nexus.io.tio.core.ChannelContext;
+import nexus.io.tio.core.Tio;
+import nexus.io.tio.proxy.ProxyInfo;
+import nexus.io.tio.websocket.client.WebSocket;
+import nexus.io.tio.websocket.client.WebsocketClient;
+import nexus.io.tio.websocket.client.config.WebsocketClientConfig;
+import nexus.io.tio.websocket.client.event.CloseEvent;
+import nexus.io.tio.websocket.client.event.ErrorEvent;
+import nexus.io.tio.websocket.client.event.MessageEvent;
+import nexus.io.tio.websocket.client.event.OpenEvent;
+import nexus.io.tio.websocket.common.WebSocketResponse;
 
 @Slf4j
 public class Downstream {

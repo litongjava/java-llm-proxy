@@ -1,6 +1,6 @@
-import com.litongjava.tio.http.client.SimpleTioHttpClient;
-import com.litongjava.tio.http.client.packet.HttpResponsePacket;
-import com.litongjava.tio.proxy.ProxyInfo;
+import nexus.io.tio.http.client.SimpleTioHttpClient;
+import nexus.io.tio.http.client.packet.HttpResponsePacket;
+import nexus.io.tio.proxy.ProxyInfo;
 
 public class TestProxy {
   public static void main(String[] args) throws Exception {
