@@ -5,14 +5,13 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import com.litongjava.tio.utils.environment.EnvUtils;
-
 import lombok.extern.slf4j.Slf4j;
 import nexus.io.llm.proxy.mode.GoogleWsConnectParam;
 import nexus.io.tio.consts.TioConst;
 import nexus.io.tio.core.ChannelContext;
 import nexus.io.tio.core.Tio;
 import nexus.io.tio.proxy.ProxyInfo;
+import nexus.io.tio.utils.environment.EnvUtils;
 import nexus.io.tio.websocket.client.WebSocket;
 import nexus.io.tio.websocket.client.WebsocketClient;
 import nexus.io.tio.websocket.client.config.WebsocketClientConfig;

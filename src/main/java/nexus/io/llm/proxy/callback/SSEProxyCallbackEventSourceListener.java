@@ -3,9 +3,6 @@ package nexus.io.llm.proxy.callback;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.litongjava.tio.utils.SystemTimer;
-import com.litongjava.tio.utils.hutool.StrUtil;
-
 import lombok.extern.slf4j.Slf4j;
 import nexus.io.http.common.sse.SsePacket;
 import nexus.io.tio.core.ChannelContext;
@@ -14,6 +11,8 @@ import nexus.io.tio.http.common.HeaderName;
 import nexus.io.tio.http.common.HeaderValue;
 import nexus.io.tio.http.common.HttpResponse;
 import nexus.io.tio.http.server.util.SseEmitter;
+import nexus.io.tio.utils.SystemTimer;
+import nexus.io.tio.utils.hutool.StrUtil;
 import okhttp3.Response;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
