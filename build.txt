@@ -9,6 +9,7 @@ mvn clean install -DskipTests -Dgpg.skip
 mvn clean package -DskipTests -Pproduction
 
 [linux.env]
+set JAVA_HOME=/usr/java/jdk-21.0.6
 
 [linux.build]
 mvn clean install -DskipTests -Dgpg.skip
