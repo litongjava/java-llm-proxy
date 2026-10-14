@@ -232,7 +232,7 @@ fn harness_saves_before_connection_and_applies_documented_protocol() {
         .unwrap()
         .clone();
     save_harness_editor(&home, &models, 8317, edit).unwrap();
-    assert_eq!(provider(&home)["baseURL"], "http://127.0.0.1:8317");
+    assert_eq!(provider(&home)["baseURL"], "http://127.0.0.1:8317/tools/deepseek-harness");
     assert_eq!(
         provider(&home)["models"][2]["compat"],
         json!({"supportsTemperature":false})
@@ -243,7 +243,7 @@ fn harness_saves_before_connection_and_applies_documented_protocol() {
             .0
     );
     apply(&home, &models);
-    assert_eq!(provider(&home)["baseURL"], "http://127.0.0.1:8317");
+    assert_eq!(provider(&home)["baseURL"], "http://127.0.0.1:8317/tools/deepseek-harness");
 
     fs::remove_dir_all(home).unwrap();
 }

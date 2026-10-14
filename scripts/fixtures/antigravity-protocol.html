@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>Antigravity 协议修复 · 实测</title>
+<style>
+body{font:16px/1.6 system-ui,sans-serif;background:#f3f6fa;color:#182839;margin:0}main{max-width:1120px;margin:32px auto;padding:28px;background:white;border-radius:16px}h1{margin:0 0 8px}p{color:#526477}button{padding:12px 24px;margin:12px 10px 12px 0;background:#087d73;color:white;border:0;border-radius:7px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}#status{font-weight:700}article{padding:20px;margin-top:20px;border:1px solid #dae2ea;border-radius:10px}h2{margin:0}dl{display:grid;grid-template-columns:180px 1fr;margin:12px 0}dt{color:#526477}dd{margin:0}.PASS{color:#087d48}.FAIL,.ERROR{color:#b32730}pre{white-space:pre-wrap;word-break:break-word;background:#f4f6f8;padding:16px;font-size:13px;max-height:210px;overflow:auto}.checks{display:flex;flex-wrap:wrap;gap:8px}.checks span{background:#f1f6f4;padding:5px 10px;border-radius:6px}small{color:#526477}
+</style><main>
+<h1>Antigravity 协议格式修复 · 在线测试</h1>
+<p><strong id="scope">加载测试类型…</strong> · 隔离测试内核 · 原失败请求的工具定义 · 短提示词：Reply exactly OK. Do not call any tools.</p>
+<div id="summary">加载测试状态…</div>
+<button id="nonstream" onclick="run('non-stream')">测试非流式响应</button><button id="stream" onclick="run('stream')">测试流式响应</button>
+<div>当前状态：<span id="status">LOADING</span></div><div id="results"></div>
+<small>此页为测试工具，结果来自实际 HTTP 响应和测试内核保存的转发记录；不执行模型返回的工具调用。</small>
+</main><script>
+const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function refresh(){const s=await (await fetch('/status')).json();window.testStatus=s;
+document.querySelector('#scope').textContent=s.scope;
+document.querySelector('#summary').textContent=`原请求 ${s.sourceRequest} · 工具 ${s.toolCount} 个 · 测试内核端口 ${s.corePort}`;
+const status=document.querySelector('#status');status.textContent=s.status+(s.error?' '+s.error:'');status.className=s.status;
+document.querySelectorAll('button').forEach(b=>b.disabled=s.status==='RUNNING');
+document.querySelector('#results').innerHTML=s.results.map(r=>`<article data-case="${r.case}" data-status="${r.status}"><h2 class="${r.status}">${r.case==='stream'?'流式':'非流式'}：${r.status} · HTTP ${r.httpStatus}</h2><dl><dt>请求 ID</dt><dd>${escapeHtml(r.requestId)}</dd><dt>上游凭证</dt><dd>${escapeHtml(r.provider)}</dd><dt>模型映射</dt><dd>${escapeHtml(r.requestedModel)} → ${escapeHtml(r.upstreamModel)}</dd><dt>转发工具数 / 时间</dt><dd>${r.tools} / ${escapeHtml(r.observedAt)}</dd></dl><div class="checks">${Object.entries(r.checks).map(([k,v])=>`<span class="${v?'PASS':'FAIL'}">${v?'✓':'✗'} ${escapeHtml(k)}</span>`).join('')}</div><pre>${escapeHtml(r.response)}</pre></article>`).join('');}
+async function run(mode){document.querySelectorAll('button').forEach(b=>b.disabled=true);await fetch('/run/'+mode,{method:'POST'});await refresh();}
+refresh();setInterval(refresh,1000);
+</script></html>

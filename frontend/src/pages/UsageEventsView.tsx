@@ -114,13 +114,13 @@ const EVENT_COLUMNS: readonly EventColumnDef[] = [
 ] as const;
 
 const DEFAULT_EVENT_VISIBLE_COLUMNS: readonly EventColumnKey[] = [
-  'time', 'model', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
+  'time', 'model', 'provider', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
 ];
 
 const EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v4';
 const LEGACY_EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v3';
-const EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v6';
-const LEGACY_EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v5';
+const EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v7';
+const LEGACY_EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v6';
 const EVENT_COLLAPSE_ERRORS_KEY = 'cpa-gui.usage-events-collapse-errors.v1';
 const getAllEventColumnKeys = () => EVENT_COLUMNS.map((column) => column.key);
 
@@ -129,6 +129,7 @@ export const getInitialVisibleColumns = (): EventColumnKey[] => {
     const currentRaw = usagePreferences.getItem(EVENT_VISIBLE_COLS_STORAGE_KEY);
     const previousRaw = usagePreferences.getItem(LEGACY_EVENT_VISIBLE_COLS_STORAGE_KEY);
     const raw = currentRaw ?? previousRaw
+      ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v5')
       ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v4')
       ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v3')
       ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v2');
@@ -147,7 +148,8 @@ export const getInitialVisibleColumns = (): EventColumnKey[] => {
         if (savedKeys.length > 0) {
           const oldDefault = ['time', 'model', 'provider', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
           const previousDefault = ['time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
-          if ([oldDefault, previousDefault].some(defaults => savedKeys.length === defaults.length && savedKeys.every((key, index) => key === defaults[index]))) {
+          const lastDefault = ['time', 'model', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
+          if ([oldDefault, previousDefault, lastDefault].some(defaults => savedKeys.length === defaults.length && savedKeys.every((key, index) => key === defaults[index]))) {
             return [...DEFAULT_EVENT_VISIBLE_COLUMNS];
           }
           return savedKeys;
@@ -388,12 +390,11 @@ function UsageEventCell({
       ].filter(Boolean).join('\n');
       return (
         <td className="usage-stacked-cell usage-td-model align-left" title={modelTitle}>
-          <strong title={modelTitle}>{model.requested}</strong>
+          <strong title={modelTitle}>{model.resolved || model.response || '—'}</strong>
           <span className="usage-model-badges">
             <small className="usage-model-effort" title={effort}>{effort}</small>
             {fast ? <small className="usage-model-fast" title={record.service_tier}>{t('usage.speedMode.fast')}</small> : null}
           </span>
-          {model.showResolved ? <small title={modelTitle}>{model.resolved}</small> : null}
           {model.mismatch ? (
             <small className="usage-response-model" title={modelTitle}>
               {t('usage.model.response')}: {model.response}

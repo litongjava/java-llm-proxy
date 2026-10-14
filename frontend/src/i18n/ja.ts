@@ -2086,6 +2086,8 @@ export const jaOverrides = {
   'quota.service.error.missingResetAuthIndex': 'auth-index がないため手動リセット回数を照会できません',
   'quota.service.error.unsupportedProvider': 'このプロバイダーのクォータ照会には対応していません',
   'quota.service.error.unrecognized': '上流からクォータデータが返されましたが、形式を認識できません',
+  'quota.noData': 'クォータデータなし',
+  'quota.service.kimi.noData': 'Kimi はこのアカウントのクォータデータを返しませんでした。Kimi Code の契約状況を確認するか、後でもう一度更新してください。残量がゼロという意味ではありません。',
   'quota.service.error.codexResetOnly': 'リセットクォータを使用できるのは Codex 認証情報のみです',
   'quota.service.error.missingConsumeAuthIndex': 'auth-index がないためリセットクォータを使用できません',
 } satisfies Record<MessageKey, string>;

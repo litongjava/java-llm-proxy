@@ -200,7 +200,9 @@ pub(crate) async fn get_agent_models(
 ) -> Result<Vec<AgentModelOption>, String> {
     if client.trim().eq_ignore_ascii_case(PI_AGENT_ID) {
         let config = gui_config_state.snapshot()?;
-        return fetch_agent_models(config.port, effective_agent_api_key(&config)).await;
+        return parse_agent_model_options(
+            &fetch_tool_model_payload(config.port, effective_agent_api_key(&config), PI_AGENT_ID).await?,
+        );
     }
     let client = AgentClient::parse(&client)?;
     let _sync_guard = if client == AgentClient::Codex {
@@ -217,7 +219,9 @@ pub(crate) async fn resolve_pi_default_model(
     config: &GuiConfigFile,
     model: &str,
 ) -> Result<String, String> {
-    let models = fetch_agent_models(config.port, effective_agent_api_key(config)).await?;
+    let models = parse_agent_model_options(
+        &fetch_tool_model_payload(config.port, effective_agent_api_key(config), PI_AGENT_ID).await?,
+    )?;
     resolve_available_agent_model(&models, &validate_agent_model(model)?)
 }
 
@@ -522,18 +526,20 @@ pub(crate) async fn save_codex_model_catalog_editor(
 #[tauri::command]
 pub(crate) async fn get_thinking_aliases(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
 ) -> Result<Vec<ThinkingAliasEntry>, String> {
     let config = gui_config_state.snapshot()?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     thinking_aliases_from_yaml(&content)
 }
 
 #[tauri::command]
 pub(crate) async fn get_model_alias_sources(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
 ) -> Result<Vec<ThinkingAliasSource>, String> {
     let config = gui_config_state.snapshot()?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let available_models =
         fetch_agent_models(config.port, effective_agent_api_key(&config)).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
@@ -551,9 +557,10 @@ pub(crate) async fn get_model_alias_sources(
 #[tauri::command]
 pub(crate) async fn get_thinking_alias_sources(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
 ) -> Result<Vec<ThinkingAliasSource>, String> {
     let config = gui_config_state.snapshot()?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let available_models =
         fetch_agent_models(config.port, effective_agent_api_key(&config)).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
@@ -571,12 +578,13 @@ pub(crate) async fn get_thinking_alias_sources(
 #[tauri::command]
 pub(crate) async fn get_model_alias_edit_source(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
     alias: String,
     entry: Option<ThinkingAliasEntry>,
 ) -> Result<ModelAliasEditContext, String> {
     let config = gui_config_state.snapshot()?;
     let alias = existing_thinking_alias_model_id(&alias, "Alias model")?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
     model_alias_edit_context_for_mapping(&content, &alias, &definitions, entry.as_ref())
 }
@@ -584,6 +592,7 @@ pub(crate) async fn get_model_alias_edit_source(
 #[tauri::command]
 pub(crate) async fn create_thinking_alias(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
     source_id: String,
     alias: String,
     effort: String,
@@ -612,7 +621,7 @@ pub(crate) async fn create_thinking_alias(
         validate_thinking_alias_effort(&effort)?
     };
     let fast = fast.unwrap_or(false);
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
     let capability = if !effort.is_empty() {
         AliasSourceCapability::Reasoning
@@ -658,43 +667,46 @@ pub(crate) async fn create_thinking_alias(
         Some(original) => edit_model_alias_in_yaml_for_mapping(&content, original, &source, &alias, &effort, fast, original_entry.as_ref())?,
         None => add_model_alias_to_yaml(&content, &source, &alias, &effort, fast)?,
     };
-    put_management_alias_config_changes(&config, &content, &updated).await?;
+    commit_tool_alias_yaml(&config, &tool, &content, &updated, || Ok(())).await?;
     thinking_aliases_from_yaml(&updated)
 }
 
 #[tauri::command]
 pub(crate) async fn delete_thinking_alias(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
     alias: String,
     oauth_channel: Option<String>,
     entry: Option<ThinkingAliasEntry>,
 ) -> Result<Vec<ThinkingAliasEntry>, String> {
     let config = gui_config_state.snapshot()?;
     let alias = existing_thinking_alias_model_id(&alias, "Alias model")?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let updated = match entry.as_ref() {
         Some(entry) => remove_model_alias_mapping_from_yaml(&content, &alias, entry)?,
         None => remove_thinking_alias_from_yaml_for_channel(&content, &alias, oauth_channel.as_deref())?,
     };
-    put_management_alias_config_changes(&config, &content, &updated).await?;
+    commit_tool_alias_yaml(&config, &tool, &content, &updated, || Ok(())).await?;
     thinking_aliases_from_yaml(&updated)
 }
 
 #[tauri::command]
 pub(crate) async fn get_speed_aliases(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
 ) -> Result<Vec<SpeedAliasEntry>, String> {
     let config = gui_config_state.snapshot()?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     speed_aliases_from_yaml(&content)
 }
 
 #[tauri::command]
 pub(crate) async fn get_speed_alias_sources(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
 ) -> Result<Vec<ThinkingAliasSource>, String> {
     let config = gui_config_state.snapshot()?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let available_models =
         fetch_agent_models(config.port, effective_agent_api_key(&config)).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
@@ -712,6 +724,7 @@ pub(crate) async fn get_speed_alias_sources(
 #[tauri::command]
 pub(crate) async fn create_speed_alias(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
     source_id: String,
     alias: String,
 ) -> Result<Vec<SpeedAliasEntry>, String> {
@@ -721,7 +734,7 @@ pub(crate) async fn create_speed_alias(
         return Err("Select the source model first".to_string());
     }
     let alias = validate_thinking_alias_model_id(&alias, "Alias model")?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let available_models =
         fetch_agent_models(config.port, effective_agent_api_key(&config)).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
@@ -742,25 +755,26 @@ pub(crate) async fn create_speed_alias(
         return Err("Alias model cannot be the same as the source model".to_string());
     }
     let updated = add_speed_alias_to_yaml(&content, &source, &alias)?;
-    put_management_alias_config_changes(&config, &content, &updated).await?;
+    commit_tool_alias_yaml(&config, &tool, &content, &updated, || Ok(())).await?;
     speed_aliases_from_yaml(&updated)
 }
 
 #[tauri::command]
 pub(crate) async fn delete_speed_alias(
     gui_config_state: tauri::State<'_, GuiConfigState>,
+    tool: String,
     alias: String,
     oauth_channel: Option<String>,
     entry: Option<ThinkingAliasEntry>,
 ) -> Result<Vec<SpeedAliasEntry>, String> {
     let config = gui_config_state.snapshot()?;
     let alias = existing_thinking_alias_model_id(&alias, "Alias model")?;
-    let content = fetch_management_config_yaml(&config).await?;
+    let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let updated = match entry.as_ref() {
         Some(entry) => remove_model_alias_mapping_from_yaml(&content, &alias, entry)?,
         None => remove_speed_alias_from_yaml_for_channel(&content, &alias, oauth_channel.as_deref())?,
     };
-    put_management_alias_config_changes(&config, &content, &updated).await?;
+    commit_tool_alias_yaml(&config, &tool, &content, &updated, || Ok(())).await?;
     speed_aliases_from_yaml(&updated)
 }
 
@@ -776,6 +790,10 @@ pub(crate) async fn fetch_agent_model_payload(
     port: u16,
     api_key: &str,
 ) -> Result<serde_json::Value, String> {
+    fetch_tool_model_payload(port, api_key, "").await
+}
+
+pub(crate) async fn fetch_tool_model_payload(port: u16, api_key: &str, tool: &str) -> Result<serde_json::Value, String> {
     if port == 0 {
         return Err("Invalid kernel port".to_string());
     }
@@ -787,7 +805,7 @@ pub(crate) async fn fetch_agent_model_payload(
         .danger_accept_invalid_certs(tls_enabled)
         .build()
         .map_err(|error| format!("Failed to create model list client: {error}"))?;
-    let base_url = managed_core_loopback_origin(port);
+    let base_url = if tool.is_empty() { managed_core_loopback_origin(port) } else { managed_tool_origin(port, tool) };
     let endpoints = [
         format!("{base_url}/v1/models"),
         format!("{base_url}/models"),
@@ -885,7 +903,7 @@ pub(crate) async fn fetch_codex_catalog_runtime_models(
     config: &GuiConfigFile,
 ) -> Result<Vec<codex_catalog::CodexRuntimeModel>, String> {
     let (runtime, content) = tokio::join!(
-        fetch_agent_model_payload(config.port, effective_agent_api_key(config)),
+        fetch_tool_model_payload(config.port, effective_agent_api_key(config), "codex"),
         fetch_management_config_yaml(config),
     );
     // Codex selection and its written catalog must use the public /v1/models
@@ -907,7 +925,7 @@ pub(crate) async fn fetch_prepared_agent_models(
         let mut models = if client == AgentClient::DeepSeekHarness {
             fetch_deepseek_harness_models(config).await?
         } else {
-            fetch_agent_models(config.port, api_key).await?
+            parse_agent_model_options(&fetch_tool_model_payload(config.port, api_key, client.id()).await?)?
         };
         if client == AgentClient::VscodeCopilot {
             // The public model list may contain IDs only. Request the Codex
@@ -925,7 +943,7 @@ pub(crate) async fn fetch_prepared_agent_models(
             codex_catalog::merge_runtime_context_windows(&mut models, &runtime_models);
         }
         if matches!(client, AgentClient::ClaudeCode | AgentClient::ClaudeDesktop) {
-            let content = fetch_management_config_yaml(config).await?;
+            let content = fetch_tool_alias_yaml(config, client.id()).await?;
             mark_configured_agent_model_aliases(&mut models, &content)?;
             for model in &mut models {
                 model.context_window = Some(claude_catalog::context_window_for(

@@ -52,7 +52,7 @@ pub(crate) fn build_pi_template_updates(
     Ok(vec![
         AgentFileUpdate {
             path: pi_provider_config_path(home),
-            after: build_pi_provider_config(None, &managed_core_loopback_origin(port), api_key)?,
+            after: build_pi_provider_config(None, &managed_tool_origin(port, "pi"), api_key)?,
         },
         AgentFileUpdate {
             path: pi_provider_settings_path(home),
@@ -66,7 +66,7 @@ pub(crate) async fn prepare_desktop_core_update(
     mappings: &mut ClaudeDesktopModelMappings,
     models: &[AgentModelOption],
 ) -> Result<(String, String), String> {
-    let before = fetch_management_config_yaml(config)
+    let before = fetch_tool_alias_yaml(config, "claude-desktop")
         .await
         .map_err(agent_core_error)?;
     assign_available_claude_desktop_aliases(mappings, models, &before).map_err(agent_core_error)?;
@@ -131,7 +131,7 @@ pub(crate) async fn commit_agent_with_core<T>(
     } else {
         return commit(None);
     };
-    commit_management_alias_config_changes(config, &before, &after, || commit(mappings.as_ref()))
+    commit_tool_alias_yaml(config, "claude-desktop", &before, &after, || commit(mappings.as_ref()))
         .await
         .map_err(agent_core_error)
 }
@@ -264,7 +264,7 @@ async fn execute_template_plan(
     };
     match &plan.core {
         Some((before, after)) => {
-            commit_management_alias_config_changes(config, before, after, commit)
+            commit_tool_alias_yaml(config, "claude-desktop", before, after, commit)
                 .await
                 .map_err(agent_core_error)
         }

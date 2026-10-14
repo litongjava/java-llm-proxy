@@ -303,7 +303,7 @@ pub(crate) fn inspect_copilot_config(
         return Ok((
             model.is_some()
                 && root["provider"] == MANAGED_AGENT_PROVIDER_ID
-                && root["baseUrl"] == base
+                && root["baseUrl"].as_str().is_some_and(|url| tool_base_url_matches(url, &base, client.id()))
                 && root["apiKey"] == key,
             model,
         ));
@@ -319,7 +319,7 @@ pub(crate) fn inspect_copilot_config(
         .map(str::to_string);
     let configured = model.is_some()
         && group.pointer("/models/0/url").and_then(Value::as_str)
-            == Some(&format!("{base}/chat/completions"))
+            .is_some_and(|url| tool_base_url_matches(url, &format!("{base}/chat/completions"), client.id()))
         && group
             .get("apiKey")
             .and_then(Value::as_str)

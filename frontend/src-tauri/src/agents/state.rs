@@ -671,7 +671,7 @@ pub(crate) fn fresh_agent_contents_with_oauth(
         claude_desktop_model_mappings,
         ..
     } = options;
-    let root_base = managed_core_loopback_origin(port);
+    let root_base = managed_tool_origin(port, client.id());
     let openai_base = format!("{root_base}/v1");
     match client {
         AgentClient::ClaudeCode => Ok(vec![build_claude_agent_config(
@@ -829,7 +829,11 @@ pub(crate) fn build_legacy_agent_record(
         } else {
             let actual = String::from_utf8(current.clone())
                 .map_err(|_| format!("Agent configuration is not UTF-8 text: {}", path_to_string(path)))?;
-            if !agent_contents_equal(client, &actual, &generated[index]) {
+            let legacy = generated[index].replace(
+                &managed_tool_origin(port, client.id()), &managed_core_loopback_origin(port),
+            );
+            if !agent_contents_equal(client, &actual, &generated[index])
+                && !agent_contents_equal(client, &actual, &legacy) {
                 return Ok(None);
             }
             (false, None)
@@ -1546,10 +1550,10 @@ pub(crate) fn build_agent_template_updates(
         claude_desktop_model_mappings,
     } = request;
     if matches!(client, AgentClient::CopilotCli | AgentClient::VscodeCopilot) {
-        return build_copilot_updates(client, home, &format!("{}/v1", managed_core_loopback_origin(port)), api_key, model, models, true);
+        return build_copilot_updates(client, home, &format!("{}/v1", managed_tool_origin(port, client.id())), api_key, model, models, true);
     }
     if client == AgentClient::AntigravityCli {
-        return build_antigravity_updates(client, home, &managed_core_loopback_origin(port), api_key, model, true);
+        return build_antigravity_updates(client, home, &managed_tool_origin(port, client.id()), api_key, model, true);
     }
     let paths = agent_config_paths(client, home);
     let contents = fresh_agent_contents_with_oauth(

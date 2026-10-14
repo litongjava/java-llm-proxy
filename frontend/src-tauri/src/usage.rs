@@ -75,7 +75,7 @@ const LITELLM_PRICE_SYNC_URL: &str =
 const MODEL_PRICE_SYNC_MAX_BYTES: usize = 16 * 1024 * 1024;
 const MODEL_PRICE_SYNC_ATTEMPTS: usize = 2;
 const USAGE_DISPLAY_MODEL_SQL: &str =
-    "COALESCE(NULLIF(TRIM(alias), ''), NULLIF(TRIM(model), ''), 'unknown')";
+    "COALESCE(NULLIF(TRIM(model), ''), 'unknown')";
 
 static USAGE_QUERY_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 
@@ -5068,7 +5068,7 @@ mod tests {
     }
 
     #[test]
-    fn model_categories_and_filter_keep_aliases_separate() {
+    fn model_categories_and_filter_use_actual_upstream_model() {
         let mut connection = Connection::open_in_memory().unwrap();
         initialize_usage_schema(&connection).unwrap();
         let mut records = Vec::new();
@@ -5092,19 +5092,17 @@ mod tests {
             .iter()
             .map(|category| (category.key.as_str(), category.requests))
             .collect::<HashMap<_, _>>();
-        assert_eq!(counts.len(), 3);
-        assert_eq!(counts["base-model"], 1);
-        assert_eq!(counts["model-fast"], 2);
-        assert_eq!(counts["model-high"], 1);
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts["base-model"], 4);
         let overview = load_usage_overview(&connection, &UsageQuery::default()).unwrap();
         let trend_models = overview
             .timeline
             .iter()
             .flat_map(|point| point.models.iter().map(|model| model.key.as_str()))
             .collect::<std::collections::HashSet<_>>();
-        assert_eq!(trend_models, ["base-model", "model-fast", "model-high"].into());
+        assert_eq!(trend_models, ["base-model"].into());
 
-        for (model, expected) in [("base-model", 1), ("model-fast", 2), ("model-high", 1)] {
+        for (model, expected) in [("base-model", 4)] {
             let query = UsageQuery {
                 model: Some(model.to_string()),
                 ..UsageQuery::default()

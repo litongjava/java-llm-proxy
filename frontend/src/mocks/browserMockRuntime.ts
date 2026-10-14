@@ -947,6 +947,17 @@ export function createBrowserMockRuntime(
   delayMs = 0,
 ): BrowserMockRuntime {
   const state = createState(scenario);
+  const toolAliases = new Map<string, { thinking: typeof state.thinkingAliases; speed: typeof state.speedAliases }>();
+  toolAliases.set('claude-desktop', { thinking: state.thinkingAliases, speed: state.speedAliases });
+  const aliasesForTool = (tool: unknown) => {
+    const key = readString(tool) || 'claude-desktop';
+    let aliases = toolAliases.get(key);
+    if (!aliases) {
+      aliases = { thinking: [], speed: [] };
+      toolAliases.set(key, aliases);
+    }
+    return aliases;
+  };
   if (scenario === 'empty') {
     state.usageEvents = [];
     state.usagePrices = [];
@@ -1379,52 +1390,52 @@ export function createBrowserMockRuntime(
       };
       case 'delete_agent_config_backup': return null;
 
-      case 'get_thinking_aliases': return clone(state.thinkingAliases);
-      case 'get_speed_aliases': return clone(state.speedAliases);
+      case 'get_thinking_aliases': return clone(aliasesForTool(payload.tool).thinking);
+      case 'get_speed_aliases': return clone(aliasesForTool(payload.tool).speed);
       case 'get_model_alias_sources': return clone(state.aliasSources);
       case 'get_thinking_alias_sources': return clone(state.aliasSources);
       case 'get_speed_alias_sources': return clone(state.aliasSources);
       case 'get_model_alias_edit_source': {
         const alias = readString(payload.alias);
-        const entry = state.thinkingAliases.find((item) => item.alias === alias);
+        const entry = aliasesForTool(payload.tool).thinking.find((item) => item.alias === alias);
         const source = state.aliasSources.find((item) => item.model === entry?.sourceModel) ?? state.aliasSources[0];
-        return { source: clone(source), effort: entry?.effort ?? null, fast: state.speedAliases.some((item) => item.alias === alias) };
+        return { source: clone(source), effort: entry?.effort ?? null, fast: aliasesForTool(payload.tool).speed.some((item) => item.alias === alias) };
       }
       case 'create_thinking_alias': {
         const request = asObject(payload.request ?? payload);
         const entry = {
-          position: { section: 'oauth-model-alias', providerIndex: null, modelIndex: state.thinkingAliases.length },
-          sourceModel: readString(request.sourceModel ?? request.model),
+          position: { section: 'oauth-model-alias', providerIndex: null, modelIndex: aliasesForTool(payload.tool).thinking.length },
+          sourceModel: readString(request.sourceModel ?? request.model) || state.aliasSources.find((source) => source.id === request.sourceId)?.model || "",
           alias: readString(request.alias),
           effort: readString(request.effort) || null,
           provider: readString(request.provider) || 'Browser Mock',
           kind: readString(request.kind) || 'codex-oauth',
           oauthChannel: readString(request.oauthChannel) || null,
         };
-        state.thinkingAliases = [...state.thinkingAliases.filter((item) => item.alias !== entry.alias), entry];
-        return clone(state.thinkingAliases);
+        aliasesForTool(payload.tool).thinking = [...aliasesForTool(payload.tool).thinking.filter((item) => item.alias !== entry.alias && item.alias !== request.originalAlias), entry];
+        return clone(aliasesForTool(payload.tool).thinking);
       }
       case 'delete_thinking_alias': {
-        state.thinkingAliases = state.thinkingAliases.filter((item) => item.alias !== payload.alias);
-        return clone(state.thinkingAliases);
+        aliasesForTool(payload.tool).thinking = aliasesForTool(payload.tool).thinking.filter((item) => item.alias !== payload.alias);
+        return clone(aliasesForTool(payload.tool).thinking);
       }
       case 'create_speed_alias': {
         const request = asObject(payload.request ?? payload);
         const entry = {
-          position: { section: 'oauth-model-alias', providerIndex: null, modelIndex: state.speedAliases.length },
-          sourceModel: readString(request.sourceModel ?? request.model),
+          position: { section: 'oauth-model-alias', providerIndex: null, modelIndex: aliasesForTool(payload.tool).speed.length },
+          sourceModel: readString(request.sourceModel ?? request.model) || state.aliasSources.find((source) => source.id === request.sourceId)?.model || "",
           alias: readString(request.alias),
           serviceTier: readString(request.serviceTier) || 'priority',
           provider: readString(request.provider) || 'Browser Mock',
           kind: readString(request.kind) || 'codex-oauth',
           oauthChannel: readString(request.oauthChannel) || null,
         };
-        state.speedAliases = [...state.speedAliases.filter((item) => item.alias !== entry.alias), entry];
-        return clone(state.speedAliases);
+        aliasesForTool(payload.tool).speed = [...aliasesForTool(payload.tool).speed.filter((item) => item.alias !== entry.alias && item.alias !== request.originalAlias), entry];
+        return clone(aliasesForTool(payload.tool).speed);
       }
       case 'delete_speed_alias': {
-        state.speedAliases = state.speedAliases.filter((item) => item.alias !== payload.alias);
-        return clone(state.speedAliases);
+        aliasesForTool(payload.tool).speed = aliasesForTool(payload.tool).speed.filter((item) => item.alias !== payload.alias);
+        return clone(aliasesForTool(payload.tool).speed);
       }
 
       case 'get_codex_model_catalog_editor': return clone(state.codexCatalog);

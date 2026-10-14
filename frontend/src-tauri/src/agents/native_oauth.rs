@@ -480,7 +480,7 @@ pub(crate) fn apply_codex_cpa_configuration(
             path: restored_config.0.clone(),
             after: build_codex_agent_config_with_oauth(
                 text(restored_config.1.as_deref())?,
-                &format!("{}/v1", managed_core_loopback_origin(port)),
+                &format!("{}/v1", managed_tool_origin(port, "codex")),
                 api_key,
                 model,
                 options.oauth_configuration,

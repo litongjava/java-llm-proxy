@@ -78,6 +78,12 @@ public class ProtocolConversionService {
     for (Object value : ProxyJson.list(canonical.get("tools"))) {
       Kv function = ProxyJson.object(ProxyJson.object(value).get("function"));
       if ("anthropic".equals(to)) { tools.add(Kv.create().set("name", function.get("name")).set("description", function.get("description")).set("input_schema", function.get("parameters"))); }
+      else if ("gemini".equals(to)) {
+        Kv declaration = Kv.create().set("name", function.get("name"));
+        if (function.get("description") != null) { declaration.set("description", function.get("description")); }
+        if (function.get("parameters") != null) { declaration.set("parameters", new GeminiSchemaService().convert(function.get("parameters"))); }
+        tools.add(declaration);
+      }
       else { tools.add(Kv.create().set(function).set("type", "responses".equals(to) ? "function" : null)); }
     }
     if ("anthropic".equals(to)) {
@@ -86,7 +92,7 @@ public class ProtocolConversionService {
       if (!tools.isEmpty()) { output.set("tools", tools); }
       if (canonical.get("stop") != null) { output.set("stop_sequences", canonical.get("stop") instanceof String ? List.of(canonical.get("stop")) : canonical.get("stop")); }
     } else if ("gemini".equals(to)) {
-      output.remove("model"); output.remove("stream"); output.remove("temperature"); output.remove("top_p");
+      output.remove("model"); output.remove("stream"); output.remove("temperature"); output.remove("top_p"); output.remove("metadata");
       output.set("contents", messages);
       if (!system.isEmpty()) { output.set("systemInstruction", Kv.create().set("parts", system.stream().map(part -> Kv.create().set("text", part.get("text"))).toList())); }
       Kv generation = Kv.create();

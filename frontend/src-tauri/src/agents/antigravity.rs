@@ -213,7 +213,7 @@ pub(crate) fn inspect_antigravity_config(
             == model.as_deref()
         && connection.get("provider").and_then(Value::as_str)
             == Some(MANAGED_AGENT_PROVIDER_ID)
-        && connection.get("baseUrl").and_then(Value::as_str) == Some(&origin)
+        && connection.get("baseUrl").and_then(Value::as_str).is_some_and(|url| tool_base_url_matches(url, &origin, "antigravity-cli"))
         && connection.get("apiKey").and_then(Value::as_str) == Some(api_key);
     Ok((configured, model))
 }

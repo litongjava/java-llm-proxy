@@ -174,7 +174,7 @@ pub(crate) async fn prepare_restore_plan(
 ) -> Result<RestorePlan, String> {
     let mut plan = local_restore_plan(client, home, id)?;
     if let Some((mappings, models)) = desktop_restore_configuration(&plan)? {
-        let before = fetch_management_config_yaml(config)
+        let before = fetch_tool_alias_yaml(config, "claude-desktop")
             .await
             .map_err(agent_core_error)?;
         let after = match ensure_claude_desktop_model_aliases_with_oauth_definitions_in_yaml(
@@ -232,7 +232,7 @@ pub(crate) async fn execute_restore_plan(
     };
     match &plan.core {
         Some(core) => {
-            commit_management_alias_config_changes(config, &core.before, &core.after, commit)
+            commit_tool_alias_yaml(config, "claude-desktop", &core.before, &core.after, commit)
                 .await
                 .map_err(agent_core_error)
         }

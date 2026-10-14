@@ -216,7 +216,7 @@ export function QuotaCard({ file, quota, onRefresh, onReset }: { file: AuthFile;
           <div><strong title={name}>{name}</strong><span>{provider ? providerMeta[provider].label : t('quota.unknownProvider')}</span></div>
         </div>
         <div className="quota-plan"><strong>{quota.plan || '—'}</strong><span>{quota.subscriptionActiveUntil ? t('quota.expiresAt', { time: formatQuotaTimestamp(quota.subscriptionActiveUntil, locale) }) : ''}</span></div>
-        <div className="quota-status"><span className={quota.status === 'success' ? 'quota-status-badge ready' : quota.status === 'error' ? 'quota-status-badge error' : 'quota-status-badge'}>{quota.status === 'success' ? t('common.enabled') : quota.status === 'loading' ? t('quota.querying') : quota.status === 'error' ? t('common.unavailable') : t('quota.notFetched')}</span><small>{t('authFiles.settings.priority')} {priority}</small></div>
+        <div className="quota-status"><span className={quota.status === 'success' ? 'quota-status-badge ready' : quota.status === 'error' ? 'quota-status-badge error' : 'quota-status-badge'}>{quota.status === 'success' ? t('common.enabled') : quota.status === 'loading' ? t('quota.querying') : quota.status === 'error' ? t('common.unavailable') : quota.status === 'unavailable' ? t('quota.noData') : t('quota.notFetched')}</span><small>{t('authFiles.settings.priority')} {priority}</small></div>
         <div className="quota-card-actions">
           <button type="button" className="icon-button quiet" onClick={onRefresh} disabled={disabled || quota.status === 'loading'} title={disabled ? t('quota.fileDisabled') : t('quota.refresh')} aria-label={disabled ? t('quota.fileDisabled') : t('quota.refresh')}><RefreshCw size={16} className={quota.status === 'loading' ? 'spin' : ''} aria-hidden="true" /></button>
         </div>
@@ -224,6 +224,7 @@ export function QuotaCard({ file, quota, onRefresh, onReset }: { file: AuthFile;
       <QuotaActionFeedback quota={quota} name={name} />
       {quota.status === 'idle' ? <div className="quota-card-message"><span>{disabled ? t('quota.fileDisabled') : t('quota.notFetched')}</span><button type="button" className="secondary-button compact-button" onClick={onRefresh} disabled={disabled}>{disabled ? t('quota.disabled') : t('quota.fetch')}</button></div> : null}
       {quota.status === 'loading' ? <div className="quota-card-message"><LoaderCircle size={18} className="spin" />{t(quota.pendingAction === 'reset' ? 'quota.resetting' : 'quota.querying')}</div> : null}
+      {quota.status === 'unavailable' ? <div className="quota-card-message" role="status">{quota.message || t('quota.noData')}</div> : null}
       {quota.status === 'error' ? <>
         <div className="quota-card-error"><AlertCircle size={18} /><span>{t('authFiles.quota.failed')}{quota.error ? <small>{privacy.text(quota.error)}</small> : null}</span></div>
       </> : null}

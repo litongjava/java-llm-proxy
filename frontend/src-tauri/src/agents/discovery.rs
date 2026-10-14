@@ -440,7 +440,7 @@ pub(crate) fn inspect_pi_provider_status_with_executable(
                 credentials_match = object
                     .get("baseUrl")
                     .and_then(serde_json::Value::as_str)
-                    .is_some_and(|value| value.trim() == expected_base_url)
+                    .is_some_and(|value| value.trim() == expected_base_url || value.trim() == managed_tool_origin(port, "pi"))
                     && object.get("apiKey").and_then(serde_json::Value::as_str) == Some(api_key);
                 Ok(())
             }) {
@@ -618,7 +618,7 @@ pub(crate) fn repair_pi_provider_inner(
     } else {
         None
     };
-    let base_url = managed_core_loopback_origin(port);
+    let base_url = managed_tool_origin(port, "pi");
     let rendered = build_pi_provider_config(existing.as_deref(), &base_url, api_key)?;
     let settings = fs::read_to_string(&settings_path).map_err(|error| {
         format!(
@@ -2993,8 +2993,7 @@ pub(crate) fn inspect_claude_agent_config(
     let configured = env
         .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
         .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        == Some(expected_base.as_str())
+        .map(str::trim).is_some_and(|url| tool_base_url_matches(url, &expected_base, "claude-code"))
         && env
             .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
             .and_then(serde_json::Value::as_str)
@@ -3375,8 +3374,7 @@ pub(crate) fn inspect_claude_desktop_agent_config(
             == Some("3p")
         && profile
             .get("inferenceGatewayBaseUrl")
-            .and_then(serde_json::Value::as_str)
-            == Some(expected_base.as_str())
+            .and_then(serde_json::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "claude-desktop"))
         && profile
             .get("inferenceGatewayApiKey")
             .and_then(serde_json::Value::as_str)
@@ -3485,8 +3483,7 @@ pub(crate) fn inspect_codex_agent_config(
             == Some("EasyCLIProxyAPI")
         && provider
             .and_then(|provider| provider.get("base_url"))
-            .and_then(toml::Value::as_str)
-            == Some(expected_base.as_str())
+            .and_then(toml::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "codex"))
         && uses_api_key
         && provider
             .and_then(|provider| provider.get("wire_api"))
@@ -3532,8 +3529,7 @@ pub(crate) fn inspect_opencode_agent_config(
     let configured = provider
         .and_then(|provider| provider.get("options"))
         .and_then(|options| options.get("baseURL"))
-        .and_then(serde_json::Value::as_str)
-        == Some(expected_base.as_str())
+        .and_then(serde_json::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "opencode"))
         && provider
             .and_then(|provider| provider.get("options"))
             .and_then(|options| options.get("apiKey"))
@@ -3615,7 +3611,7 @@ pub(crate) fn inspect_zcode_agent_config(
             // Older CPA configurations used the origin. ZCode also normalizes
             // that form to /v1 before making Anthropic Messages requests.
             let base = base.trim_end_matches('/');
-            base == expected_base || base == expected_origin
+            tool_base_url_matches(base, &expected_base, "zcode") || tool_base_url_matches(base, &expected_origin, "zcode")
         });
     Ok((configured, model))
 }
@@ -3654,8 +3650,7 @@ pub(crate) fn inspect_omp_agent_config(
     let expected = format!("{}/v1", managed_core_loopback_origin(port));
     let configured = provider
         .and_then(|provider| yaml_mapping_value(provider, "baseUrl"))
-        .and_then(serde_norway::Value::as_str)
-        == Some(expected.as_str())
+        .and_then(serde_norway::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected, "omp"))
         && provider
             .and_then(|provider| yaml_mapping_value(provider, "apiKey"))
             .and_then(serde_norway::Value::as_str)
@@ -3738,8 +3733,7 @@ pub(crate) fn inspect_kimi_code_agent_config(
             == Some("openai")
         && provider
             .and_then(|provider| provider.get("base_url"))
-            .and_then(toml::Value::as_str)
-            == Some(expected_base.as_str())
+            .and_then(toml::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "kimi-code"))
         && provider
             .and_then(|provider| provider.get("api_key"))
             .and_then(toml::Value::as_str)
@@ -3788,8 +3782,7 @@ pub(crate) fn inspect_grok_build_agent_config(
         && model.is_some()
         && model_entry
             .and_then(|entry| entry.get("base_url"))
-            .and_then(toml::Value::as_str)
-            == Some(expected_base.as_str())
+            .and_then(toml::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "grok-build"))
         && model_entry
             .and_then(|entry| entry.get("api_key"))
             .and_then(toml::Value::as_str)
@@ -3820,8 +3813,7 @@ pub(crate) fn inspect_openclaw_agent_config(
     let expected_base = format!("{}/v1", managed_core_loopback_origin(port));
     let configured = provider
         .and_then(|provider| provider.get("baseUrl"))
-        .and_then(serde_json::Value::as_str)
-        == Some(expected_base.as_str())
+        .and_then(serde_json::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "openclaw"))
         && provider
             .and_then(|provider| provider.get("apiKey"))
             .and_then(serde_json::Value::as_str)
@@ -3856,8 +3848,7 @@ pub(crate) fn inspect_hermes_agent_config(
     let expected_base = format!("{}/v1", managed_core_loopback_origin(port));
     let configured = provider
         .and_then(|provider| provider.get("base_url").or_else(|| provider.get("baseUrl")))
-        .and_then(serde_yaml::Value::as_str)
-        == Some(expected_base.as_str())
+        .and_then(serde_yaml::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "hermes"))
         && provider
             .and_then(|provider| provider.get("api_key").or_else(|| provider.get("apiKey")))
             .and_then(serde_yaml::Value::as_str)
@@ -3952,8 +3943,7 @@ pub(crate) fn inspect_deepseek_harness_config(
             })
         && provider
             .and_then(|provider| yaml_mapping_value(provider, "baseURL"))
-            .and_then(serde_norway::Value::as_str)
-            == Some(expected_base.as_str())
+            .and_then(serde_norway::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, "deepseek-harness"))
         && selected_provider == Some(DEEPSEEK_HARNESS_PROVIDER_ID)
         && model_is_published
         && credentials_layout_supported
@@ -3999,4 +3989,13 @@ pub(crate) fn deepseek_harness_has_managed_marker(paths: &[PathBuf]) -> Result<b
         .is_some_and(|refs| yaml_mapping_value(refs, DEEPSEEK_HARNESS_CREDENTIAL).is_some())
         || yaml_mapping_value(&credentials, DEEPSEEK_HARNESS_CREDENTIAL).is_some();
     Ok(provider_exists || default_selected || credential_exists)
+}
+
+/// Accept both existing connections and the explicit per-tool endpoint.
+pub(crate) fn tool_base_url_matches(value: &str, expected: &str, tool: &str) -> bool {
+    let (Ok(value), Ok(expected)) = (reqwest::Url::parse(value.trim()), reqwest::Url::parse(expected)) else { return false; };
+    value.origin() == expected.origin() && value.query() == expected.query()
+        && value.fragment() == expected.fragment()
+        && (value.path().trim_end_matches('/') == expected.path().trim_end_matches('/')
+            || value.path().trim_end_matches('/') == format!("/tools/{tool}{}", expected.path().trim_end_matches('/')))
 }

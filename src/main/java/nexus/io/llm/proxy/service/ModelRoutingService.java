@@ -9,7 +9,7 @@ import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.Provider;
 
 public class ModelRoutingService {
-  private List<Kv> aliases(Provider provider) {
+  private List<Kv> aliases(Provider provider, String tool) {
     List<Kv> result = new ArrayList<>();
     if (provider.credentialName != null) {
       for (String key : List.of("model_aliases", "model-aliases")) {
@@ -20,10 +20,18 @@ public class ModelRoutingService {
     } else {
       for (Object value : ProxyJson.list(provider.metadata.get("models"))) { result.add(ProxyJson.object(value)); }
     }
-    return result;
+    List<Kv> scoped = new ArrayList<>();
+    for (Object value : Aop.get(ToolScopeService.class).aliases(provider, tool, result)) {
+      scoped.add(ProxyJson.object(value));
+    }
+    return scoped;
   }
 
   public String resolve(Provider provider, String requested) {
+    return resolve(provider, requested, "");
+  }
+
+  public String resolve(Provider provider, String requested, String tool) {
     String prefix = ProxyJson.text(provider.metadata, "prefix", "");
     String model = requested;
     if (!prefix.isEmpty() && model.startsWith(prefix + "/")) { model = model.substring(prefix.length() + 1); }
@@ -31,7 +39,7 @@ public class ModelRoutingService {
       Kv routing = ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("routing"));
       if (Boolean.TRUE.equals(routing.getBoolean("force-model-prefix"))) { return null; }
     }
-    for (Kv alias : aliases(provider)) {
+    for (Kv alias : aliases(provider, tool)) {
       if (model.equals(alias.getStr("alias"))) { model = alias.getStr("name"); break; }
     }
     // An OAuth credential with no known models must not become a catch-all route.
@@ -42,19 +50,22 @@ public class ModelRoutingService {
   }
 
   public Set<String> visible(Provider provider, List<String> originals) {
+    return visible(provider, originals, "");
+  }
+
+  public Set<String> visible(Provider provider, List<String> originals, String tool) {
     Set<String> result = new LinkedHashSet<>();
     String prefix = ProxyJson.text(provider.metadata, "prefix", "");
-    List<Kv> aliases = aliases(provider);
+    List<Kv> aliases = aliases(provider, tool);
     ModelCatalogService catalog = Aop.get(ModelCatalogService.class);
     for (String model : originals) {
       if (!catalog.allowed(provider.metadata, model)) { continue; }
-      boolean keep = true;
       for (Kv alias : aliases) {
         if (!model.equals(alias.getStr("name")) || alias.getStr("alias") == null) { continue; }
         result.add(alias.getStr("alias"));
-        if (!Boolean.TRUE.equals(alias.getBoolean("fork"))) { keep = false; }
       }
-      if (keep) { result.add(model); }
+      // Original model IDs remain available to every tool.
+      result.add(model);
     }
     if (prefix.isEmpty()) { return result; }
     Set<String> prefixed = new LinkedHashSet<>();

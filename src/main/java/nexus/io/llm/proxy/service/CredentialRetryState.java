@@ -16,6 +16,7 @@ public class CredentialRetryState {
   public final long startedAt = System.currentTimeMillis();
   private final int maximum;
   public SettingsService.Selection next;
+  public String tool = "";
 
   public CredentialRetryState() {
     Kv root = ProxyJson.object(Aop.get(DesktopConfigService.class).get(""));
@@ -28,7 +29,7 @@ public class CredentialRetryState {
     attempted.add(failed.id);
     if (attempted.size() >= maximum) { return false; }
     try {
-      next = Aop.get(SettingsService.class).select(model, protocol, forced, null, session, attempted);
+      next = Aop.get(SettingsService.class).select(model, protocol, forced, null, session, attempted, tool);
       return true;
     } catch (BusinessException unavailable) { return false; }
   }

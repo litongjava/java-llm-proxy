@@ -106,7 +106,7 @@ custom_option = "keep-original"
     assert_eq!(managed["custom_after_enable"].as_bool(), Some(true));
     assert_eq!(
         managed["model_providers"][MANAGED_AGENT_PROVIDER_ID]["base_url"].as_str(),
-        Some("http://127.0.0.1:8317/v1")
+        Some("http://127.0.0.1:8317/tools/codex/v1")
     );
     assert_eq!(
         managed["model_providers"][MANAGED_AGENT_PROVIDER_ID]["custom_option"].as_str(),
@@ -186,7 +186,7 @@ fn codex_disable_keeps_user_configuration_added_after_enable() {
     assert!(restored.get("model_catalog_json").is_none());
     assert_eq!(
         restored["model_providers"][MANAGED_AGENT_PROVIDER_ID]["base_url"].as_str(),
-        Some("http://127.0.0.1:8317/v1")
+        Some("http://127.0.0.1:8317/tools/codex/v1")
     );
     assert!(!codex_model_catalog_path(&home).exists());
     fs::remove_dir_all(home).unwrap();
@@ -420,7 +420,7 @@ fn updating_legacy_codex_state_adds_catalog_without_replacing_original_backup() 
     assert!(restored.get("model").is_none());
     assert_eq!(
         restored["model_providers"][MANAGED_AGENT_PROVIDER_ID]["base_url"].as_str(),
-        Some("http://127.0.0.1:8317/v1")
+        Some("http://127.0.0.1:8317/tools/codex/v1")
     );
     assert_eq!(fs::read(&catalog_path).unwrap(), original_catalog);
     assert!(!auth_path.exists());

@@ -146,12 +146,16 @@ public class SettingsService {
   }
 
   public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session, Set<String> excluded) {
+    return select(requestedModel, protocol, forcedProvider, authId, session, excluded, "");
+  }
+
+  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session, Set<String> excluded, String tool) {
     refreshDesktop();
     String model = requestedModel;
     String providerId = null;
     String effort = null;
     for (ModelAlias alias : current.aliases) {
-      if (alias.name.equals(requestedModel)) {
+      if (alias.name.equals(requestedModel) && tool.equals(alias.tool)) {
         model = alias.model;
         providerId = alias.providerId;
         effort = alias.reasoningEffort;
@@ -168,12 +172,12 @@ public class SettingsService {
         && (selectedId == null || selectedId.isBlank() || p.id.equals(selectedId))
         && (forcedProvider == null || forcedProvider.isBlank() || forcedProvider.equals(p.upstreamType) || forcedProvider.equals(p.protocol))
         && (authId == null || authId.isBlank() || authId.equals(p.id) || authId.equals(p.credentialName))
-        && models.resolve(p, resolved) != null).toList();
+        && models.resolve(p, resolved, tool) != null).toList();
     BusinessException.require(!candidates.isEmpty(), 503, "NO_PROVIDER", "No enabled provider for this model and protocol");
     List<Provider> nativeCandidates = candidates.stream().filter(provider -> provider.protocol.equals(protocol)).toList();
     if (!nativeCandidates.isEmpty()) { candidates = nativeCandidates; }
     Provider chosen = Aop.get(RoutingService.class).pickSession(candidates, model, current.routing, session);
-    return new Selection(Aop.get(CredentialProviderService.class).authorize(chosen), models.resolve(chosen, model), effort);
+    return new Selection(Aop.get(CredentialProviderService.class).authorize(chosen), models.resolve(chosen, model, tool), effort);
   }
 
   public record Selection(Provider provider, String model, String reasoningEffort) { }

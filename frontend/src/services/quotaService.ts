@@ -23,7 +23,7 @@ const quotaText = (
 
 export type AuthFile = Record<string, unknown>;
 export type QuotaProvider = 'claude' | 'codex' | 'kimi' | 'xai' | 'antigravity' | 'devin';
-export type QuotaStatus = 'idle' | 'loading' | 'success' | 'error';
+export type QuotaStatus = 'idle' | 'loading' | 'success' | 'unavailable' | 'error';
 export type QuotaRow = {
   label: string;
   remainingPercent: number | null;
@@ -35,6 +35,7 @@ export type QuotaState = {
   status: QuotaStatus;
   rows: QuotaRow[];
   error?: string;
+  message?: string;
   plan?: string;
   creditBalance?: string;
   creditsUnlimited?: boolean;
@@ -947,6 +948,14 @@ async function loadQuotaSnapshot(file: AuthFile): Promise<QuotaState> {
       claudeGrantsPromise,
     ]);
     const rows = quotaRowsFor(provider, payload);
+    if (provider === 'kimi' && isRecord(payload) && Object.keys(payload).length === 0) {
+      return {
+        status: 'unavailable',
+        rows: [],
+        message: quotaText('quota.service.kimi.noData'),
+        fetchedAt: Date.now(),
+      };
+    }
     if (rows.length === 0) {
       return {
         status: 'error',

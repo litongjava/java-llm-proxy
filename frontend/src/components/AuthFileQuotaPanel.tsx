@@ -64,6 +64,7 @@ export function AuthFileQuotaPanel({ quota, file, disabled, onRefresh, onReset, 
       </div> : null}
       {loading ? <div className="credential-quota-loading" role="status"><span>{t(quota.pendingAction === 'reset' ? 'quota.resetting' : 'authFiles.quota.loading')}</span><div className="credential-quota-track indeterminate"><i /></div></div> : null}
       {quota.status === 'idle' ? <p className="credential-quota-empty">{t(file.disabled === true ? 'authFiles.status.disabled' : dense ? 'quota.notFetched' : 'authFiles.settings.quotaIdle')}</p> : null}
+      {quota.status === 'unavailable' ? <p className="credential-quota-empty" role="status">{quota.message || t('quota.noData')}</p> : null}
       {quota.status === 'error' ? <div className="credential-quota-error" role="status">
         {dense && error ? <details className="credential-quota-error-details"><summary title={error}>{t('authFiles.quota.failed')}</summary><small>{error}</small></details>
           : <><span>{t('authFiles.quota.failed')}</span>{error ? <small>{error}</small> : null}</>}

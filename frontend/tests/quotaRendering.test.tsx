@@ -10,6 +10,15 @@ const render = (quota: QuotaState, provider = 'codex') => renderToStaticMarkup(
 );
 
 describe('quota card rendering', () => {
+  it('Kimi unavailable data is neutral, refreshable, and does not invent quota', () => {
+    const html = render({ status: 'unavailable', rows: [], message: 'Kimi returned no quota data' }, 'kimi');
+    expect(html).toContain('No quota data');
+    expect(html).toContain('Kimi returned no quota data');
+    expect(html).toContain('Fetch or refresh quota');
+    expect(html).not.toContain('quota-card-error');
+    expect(html).not.toContain('real-quota-track');
+    expect(html).not.toContain('disabled=""');
+  });
   it('当前适用次数为零时仍可重置，并保留额度详情', () => {
     const html = render({
       status: 'success', rows: [], resetCredits: 2, resetCreditsApplicable: 0,

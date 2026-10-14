@@ -12,6 +12,8 @@ public class RequestRecord {
   public String path;
   public String protocol;
   public String model;
+  public String requestedModel;
+  public String responseModel;
   public String provider;
   public String apiKeyName;
   public String source;

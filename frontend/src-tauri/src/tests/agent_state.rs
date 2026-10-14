@@ -53,7 +53,7 @@ fn repairing_pi_provider_updates_credentials_defaults_and_model() {
         serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
 
     assert_eq!(result.model.as_deref(), Some("new-model"));
-    assert_eq!(provider["baseUrl"], "http://127.0.0.1:9527");
+    assert_eq!(provider["baseUrl"], "http://127.0.0.1:9527/tools/pi");
     assert_eq!(provider["apiKey"], "agent-key");
     assert_eq!(settings["defaultProvider"], PI_CLIPROXYAPI_PROVIDER_ID);
     assert_eq!(settings["defaultModel"], "new-model");

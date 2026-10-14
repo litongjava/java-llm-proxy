@@ -212,11 +212,11 @@ pub(crate) async fn fetch_deepseek_harness_models(
 ) -> Result<Vec<AgentModelOption>, String> {
     let api_key = effective_agent_api_key(config);
     let (models, runtime, configuration) = tokio::join!(
-        fetch_agent_models(config.port, api_key),
+        fetch_tool_model_payload(config.port, api_key, "deepseek-harness"),
         fetch_codex_runtime_models(config.port, api_key),
         fetch_management_config_yaml(config),
     );
-    let mut models = models?;
+    let mut models = parse_agent_model_options(&models?)?;
     enrich_harness_context_windows(
         &mut models,
         &runtime.unwrap_or_default(),
@@ -535,7 +535,7 @@ pub(crate) fn prepare_deepseek_harness_configuration(
     let mut state = read_harness_state(before[2].1.as_deref())?;
     let settings = build_deepseek_harness_catalog_settings(
         text(before[0].1.as_deref())?,
-        &format!("{}/v1", managed_core_loopback_origin(port)),
+        &format!("{}/v1", managed_tool_origin(port, "deepseek-harness")),
         selected,
         models,
         &mut state,
@@ -604,7 +604,7 @@ fn harness_editor_from_images(
             configuration: state.models.get(&model.name).cloned().unwrap_or_default(),
         })
         .collect::<Vec<_>>();
-    let base_url = format!("{}/v1", managed_core_loopback_origin(port));
+    let base_url = format!("{}/v1", managed_tool_origin(port, "deepseek-harness"));
     let revision = sha256_bytes(
         &serde_json::to_vec(&(image_revision(before), &models, &base_url))
             .map_err(|_| "Failed to generate DSH configuration version")?,
@@ -689,7 +689,7 @@ pub(crate) fn save_harness_editor(
         }
         let settings = render_harness_profiles(
             text(before[0].1.as_deref())?,
-            &format!("{}/v1", managed_core_loopback_origin(port)),
+            &format!("{}/v1", managed_tool_origin(port, "deepseek-harness")),
             models,
             &mut state,
         )?;

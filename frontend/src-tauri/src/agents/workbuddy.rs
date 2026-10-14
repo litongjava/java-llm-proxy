@@ -358,7 +358,7 @@ pub(crate) fn inspect_workbuddy_agent_config(
     let expected_url = format!("{}/v1/chat/completions", managed_core_loopback_origin(port));
     let configured = visible
         && managed.iter().all(|entry| {
-            entry.get("url").and_then(Value::as_str) == Some(&expected_url)
+            entry.get("url").and_then(Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_url, "workbuddy"))
                 && entry.get("apiKey").and_then(Value::as_str) == Some(api_key)
                 && entry.get("disabled").and_then(Value::as_bool) != Some(true)
                 && entry.get("supportsToolCall").and_then(Value::as_bool) == Some(true)

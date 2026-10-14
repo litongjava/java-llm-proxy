@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Set;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,7 @@ public class ProxyService {
 
   public HttpResponse forward(HttpRequest request, String protocol, String endpoint) throws Exception {
     CredentialRetryState retry = new CredentialRetryState();
+    retry.tool = Aop.get(ToolScopeService.class).tool(request);
     while (true) {
       try { return forwardAttempt(request, protocol, endpoint, retry); }
       catch (CredentialRetryState.NextCredential next) { }
@@ -82,6 +84,7 @@ public class ProxyService {
     record.path = request.getRequestURI();
     record.protocol = protocol;
     record.model = model;
+    record.requestedModel = model;
     record.apiKeyName = String.valueOf(request.getLocalAttribute("proxy.identity"));
     record.source = request.getHeader("user-agent");
     record.requestHeaders = HeaderService.redact(request.getHeaders());
@@ -107,10 +110,11 @@ public class ProxyService {
     String routedModel = ProxyJson.text(payload, "model", model);
     record.stream = Boolean.TRUE.equals(payload.getBoolean("stream")) || endpoint.contains("streamGenerateContent");
     PluginHookService.Route route = hooks.route(request, payload, protocol, routedModel, record.stream);
-    SettingsService.Selection selection = retry.next != null ? retry.next : route.executor() == null ? settingsService.select(route.model(), protocol, route.provider(), null, session)
+    SettingsService.Selection selection = retry.next != null ? retry.next : route.executor() == null ? settingsService.select(route.model(), protocol, route.provider(), null, session, Set.of(), retry.tool)
         : new SettingsService.Selection(route.executor(), route.model(), null);
     Provider provider = selection.provider();
     record.provider = provider.name;
+    record.model = selection.model();
     String upstreamProtocol = provider.protocol;
     ProtocolConversionService conversion = Aop.get(ProtocolConversionService.class);
     Kv pluginPayload = hooks.transformRequest(payload, protocol, upstreamProtocol, selection.model(), record.stream);
@@ -141,6 +145,12 @@ public class ProxyService {
     settings.payloadRemove.forEach(payload::remove);
     payload = Aop.get(PayloadRuleService.class).apply(payload, selection.model(), provider.upstreamType == null ? upstreamProtocol : provider.upstreamType,
         protocol, Kv.create().set(request.getHeaders()));
+    payload = Aop.get(PayloadRuleService.class).applyRules(payload,
+        ProxyJson.object(Aop.get(ToolScopeService.class).config(retry.tool).get("payload")),
+        model, provider.upstreamType == null ? upstreamProtocol : provider.upstreamType, protocol, record.requestHeaders);
+    if (record.stream && "openai".equals(upstreamProtocol) && "/chat/completions".equals(endpoint)) {
+      payload.set("stream_options", ProxyJson.object(payload.get("stream_options")).set("include_usage", true));
+    }
     payload = hooks.thinking(payload, provider, selection.model());
     OAuthTransportService oauthTransport = Aop.get(OAuthTransportService.class);
     String upstreamBody = JsonUtils.toJsonWithLongAsNumber(oauthTransport.payload(provider, payload, selection.model(), endpoint));
@@ -193,6 +203,9 @@ public class ProxyService {
     Buffer executedBody = new Buffer();
     if (prepared.request().body() != null) { prepared.request().body().writeTo(executedBody); }
     String executedPayload = executedBody.readUtf8();
+    if (!"gemini".equals(upstreamProtocol) && !executedPayload.isBlank()) {
+      record.model = ProxyJson.text(ProxyJson.parse(executedPayload), "model", selection.model());
+    }
     if (settings.captureBodies) { record.upstreamRequestBody = truncate(executedPayload, captureLimit); }
     Request upstreamRequest = "devin".equals(provider.upstreamType)
         ? Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload) : prepared.request();
@@ -239,7 +252,10 @@ public class ProxyService {
           && normalized.header("Content-Type", "").contains("text/event-stream")) {
         int eventLimit = EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216);
         InputStream events = new SseFrameInputStream(normalized.body().byteStream(), eventLimit,
-            frame -> hooks.responsePhase(frame, upstreamProtocol, record, request.getBodyString(), executedPayload, "response_before_translator", "response.normalize_before"));
+            frame -> {
+              Aop.get(ProtocolFormatService.class).usage(record, new String(frame, StandardCharsets.UTF_8));
+              return hooks.responsePhase(frame, upstreamProtocol, record, request.getBodyString(), executedPayload, "response_before_translator", "response.normalize_before");
+            });
         if (hooks.nativeRoute(upstreamProtocol, protocol)) {
           events = new ProtocolEventStream(events, upstreamProtocol, protocol, model);
         } else {
@@ -292,6 +308,9 @@ public class ProxyService {
     }
     try (upstream) {
       byte[] bytes = upstream.body() == null ? new byte[0] : upstream.body().bytes();
+      if (contentType.contains("json")) {
+        Aop.get(ProtocolFormatService.class).usage(record, new String(bytes, StandardCharsets.UTF_8));
+      }
       byte[] pluginResponse = upstream.isSuccessful() && contentType.contains("json") ? hooks.transformResponse(bytes, upstreamProtocol, record, request.getBodyString(), executedPayload) : null;
       if (pluginResponse != null) { bytes = pluginResponse; }
       else if (!protocol.equals(upstreamProtocol) && upstream.isSuccessful() && contentType.contains("json")) {
@@ -307,9 +326,6 @@ public class ProxyService {
       });
       record.responseHeaders = HeaderService.redact(modifiedHeaders);
       response.setBody(bytes);
-      if (contentType.contains("json")) {
-        Aop.get(ProtocolFormatService.class).usage(record, new String(bytes, StandardCharsets.UTF_8));
-      }
       if (settings.captureBodies) {
         record.responseBody = new String(Arrays.copyOf(bytes, Math.min(bytes.length, captureLimit)), StandardCharsets.UTF_8);
         record.responseTruncated = bytes.length > captureLimit;
@@ -328,7 +344,6 @@ public class ProxyService {
   void stream(HttpRequest request, HttpResponse response, Response upstream, RequestRecord record,
       Provider provider, ProxySettings settings, int limit, String upstreamBody) {
     ByteArrayOutputStream capture = new ByteArrayOutputStream();
-    StreamUsageAccumulator usage = new StreamUsageAccumulator(Aop.get(ProtocolFormatService.class), record);
     PluginHookService hooks = Aop.get(PluginHookService.class);
     Kv headers = Kv.create().set(upstream.headers().toMultimap());
     List<byte[]> history = new ArrayList<>();
@@ -348,7 +363,6 @@ public class ProxyService {
       SseFrameInputStream frames = new SseFrameInputStream(input, EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216), frame -> frame);
       byte[] frame;
       while ((frame = frames.nextFrame()) != null) {
-        usage.accept(frame, frame.length);
         byte[] chunk = hooks.streamChunk(frame, index++, record, headers, request.getBodyString(), upstreamBody, history);
         if (chunk.length == 0) { continue; }
         history.add(chunk);
@@ -366,7 +380,6 @@ public class ProxyService {
       record.error = "Stream interrupted";
       record.status = 502;
     } finally {
-      usage.finishEvent();
       record.responseBody = settings.captureBodies ? capture.toString(StandardCharsets.UTF_8) : null;
       finish(record, provider, settings);
       SseEmitter.closeChunkConnection(request.getChannelContext());

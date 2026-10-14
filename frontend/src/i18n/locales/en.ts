@@ -2086,6 +2086,8 @@ export const en: Record<MessageKey, string> = {
   'quota.service.error.missingResetAuthIndex': 'Missing auth-index; reset credits cannot be queried',
   'quota.service.error.unsupportedProvider': 'Quota queries are not supported for this provider',
   'quota.service.error.unrecognized': 'Upstream returned quota data in an unrecognized format',
+  'quota.noData': 'No quota data',
+  'quota.service.kimi.noData': 'Kimi returned no quota data for this account. Check your Kimi Code subscription or try refreshing later. This does not mean your remaining quota is zero.',
   'quota.service.error.codexResetOnly': 'Only Codex credentials support reset credits',
   'quota.service.error.missingConsumeAuthIndex': 'Missing auth-index; the reset credit cannot be used',
 };

@@ -2085,6 +2085,8 @@ export const zhCN = {
   'quota.service.error.missingResetAuthIndex': '缺少 auth-index，无法查询主动重置次数',
   'quota.service.error.unsupportedProvider': '暂不支持该提供商的配额查询',
   'quota.service.error.unrecognized': '上游返回了配额数据，但无法识别',
+  'quota.noData': '暂无额度数据',
+  'quota.service.kimi.noData': 'Kimi 暂未返回此账号的额度数据。请检查 Kimi Code 订阅状态或稍后刷新；这不代表剩余额度为零。',
   'quota.service.error.codexResetOnly': '只有 Codex 凭据支持使用重置额度',
   'quota.service.error.missingConsumeAuthIndex': '缺少 auth-index，无法使用重置额度',
 } as const;

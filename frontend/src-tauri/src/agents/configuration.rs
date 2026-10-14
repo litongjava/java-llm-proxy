@@ -42,7 +42,7 @@ pub(crate) fn build_agent_updates_with_oauth(
         claude_desktop_model_mappings,
     } = options;
     let paths = agent_config_paths(client, home);
-    let root_base = managed_core_loopback_origin(port);
+    let root_base = managed_tool_origin(port, client.id());
     let openai_base = format!("{root_base}/v1");
     match client {
         AgentClient::ClaudeCode => {
@@ -1254,7 +1254,10 @@ pub(crate) fn prepare_claude_code_managed_removal(
             .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
             .and_then(serde_json::Value::as_str)
             .is_some_and(|url| {
-                reqwest::Url::parse(url.trim()).is_ok_and(|url| url == expected_base_url)
+                reqwest::Url::parse(url.trim()).is_ok_and(|url| {
+                    url == expected_base_url || (url.origin() == expected_base_url.origin()
+                        && url.path().trim_end_matches('/') == "/tools/claude-code")
+                })
             });
         if !managed {
             return false;

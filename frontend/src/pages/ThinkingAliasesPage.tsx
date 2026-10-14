@@ -216,6 +216,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
   const generatedAliasRef = useRef('');
   const [loading, setLoading] = useState(true);
   const [busyAlias, setBusyAlias] = useState('');
+  const [tool, setTool] = useState('claude-desktop');
   const [busyAction, setBusyAction] = useState<'create' | 'edit' | 'delete' | ''>('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -231,11 +232,11 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
         nextSpeedEntries,
         nextSpeedSources,
       ] = await Promise.all([
-        invoke<ThinkingAliasEntry[]>('get_thinking_aliases'),
-        invoke<ThinkingAliasSource[]>('get_model_alias_sources'),
-        invoke<ThinkingAliasSource[]>('get_thinking_alias_sources'),
-        invoke<SpeedAliasEntry[]>('get_speed_aliases'),
-        invoke<ThinkingAliasSource[]>('get_speed_alias_sources'),
+        invoke<ThinkingAliasEntry[]>('get_thinking_aliases', { tool }),
+        invoke<ThinkingAliasSource[]>('get_model_alias_sources', { tool }),
+        invoke<ThinkingAliasSource[]>('get_thinking_alias_sources', { tool }),
+        invoke<SpeedAliasEntry[]>('get_speed_aliases', { tool }),
+        invoke<ThinkingAliasSource[]>('get_speed_alias_sources', { tool }),
       ]);
       setThinkingEntries(nextThinkingEntries);
       setSpeedEntries(nextSpeedEntries);
@@ -252,7 +253,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tool]);
 
   useEffect(() => {
     void load();
@@ -426,6 +427,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
     try {
       if (editingEntry) {
         await invoke('create_thinking_alias', {
+          tool,
           sourceId: selectedSource.id, alias: normalizedAlias,
           effort: normalizedEffort, fast: fastEnabled, originalAlias: editingEntry.alias,
           originalEntry: editingEntry,
@@ -433,6 +435,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
         setNotice(t('aliases.updated', { alias: normalizedAlias }));
       } else if (normalizedEffort) {
         await invoke<ThinkingAliasEntry[]>('create_thinking_alias', {
+          tool,
           sourceId: selectedSource.id,
           alias: normalizedAlias,
           effort: normalizedEffort,
@@ -444,12 +447,14 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
         }));
       } else if (fastEnabled) {
         await invoke<SpeedAliasEntry[]>('create_speed_alias', {
+          tool,
           sourceId: selectedSource.id,
           alias: normalizedAlias,
         });
         setNotice(t('speedAliases.created', { alias: normalizedAlias }));
       } else {
         await invoke<ThinkingAliasEntry[]>('create_thinking_alias', {
+          tool,
           sourceId: selectedSource.id,
           alias: normalizedAlias,
           effort: '',
@@ -511,6 +516,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
     setNotice('');
     try {
       const context = await invoke<ModelAliasEditContext>('get_model_alias_edit_source', {
+        tool,
         alias: entry.alias, entry,
       });
       const source = context.source;
@@ -541,12 +547,14 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
     try {
       if (entry.effort || !entry.serviceTier) {
         await invoke<ThinkingAliasEntry[]>('delete_thinking_alias', {
+          tool,
           alias: entry.alias,
           oauthChannel: entry.oauthChannel,
           entry,
         });
       } else {
         await invoke<SpeedAliasEntry[]>('delete_speed_alias', {
+          tool,
           alias: entry.alias,
           oauthChannel: entry.oauthChannel,
           entry,
@@ -564,6 +572,18 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
 
   return (
     <section className="page management-page thinking-alias-page">
+      <label className="config-field-label">
+        {getCurrentLocale().startsWith('zh') ? '工具' : 'Tool'}
+        <select aria-label={getCurrentLocale().startsWith('zh') ? '工具' : 'Tool'} value={tool}
+          disabled={loading || Boolean(busyAction)} onChange={(event) => { setTool(event.target.value); setEditorOpen(false); }}>
+          {Object.entries({ 'claude-desktop': 'Claude Desktop', 'claude-code': 'Claude Code', codex: 'Codex',
+            opencode: 'OpenCode', openclaw: 'OpenClaw', hermes: 'Hermes', 'deepseek-harness': 'DeepSeek Harness',
+            zcode: 'ZCode', workbuddy: 'WorkBuddy', 'antigravity-cli': 'Antigravity CLI', 'copilot-cli': 'Copilot CLI',
+            'vscode-copilot': 'VS Code Copilot', 'kimi-code': 'Kimi Code', 'grok-build': 'Grok Build', omp: 'OMP', pi: 'Pi' })
+            .map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+        <small>{getCurrentLocale().startsWith('zh') ? '别名仅在所选工具中生效，其他工具保留原始模型。' : 'Aliases apply only to this tool. Other tools keep the original models.'}</small>
+      </label>
       {confirmationDialog}
       <MessageNotice message={error} onDismiss={() => setError('')} />
       <MessageNotice tone="success" message={!error ? notice : null} onDismiss={() => setNotice('')} />

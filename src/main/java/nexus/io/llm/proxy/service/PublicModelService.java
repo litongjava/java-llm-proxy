@@ -7,14 +7,22 @@ import nexus.io.model.exception.BusinessException;
 
 public class PublicModelService {
   public Kv geminiList() throws Exception {
-    List<Kv> models = ProxyJson.list(Aop.get(ManagementService.class).models().get("data")).stream()
+    return geminiList("");
+  }
+
+  public Kv geminiList(String tool) throws Exception {
+    List<Kv> models = ProxyJson.list(Aop.get(ManagementService.class).models(tool).get("data")).stream()
         .map(ProxyJson::object).map(this::gemini).toList();
     return Kv.create().set("models", models);
   }
 
   public Kv detail(String id, boolean gemini) throws Exception {
+    return detail(id, gemini, "");
+  }
+
+  public Kv detail(String id, boolean gemini, String tool) throws Exception {
     String normalized = id.startsWith("models/") ? id.substring(7) : id;
-    for (Object value : ProxyJson.list(Aop.get(ManagementService.class).models().get("data"))) {
+    for (Object value : ProxyJson.list(Aop.get(ManagementService.class).models(tool).get("data"))) {
       Kv model = ProxyJson.object(value);
       if (normalized.equals(model.getStr("id"))) { return gemini ? gemini(model) : model; }
     }

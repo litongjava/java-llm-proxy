@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.Arrays;
+import java.util.Set;
 import com.jfinal.kit.Kv;
 import nexus.io.chat.UniChatClient;
 import nexus.io.jfinal.aop.Aop;
@@ -75,7 +76,7 @@ public class ProxyWebSocketService {
     Kv nested = ProxyJson.object(input.get("response"));
     String model = ProxyJson.text(input, "model", ProxyJson.text(nested, "model", session.request.getParam("model")));
     model = ParameterValidator.text(model, "model", 256);
-    SettingsService.Selection selected = Aop.get(SettingsService.class).select(model, "responses");
+    SettingsService.Selection selected = Aop.get(SettingsService.class).select(model, "responses", null, null, null, Set.of(), Aop.get(ToolScopeService.class).tool(session.request));
     ParameterValidator.require("responses".equals(selected.provider().protocol) || "openai".equals(selected.provider().protocol), "WebSocket provider must support the Responses protocol");
     session.provider = selected.provider();
     session.requestedModel = model;
@@ -142,11 +143,11 @@ public class ProxyWebSocketService {
 
   private void begin(ProxyWebSocketSession session, Kv input, String original) {
     String requested = ProxyJson.text(input, "model", ProxyJson.text(ProxyJson.object(input.get("response")), "model", session.requestedModel));
-    String resolved = Aop.get(ModelRoutingService.class).resolve(session.provider, requested);
+    String resolved = Aop.get(ModelRoutingService.class).resolve(session.provider, requested, Aop.get(ToolScopeService.class).tool(session.request));
     ParameterValidator.require(resolved != null, "Model is not available on this WebSocket connection");
     RequestRecord record = new RequestRecord();
     record.id = String.valueOf(SnowflakeIdUtils.id()); record.timestamp = System.currentTimeMillis(); record.method = "WEBSOCKET";
-    record.path = session.request.getRequestURI(); record.protocol = "responses"; record.model = requested; record.provider = session.provider.name;
+    record.path = session.request.getRequestURI(); record.protocol = "responses"; record.model = resolved; record.requestedModel = requested; record.provider = session.provider.name;
     record.stream = true; record.status = 200; record.apiKeyName = String.valueOf(session.request.getLocalAttribute("proxy.identity"));
     record.requestHeaders = HeaderService.redact(session.request.getHeaders());
     record.upstreamRequestHeaders = session.upstreamRequestHeaders;

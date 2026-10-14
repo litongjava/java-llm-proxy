@@ -69,6 +69,19 @@ public class ProtocolFormatService {
 
   public void usage(RequestRecord record, String body) {
     for (Kv event : events(body)) {
+      String responseModel = event.getStr("model");
+      if (responseModel == null) {
+        responseModel = asObject(event.get("message")).getStr("model");
+      }
+      if (responseModel == null) {
+        responseModel = asObject(event.get("response")).getStr("model");
+      }
+      if (responseModel == null) {
+        responseModel = event.getStr("modelVersion");
+      }
+      if (responseModel != null && !responseModel.isBlank()) {
+        record.responseModel = responseModel;
+      }
       Kv usage = asObject(event.get("usage"));
       if (usage.isEmpty()) {
         usage = asObject(asObject(event.get("message")).get("usage"));
@@ -82,6 +95,7 @@ public class ProtocolFormatService {
       record.inputTokens = Math.max(record.inputTokens, number(usage, "prompt_tokens", "input_tokens", "promptTokenCount"));
       record.outputTokens = Math.max(record.outputTokens, number(usage, "completion_tokens", "output_tokens", "candidatesTokenCount"));
       record.cachedTokens = Math.max(record.cachedTokens, number(usage, "cache_read_input_tokens", "cachedContentTokenCount"));
+      record.cachedTokens = Math.max(record.cachedTokens, number(usage, "prompt_cache_hit_tokens"));
       record.cachedTokens = Math.max(record.cachedTokens, number(asObject(usage.get("prompt_tokens_details")), "cached_tokens"));
       record.cachedTokens = Math.max(record.cachedTokens, number(asObject(usage.get("input_tokens_details")), "cached_tokens"));
       record.reasoningTokens = Math.max(record.reasoningTokens, number(usage, "thoughtsTokenCount"));

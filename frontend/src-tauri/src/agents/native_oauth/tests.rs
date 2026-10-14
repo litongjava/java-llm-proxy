@@ -291,7 +291,7 @@ fn update_configuration_reconnects_cpa_and_restores_catalog_after_official_resto
         assert_eq!(config["model"].as_str(), Some("new-cpa-model"));
         assert_eq!(
             config["model_providers"]["cpa-gui"]["base_url"].as_str(),
-            Some("http://127.0.0.1:9321/v1")
+            Some("http://127.0.0.1:9321/tools/codex/v1")
         );
         assert_eq!(
             config["model_providers"]["cpa-gui"]["experimental_bearer_token"].as_str(),
@@ -389,7 +389,7 @@ fn codex_apply_close_restores_original_login_and_preserves_user_edits() {
     assert!(restored.get("model_catalog_json").is_none());
     assert_eq!(
         restored["model_providers"][MANAGED_AGENT_PROVIDER_ID]["base_url"].as_str(),
-        Some("http://127.0.0.1:8317/v1")
+        Some("http://127.0.0.1:8317/tools/codex/v1")
     );
     let auth: serde_json::Value = serde_json::from_str(&home.read("auth.json")).unwrap();
     assert_eq!(auth["tokens"]["refresh_token"], "new-refresh");
@@ -450,7 +450,7 @@ fn codex_close_restores_preexisting_api_provider_and_key() {
     );
     assert_eq!(
         restored["model_providers"][MANAGED_AGENT_PROVIDER_ID]["base_url"].as_str(),
-        Some("http://127.0.0.1:8317/v1")
+        Some("http://127.0.0.1:8317/tools/codex/v1")
     );
     assert!(codex_auth_file_has_api_key(
         &home.path("auth.json"),

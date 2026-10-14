@@ -1,0 +1,125 @@
+[
+  {
+    "status": "FAIL",
+    "sourceRequest": "700021355011530752",
+    "toolCount": 116,
+    "corePort": 12097,
+    "results": [
+      {
+        "case": "non-stream",
+        "status": "FAIL",
+        "httpStatus": 400,
+        "requestId": "700027544054358016",
+        "provider": "antigravity-test.json",
+        "requestedModel": "claude-opus-4-6",
+        "upstreamModel": "claude-sonnet-4-6",
+        "tools": 116,
+        "checks": {
+          "HTTP 200": false,
+          "Antigravity selected": true,
+          "All tools retained": true,
+          "No request metadata": false,
+          "No rejected schema keywords": false,
+          "OK response": false
+        },
+        "response": "{\"error\": {\"code\": 400, \"message\": \"Invalid JSON payload: parameters.$schema, parameters.$schema, parameters.properties.answers.propertyNames, parameters.properties.annotations.propertyNames, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.properties.assets.items.properties.viewport.properties.width.exclusiveMinimum, parameters.properties.assets.items.properties.viewport.properties.height.exclusiveMinimum, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.properties.limit.exclusiveMinimum, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.properties.metadata.propertyNames, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.properties.status.anyOf1.const, parameters.properties.metadata.propertyNames, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parameters.$schema, parame",
+        "schemaErrors": [
+          "parameters.$schema",
+          "parameters.$schema",
+          "parameters.properties.answers.propertyNames",
+          "parameters.properties.annotations.propertyNames",
+          "parameters.$schema",
+          "parameters.$schema",
+          "parameters.$schema",
+          "parameters.$schema",
+          "parameters.$schema",
+          "parameters.properties.assets.items.properties.viewport.properties.width.exclusiveMinimum"
+        ],
+        "observedAt": "2026-10-14 18:59:32 +0800"
+      }
+    ],
+    "scope": "Strict local mock upstream"
+  },
+  {
+    "status": "PASS",
+    "sourceRequest": "700021355011530752",
+    "toolCount": 116,
+    "corePort": 7893,
+    "results": [
+      {
+        "case": "non-stream",
+        "status": "PASS",
+        "httpStatus": 200,
+        "requestId": "700027255091204096",
+        "provider": "antigravity-test.json",
+        "requestedModel": "claude-opus-4-6",
+        "upstreamModel": "claude-sonnet-4-6",
+        "tools": 116,
+        "checks": {
+          "HTTP 200": true,
+          "Antigravity selected": true,
+          "All tools retained": true,
+          "No request metadata": true,
+          "No rejected schema keywords": true,
+          "OK response": true
+        },
+        "response": "{\"role\":\"assistant\",\"stop_sequence\":null,\"usage\":{\"output_tokens\":1,\"input_tokens\":10},\"stop_reason\":\"end_turn\",\"model\":\"claude-sonnet-4-6\",\"id\":\"chatcmpl-700027255951036416\",\"type\":\"message\",\"content\":[{\"text\":\"OK\",\"type\":\"text\"}]}",
+        "schemaErrors": [],
+        "observedAt": "2026-10-14 18:58:23 +0800"
+      },
+      {
+        "case": "stream",
+        "status": "PASS",
+        "httpStatus": 200,
+        "requestId": "700027335261130752",
+        "provider": "antigravity-test.json",
+        "requestedModel": "claude-opus-4-6",
+        "upstreamModel": "claude-sonnet-4-6",
+        "tools": 116,
+        "checks": {
+          "HTTP 200": true,
+          "Antigravity selected": true,
+          "All tools retained": true,
+          "No request metadata": true,
+          "No rejected schema keywords": true,
+          "OK response": true,
+          "Anthropic SSE completion": true
+        },
+        "response": "event: message_start\ndata: {\"message\":{\"role\":\"assistant\",\"usage\":{\"output_tokens\":0,\"input_tokens\":0},\"model\":\"claude-opus-4-6\",\"id\":\"chatcmpl-700027335391154176\",\"type\":\"message\",\"content\":[]},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"OK\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"usage\":{\"output_tokens\":1,\"input_tokens\":10},\"delta\":{\"stop_sequence\":null,\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\"}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        "schemaErrors": [],
+        "observedAt": "2026-10-14 18:58:42 +0800"
+      }
+    ],
+    "scope": "Strict local mock upstream"
+  },
+  {
+    "status": "FAIL",
+    "sourceRequest": "700021355011530752",
+    "toolCount": 116,
+    "corePort": 14395,
+    "results": [
+      {
+        "case": "non-stream",
+        "status": "FAIL",
+        "httpStatus": 429,
+        "requestId": "700026875043315712",
+        "provider": "antigravity-700008882472550400.json",
+        "requestedModel": "claude-opus-4-6",
+        "upstreamModel": "claude-sonnet-4-6",
+        "tools": 116,
+        "checks": {
+          "HTTP 200": false,
+          "Antigravity selected": true,
+          "All tools retained": true,
+          "No request metadata": true,
+          "No rejected schema keywords": true,
+          "OK response": false
+        },
+        "response": "{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"Resource has been exhausted (e.g. check quota).\",\n    \"errors\": [\n      {\n        \"message\": \"Resource has been exhausted (e.g. check quota).\",\n        \"domain\": \"global\",\n        \"reason\": \"rateLimitExceeded\"\n      }\n    ],\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n",
+        "schemaErrors": [],
+        "observedAt": "2026-10-14 18:57:01 +0800"
+      }
+    ],
+    "scope": "Live Antigravity; isolated Java core; original tool definitions; short prompt"
+  }
+]

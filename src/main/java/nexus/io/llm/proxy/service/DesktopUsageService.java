@@ -18,6 +18,7 @@ public class DesktopUsageService {
           .set("total_tokens", number(record.inputTokens + record.outputTokens));
       Kv item = Kv.create().set("request_id", record.id).set("timestamp", Instant.ofEpochMilli(record.timestamp).toString())
           .set("model", record.model).set("provider", record.provider).set("source", record.source)
+          .set("alias", record.requestedModel).set("response_model", record.responseModel)
           .set("endpoint", record.path).set("auth_type", "api-key").set("api_key", record.apiKeyName)
           .set("latency_ms", number(record.durationMs)).set("ttft_ms", number(record.firstByteMs))
           .set("failed", record.status >= 400 || record.status < 200).set("tokens", tokens);

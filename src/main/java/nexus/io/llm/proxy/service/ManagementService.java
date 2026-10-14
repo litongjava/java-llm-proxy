@@ -37,11 +37,15 @@ public class ManagementService {
   }
 
   public Kv models() throws Exception {
+    return models("");
+  }
+
+  public Kv models(String tool) throws Exception {
     ProxySettings settings = Aop.get(SettingsService.class).snapshot();
     Set<String> names = new LinkedHashSet<>();
     ModelRoutingService modelRouting = Aop.get(ModelRoutingService.class);
-    settings.providers.stream().filter(p -> p.enabled).forEach(p -> names.addAll(modelRouting.visible(p, p.models)));
-    settings.aliases.forEach(alias -> names.add(alias.name));
+    settings.providers.stream().filter(p -> p.enabled).forEach(p -> names.addAll(modelRouting.visible(p, p.models, tool)));
+    settings.aliases.stream().filter(alias -> tool.equals(alias.tool)).forEach(alias -> names.add(alias.name));
     Aop.get(PluginService.class).staticProviders().forEach(provider -> names.addAll(provider.models));
     CredentialService credentials = Aop.get(CredentialService.class);
     ModelCatalogService catalog = Aop.get(ModelCatalogService.class);
@@ -52,7 +56,7 @@ public class ManagementService {
         String id = ProxyJson.object(value).getStr("id");
         if (id != null) { originals.add(id); }
       }
-      names.addAll(modelRouting.visible(provider, originals));
+      names.addAll(modelRouting.visible(provider, originals, tool));
     }
     List<Kv> models = new ArrayList<>();
     for (String name : names) {

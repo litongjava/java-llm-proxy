@@ -14,6 +14,8 @@ localStorage.setItem('cpa-gui.usage-events-visible-cols.v3', JSON.stringify([
 localStorage.removeItem('cpa-gui.usage-events-visible-cols.v2');
 localStorage.removeItem('cpa-gui.usage-events-visible-cols.v4');
 localStorage.removeItem('cpa-gui.usage-events-visible-cols.v5');
+localStorage.removeItem('cpa-gui.usage-events-visible-cols.v6');
+localStorage.removeItem('cpa-gui.usage-events-visible-cols.v7');
 localStorage.removeItem('cpa-gui.usage-events-col-widths.v2');
 localStorage.removeItem('cpa-gui.usage-events-col-widths.v3');
 document.documentElement.dataset.theme = params.get('theme') || 'light';
@@ -65,6 +67,16 @@ const records: UsageRecord[] = [
   record('quoted', 'quoted-model', 'quoted-alias', 'model,"quoted"'),
   record('formula', 'formula-model', 'formula-alias', '=SUM(A1)'),
 ];
+
+if (params.get('scenario') === 'deepseek') {
+  records.splice(0, records.length, {
+    ...record('deepseek-cache', 'deepseek-flash', 'claude-sonnet-4-5', 'deepseek-flash'),
+    provider: 'deepseek-1',
+    auth_type: 'apikey',
+    endpoint: 'POST /tools/claude-desktop/v1/messages',
+    tokens: { ...tokens, input_tokens: 62400, output_tokens: 522, cache_read_tokens: 60000, total_tokens: 62922 },
+  });
+}
 
 mockIPC(async () => null);
 

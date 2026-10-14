@@ -120,18 +120,18 @@ function parseCsv(text) {
     assert.equal(await page.locator('.usage-access-type').nth(1).textContent(), 'OAuth');
     assert.equal(await page.locator('.usage-access-type').nth(2).textContent(), '未记录接入方式');
     assert.deepEqual(zhDetails[0], {
-      main: 'astra',
-      sublines: ['gpt-6-astra', '响应模型: gpt-5.6-luna'],
+      main: 'gpt-6-astra',
+      sublines: ['响应模型: gpt-5.6-luna'],
       response: '响应模型: gpt-5.6-luna',
       title: '请求模型: astra\n路由模型: gpt-6-astra\n响应模型: gpt-5.6-luna',
     }, 'Differing alias, upstream model, and upstream response remain distinguishable');
     assert.deepEqual(zhDetails[1], {
-      main: 'same-alias',
-      sublines: ['gpt-6-sol'],
+      main: 'gpt-6-sol',
+      sublines: [],
       response: '',
       title: '请求模型: same-alias\n路由模型: gpt-6-sol',
     }, 'A response equal to the routed model is not repeated');
-    assert.deepEqual(zhDetails[2].sublines, ['openai/gpt-4o-latest', '响应模型: gpt-4o-2024-08-06'], 'Snapshot and prefix model names preserve the existing upstream subline');
+    assert.deepEqual(zhDetails[2].sublines, ['响应模型: gpt-4o-2024-08-06'], 'Snapshot response names remain distinguishable from the routed model');
     assert.equal(zhDetails[2].title, '请求模型: gpt4o\n路由模型: openai/gpt-4o-latest\n响应模型: gpt-4o-2024-08-06');
     assert.deepEqual(zhDetails.slice(3, 6).map(item => item.sublines), [[], [], []], 'Missing, empty, and whitespace response_model values stay omitted');
     assert.ok(zhDetails.slice(3, 6).every(item => !item.title.includes('响应模型')), 'Legacy rows never invent a response model');

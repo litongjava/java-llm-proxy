@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class ModelAlias {
+  public String tool;
   public String name;
   public String model;
   public String providerId;

@@ -33,6 +33,26 @@ afterEach(() => {
 });
 
 describe('quota API compatibility', () => {
+  it('Kimi empty successful response means unavailable data, not a parsing failure or zero quota', async () => {
+    handler = () => success({});
+    const result = await loadQuota({ name: 'kimi.json', provider: 'kimi', auth_index: 'k' });
+    expect(result).toMatchObject({ status: 'unavailable', rows: [] });
+    expect(result.message).toContain('Kimi returned no quota data');
+    expect(result.error).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://api.kimi.com/coding/v1/usages');
+  });
+
+  it('Kimi retains malformed-response and HTTP errors, and recognizes real zero quota', async () => {
+    const file = { name: 'kimi.json', provider: 'kimi', auth_index: 'k' };
+    handler = () => success({ unexpected: true });
+    expect((await loadQuota(file)).status).toBe('error');
+    handler = () => ({ status_code: 401, body: '{}' });
+    expect((await loadQuota(file)).status).toBe('error');
+    handler = () => success({ usage: { limit: 100, remaining: 0 } });
+    expect(await loadQuota(file)).toMatchObject({ status: 'success', rows: [{ remainingPercent: 0 }] });
+  });
+
   it('Codex 使用新请求头和嵌套账户信息；积分详情失败仍显示用量及 usage 回退次数', async () => {
     handler = (request) => request.url.endsWith('/usage')
       ? success(codexUsage) : { statusCode: 403, bodyText: '{"error":"credits forbidden"}' };

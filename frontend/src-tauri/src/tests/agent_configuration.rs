@@ -1315,13 +1315,13 @@ fn zcode_versioned_api_configuration_and_legacy_addresses_are_detected() {
     let mut value: serde_json::Value = serde_json::from_str(&updates[0].after).unwrap();
     assert_eq!(
         value["config"]["providerConfigRules"]["providerRules"][0]["config"]["api"]["baseUrl"],
-        "http://127.0.0.1:8317/v1",
+        "http://127.0.0.1:8317/tools/zcode/v1",
     );
     let fresh = fresh_agent_contents(AgentClient::ZCode, 8317, DEFAULT_API_KEY, "gpt-test").unwrap();
     let fresh: serde_json::Value = serde_json::from_str(&fresh[0]).unwrap();
     assert_eq!(
         fresh["config"]["providerConfigRules"]["providerRules"][0]["config"]["api"]["baseUrl"],
-        "http://127.0.0.1:8317/v1",
+        "http://127.0.0.1:8317/tools/zcode/v1",
     );
     fs::create_dir_all(paths[0].parent().unwrap()).unwrap();
     for base_url in [
@@ -1736,7 +1736,7 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
             }
             let request = String::from_utf8(request).unwrap();
             let path = request.split_whitespace().nth(1).unwrap().to_string();
-            let body = if path == "/v1/models" {
+            let body = if path == "/tools/codex/v1/models" {
                 assert!(request.to_lowercase().contains("authorization: bearer public-test-key\r\n"));
                 r#"{"data":[{"id":"public-model","alias":"not-an-id","slug":"not-public","context_length":64000},{"id":"another-model"}]}"#
             } else {
@@ -1746,7 +1746,7 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
             write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
             paths.push(path);
         }
-        assert!(paths.iter().any(|path| path == "/v1/models"));
+        assert!(paths.iter().any(|path| path == "/tools/codex/v1/models"));
     });
     let config = GuiConfigFile {
         port,
