@@ -1,0 +1,16 @@
+package nexus.io.llm.proxy.handler;
+
+import com.jfinal.kit.Kv;
+import nexus.io.jfinal.aop.Aop;
+import nexus.io.llm.proxy.service.PluginStoreService;
+import nexus.io.model.body.RespBodyVo;
+import nexus.io.tio.boot.http.TioRequestContext;
+import nexus.io.tio.http.common.HttpRequest;
+import nexus.io.tio.http.common.HttpResponse;
+
+public class PluginInstallHandler {
+  public HttpResponse handle(HttpRequest request) throws Exception {
+    Object data = Aop.get(PluginStoreService.class).install(request.getParam("id"), request.getParam("source"), request.getParam("version"));
+    return TioRequestContext.getResponse().respond(RespBodyVo.ok(data));
+  }
+}

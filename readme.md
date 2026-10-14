@@ -1,465 +1,119 @@
-# 使用tio-boot搭建多模型LLM代理服务
+# Java LLM Proxy
 
-本文档介绍如何基于[tio-boot](https://github.com/litongjava/tio-boot)框架快速搭建一个支持多模型的大语言模型代理服务。该代理服务将接收来自客户端的请求（包括流式和非流式模式），并通过统一接口将请求转发至OpenAI、Anthropic Claude和Google Gemini等API，同时负责将返回结果以HTTP响应或SSE（Server-Sent Events）流的形式返回给客户端。
+Java 21、tio-boot 和 UniChatClient 实现的模型代理，桌面端名称为 **LLM Poroxy UI**。前端直接复用 EasyCLIProxyAPI 的 React 页面和 Tauri 原生功能，来源与许可证见 [frontend/UPSTREAM.md](frontend/UPSTREAM.md)。
 
----
+## 构建与启动
 
-## 1. 概述
+需要 Java 21、Maven、Node.js、Rust，以及当前操作系统的 Tauri 构建环境。Windows 还需要 WebView2 和 MSVC。
 
-* **使用场景**：当需要统一接入多个LLM服务时，可通过本代理服务解决以下问题：
-  1. 网络策略限制（如无法直连API域名）
-  2. 统一认证和密钥管理
-  3. 多模型路由转发
-  4. 流式/非流式响应格式转换
+按照 `build.txt` 构建 Java，再启动桌面端：
 
-* **核心功能**：
-  1. 前端请求发送至本地tio-boot服务（如`http://127.0.0.1/***`）
-  2. 根据请求路径自动路由到对应API服务（OpenAI/Anthropic/Google）
-  3. 根据请求体中的`stream`字段自动选择SSE流式或同步HTTP响应
-  4. 将API返回结果（JSON或SSE流）适配返回给客户端
-
----
-## 2. 整合到TioBoot工程
-build
-```
-set JAVA_HOME=D:\java\jdk-1.8_411
-mvn clean install -DskipTests -Dgpg.skip -q
+```powershell
+mvn clean install '-DskipTests' '-Dgpg.skip'
+mvn package '-DskipTests' '-Dgpg.skip' -Pproduction
+cd frontend
+npm.cmd ci
+npm.cmd run tauri -- dev
 ```
 
-add maven dependency
+生成可运行的调试桌面程序：
 
-```
-    <dependency>
-      <groupId>com.litongjava</groupId>
-      <artifactId>java-llm-proxy</artifactId>
-      <version>1.0.0</version>
-    </dependency>
+```powershell
+npm.cmd run tauri -- build --debug --no-bundle
 ```
 
-config
+Tauri 构建脚本把 Java JAR 放入桌面资源目录。启动内核时使用 `java -jar`，优先读取 `JAVA_HOME`。端口、管理密钥、客户端密钥、认证目录和代理设置沿用原桌面配置界面。
 
-```
-import com.litongjava.llm.proxy.config.LLMProxyAppConfig;
+默认监听端口为 **8318**，首页 **Connect to CPA** 的 OpenAI 接入地址为 `http://127.0.0.1:8318/v1`。已有桌面配置会保留保存的端口；如仍显示 8317，请在内核或配置页面将端口改为 8318，保存并重启内核。连接地址随实际配置更新。
 
-new LLMProxyAppConfig().config();
-```
+## 后端功能
 
-## 3. 环境准备
+- 管理密钥和客户端密钥分离，在拦截器中完成鉴权；管理响应使用 `RespBodyVo`，Tauri 自动解包。
+- Provider、API Key、模型别名、YAML 配置读取/保存、配置子树修改和热加载。
+- OpenAI、Anthropic、Gemini、Responses 请求；同协议保留扩展字段，跨协议转换系统提示词、消息、图片、工具调用和结果。
+- 普通响应及逐事件 SSE 转换，Token 统计独立于正文捕获开关。
+- Responses 与 Realtime WebSocket 双向连接；Realtime 支持上游主动发送会话事件。
+- 原生图片编辑文件上传、视频创建/编辑/扩展/查询/内容、TTS 二进制响应、Gemini Interactions。视频任务保存创建时的凭据绑定，查询按客户端密钥隔离。
+- OAuth 授权码与设备码流程、PKCE、状态校验、取消、有效期、回调防重放、刷新和凭证原子保存。内置提供方为 Codex、Claude、Antigravity、Kimi、Kimi AI、xAI、Meta、Devin；Vertex 支持服务账号导入及 JWT 换取 Token。
+- 凭证导入、下载、字段编辑、启停、删除、批量刷新；模型目录、模型排除、优先级、权重和冷却重置。
+- 管理 API 转发支持凭证索引及 `$TOKEN$` 替换，供原配额和模型发现页面使用。
+- 原生插件 ABI 加载、配置重载、启停和卸载；插件商店支持自定义注册表、直接产物及 GitHub Release，安装时检查大小、摘要和压缩包路径。
+- 插件 OAuth、配额、模型执行、流式输出、管理接口、资源页面、请求/响应拦截、完成通知、用量通知、鉴权和调度扩展。
+- 插件凭证解析、命令行参数、嵌套模型调用及 HTTP 执行器；请求钩子按凭据选择前后执行，流式钩子接收完整 SSE 事件。
+- 模型前缀、分组别名、会话绑定、Payload 规则、重试和失败凭据切换；凭据页面提供最近 20 个十分钟时间段的请求统计。
+- SQLite 保存请求详情；持久化 Usage 队列在桌面数据库落库后确认，重复投递按请求 ID 去重。
 
-1. **JDK**：Java 8或更高版本
+## 请求详情
 
-2. **构建工具**：Maven或Gradle
+在原 Usage 页面点击请求即可打开 Request Detail，查看客户端请求头/正文、上游请求头/正文、上游响应头/正文以及最终响应头/正文。格式化按钮识别协议并提取提示词与响应，各部分均可复制。认证头在持久化前脱敏；正文受捕获开关及大小上限控制。
 
-3. **核心依赖**（pom.xml示例）：
-```xml
-<dependency>
-  <groupId>com.litongjava</groupId>
-  <artifactId>tio-boot-admin</artifactId>
-  <version>1.0.5</version>
-</dependency>
-<dependency>
-  <groupId>com.alibaba.fastjson2</groupId>
-  <artifactId>fastjson2</artifactId>
-  <version>2.0.30</version>
-</dependency>
-<dependency>
-  <groupId>org.projectlombok</groupId>
-  <artifactId>lombok</artifactId>
-  <version>1.18.26</version>
-  <scope>provided</scope>
-</dependency>
-```
+## 配置
 
----
+Antigravity 的 Google OAuth 凭据从本地 `secrets.txt` 读取，不再内置在源码中。
+首次配置可复制 `secrets.example.txt` 为 `secrets.txt`，填写 `proxy.oauth.antigravity.client-id` 和
+`proxy.oauth.antigravity.client-secret`。该文件已加入 `.gitignore`，不要强制提交，也不要放入 `src/main/resources` 或发布包。
 
-## 4. 项目结构
+`EnvUtils` 启动时自动读取 Java 进程工作目录以及用户主目录中的 `secrets.txt`。
+从项目根目录启动时可直接使用根目录的文件；桌面端的工作目录是内核安装目录，
+可将文件放入该目录，或合并到用户主目录的 `secrets.txt`（Windows 为 `%USERPROFILE%/secrets.txt`）。
+环境变量或启动参数中的 `proxy.oauth.antigravity.client-id` / `client-secret` 优先于文件配置。
+修改文件后需重启 Java 内核。
+凭据缺失时仅 Antigravity OAuth 返回明确的配置错误，其他提供方不受影响。
 
-```
-llm-proxy-app/
-├─ src/
-│  ├─ main/
-│  │  ├─ java/
-│  │  │  ├─ com/litongjava/llm/proxy/
-│  │  │  │  ├─ LLMProxyApp.java          # 应用入口
-│  │  │  ├─ com/litongjava/llm/proxy/config/
-│  │  │  │  └─ LLMProxyConfig.java       # 路由配置
-│  │  │  ├─ com/litongjava/llm/proxy/handler/
-│  │  │  │  └─ LLMProxyHandler.java  # 核心处理器
-│  │  │  ├─ com/litongjava/llm/proxy/callback/
-│  │  │  │  └─ SSEProxyCallback...java   # SSE回调处理
-│  │  └─ resources/
-│  │     └─ app.properties               # 配置文件
-└─ pom.xml
-```
+Java 配置通过 `EnvUtils` 读取，可通过环境变量或启动参数设置。
 
----
+| 配置 | 用途 |
+| --- | --- |
+| `server.port` | HTTP 与 WebSocket 共用的监听端口，默认 8318 |
+| `server.address` | 监听地址 |
+| `proxy.management-token` | 管理接口密钥 |
+| `proxy.api-key` | 启动时配置的客户端密钥 |
+| `proxy.config` | 桌面 YAML 文件 |
+| `proxy.data-dir` | SQLite 数据目录 |
+| `proxy.auth-dir` | 凭证目录；未设置时读取 YAML 的 `oauth.auth-dir` |
+| `proxy.capture.max-bytes` | 单段正文捕获上限，默认 4 MiB |
+| `proxy.outbound-proxy` | 出站代理；请求/凭证配置可覆盖 |
+| `proxy.plugins.registry-url` | 默认插件商店地址 |
 
-## 5. 关键实现
+OAuth 提供方支持 `proxy.oauth.<provider>.authorize-url`、`token-url`、`device-url`、`client-id`、`client-secret`、`redirect-uri` 和 `api-base-url`，便于对接自有授权服务及运行隔离测试。
 
-### 5.1 LLMProxyHandler.java - 请求路由处理器
+`proxy.stream.max-event-bytes` 控制单个 SSE 事件上限，默认 16 MiB。`proxy.native.max-response-bytes` 控制原生多媒体非流式响应上限，默认 128 MiB。二进制请求和响应在详情中以 `base64:` 前缀保存，实际转发保持原始字节。Devin 详情展示 Connect-RPC 解码后的内容。
 
-```java
-package com.litongjava.llm.proxy.handler;
+## 更新与发布产物
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+桌面和 Java 内核使用本项目的 [GitHub](https://github.com/litongjava/java-llm-proxy) 与 [GitCode](https://gitcode.com/ppnt/java-llm-proxy) 发行源。桌面更新校验清单中的 SHA-256；内核下载校验发行摘要或同名 `.sha256` 文件，并检查 JAR 启动入口。
 
-import com.alibaba.fastjson2.JSONObject;
-import com.litongjava.claude.ClaudeClient;
-import com.litongjava.gemini.GeminiClient;
-import com.litongjava.llm.proxy.callback.SSEProxyCallbackEventSourceListener;
-import com.litongjava.model.body.RespBodyVo;
-import com.litongjava.openai.client.OpenAiClient;
-import com.litongjava.proxy.AiChatProxyClient;
-import com.litongjava.tio.boot.http.TioRequestContext;
-import com.litongjava.tio.core.ChannelContext;
-import com.litongjava.tio.http.common.HttpRequest;
-import com.litongjava.tio.http.common.HttpResponse;
-import com.litongjava.tio.http.common.utils.HttpIpUtils;
-import com.litongjava.tio.http.server.util.CORSUtils;
-import com.litongjava.tio.utils.environment.EnvUtils;
-import com.litongjava.tio.utils.hutool.StrUtil;
-import com.litongjava.tio.utils.json.FastJson2Utils;
+两个组件共享发行仓库，发布时请使 Java、Cargo 和发行标签版本保持一致，在同一 Release 上传桌面清单、桌面包、六个平台内核包及摘要文件。打包脚本只生成文件：
 
-import lombok.extern.slf4j.Slf4j;
-import okhttp3.Response;
-import okhttp3.sse.EventSourceListener;
-
-@Slf4j
-public class LLMProxyHandler  {
-
-  public HttpResponse completions(HttpRequest httpRequest) {
-    long start = System.currentTimeMillis();
-    HttpResponse httpResponse = TioRequestContext.getResponse();
-    CORSUtils.enableCORS(httpResponse);
-
-    String requestURI = httpRequest.getRequestURI();
-
-    String bodyString = httpRequest.getBodyString();
-
-    if (StrUtil.isBlank(bodyString)) {
-      return httpResponse.setJson(RespBodyVo.fail("empty body"));
-    }
-
-    String realIp = HttpIpUtils.getRealIp(httpRequest);
-    log.info("from:{},requestURI:{}", realIp, requestURI);
-    Boolean stream = false;
-    String url = null;
-    Map<String, String> headers = new HashMap<>();
-    if (requestURI.startsWith("/openai")) {
-      url = OpenAiClient.OPENAI_API_URL + "/chat/completions";
-      headers.put("authorization", httpRequest.getAuthorization());
-
-      JSONObject openAiRequestVo = null;
-
-      if (bodyString != null) {
-        openAiRequestVo = FastJson2Utils.parseObject(bodyString);
-        stream = openAiRequestVo.getBoolean("stream");
-      }
-      
-    } else if (requestURI.startsWith("/anthropic")) {
-      url = ClaudeClient.CLAUDE_API_URL + "/messages";
-      headers.put("x-api-key", httpRequest.getHeader("x-api-key"));
-      headers.put("anthropic-version", httpRequest.getHeader("anthropic-version"));
-
-      JSONObject openAiRequestVo = null;
-
-      if (bodyString != null) {
-        openAiRequestVo = FastJson2Utils.parseObject(bodyString);
-        stream = openAiRequestVo.getBoolean("stream");
-      }
-      
-    } else if (requestURI.startsWith("/google")) {
-      String key = httpRequest.getParam("key");
-      String modelName1 = requestURI.substring(requestURI.lastIndexOf('/') + 1, requestURI.indexOf(':'));
-      if (requestURI.endsWith("streamGenerateContent")) {
-        url = GeminiClient.GEMINI_API_URL + modelName1 + ":streamGenerateContent?alt=sse&key=" + key;
-        stream = true;
-      } else {
-        url = GeminiClient.GEMINI_API_URL + modelName1 + ":generateContent?key=" + key;
-      }
-    }
-
-    //String authorization = httpRequest.getHeader("authorization");
-
-    if (stream != null && stream) {
-      // 告诉默认的处理器不要将消息体发送给客户端,因为后面会手动发送
-      httpResponse.setSend(false);
-      ChannelContext channelContext = httpRequest.getChannelContext();
-      EventSourceListener openAIProxyCallback = new SSEProxyCallbackEventSourceListener(channelContext, httpResponse, start);
-      AiChatProxyClient.stream(url, headers, bodyString, openAIProxyCallback);
-    } else {
-      try (Response response = AiChatProxyClient.generate(url, headers, bodyString)) {
-        //OkHttpResponseUtils.toTioHttpResponse(response, httpResponse);
-        try {
-          String string = response.body().string();
-          httpResponse.setString(string, "utf-8", "application/json");
-          if (EnvUtils.getBoolean("app.debug", false)) {
-            log.info("chat:{},{}", bodyString, string);
-          }
-
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-        long end = System.currentTimeMillis();
-        log.info("finish llm in {} (ms):", (end - start));
-      }
-    }
-
-    return httpResponse;
-  }
-}
+```powershell
+python scripts/package_release.py --version 1.0.0 --jar target/java-llm-proxy-1.0.0.jar --desktop windows-amd64=frontend/src-tauri/target/debug/cpa-gui.exe --output target/release-review
 ```
 
-**功能说明**：
-1. **多模型路由**：根据URL前缀`/openai`、`/anthropic`、`/google`自动路由到对应服务
-2. **头部处理**：提取并转换各平台特有的认证头（Authorization/x-api-key）
-3. **流式检测**：解析请求体中的`stream`字段决定响应模式
-4. **响应转换**：非流式模式直接返回JSON，流式模式通过SSE回调处理
+该示例生成用于验收的调试桌面包。正式发布应先构建 release 桌面程序，再把 `--desktop` 指向对应产物。便携包仍需要本机 Java 21；macOS 应使用 Tauri 的应用包与签名流程。发布产物尚未上传到远端。
 
----
+## 验证
 
-### 5.2 SSEProxyCallbackEventSourceListener.java - SSE回调处理器
-
-```java
-package com.litongjava.llm.proxy.callback;
-
-import java.io.IOException;
-
-import com.jfinal.kit.StrKit;
-import com.litongjava.tio.core.ChannelContext;
-import com.litongjava.tio.core.Tio;
-import com.litongjava.tio.http.common.HttpResponse;
-import com.litongjava.tio.http.common.sse.SsePacket;
-import com.litongjava.tio.utils.SystemTimer;
-
-import lombok.extern.slf4j.Slf4j;
-import okhttp3.Response;
-import okhttp3.sse.EventSource;
-import okhttp3.sse.EventSourceListener;
-
-@Slf4j
-public class SSEProxyCallbackEventSourceListener extends EventSourceListener {
-
-  private ChannelContext channelContext;
-  private HttpResponse httpResponse;
-  private long start;
-  private boolean continueSend = true;
-
-  public SSEProxyCallbackEventSourceListener(ChannelContext channelContext, HttpResponse httpResponse, long start) {
-    this.channelContext = channelContext;
-    this.httpResponse = httpResponse;
-    this.start = start;
-  }
-
-  @Override
-  public void onOpen(EventSource eventSource, Response response) {
-    httpResponse.addServerSentEventsHeader();
-    httpResponse.setSend(true);
-    Tio.send(channelContext, httpResponse);
-  }
-
-  @Override
-  public void onEvent(EventSource eventSource, String id, String type, String data) {
-    if (StrKit.notBlank(data)) {
-      sendPacket(new SsePacket(type, data.getBytes()));
-      // [DONE] 是open ai的数据标识 
-      if ("[DONE]".equals(data)) {
-        finish(eventSource);
-        return;
-      }
-    }
-
-  }
-
-  @Override
-  public void onClosed(EventSource eventSource) {
-    finish(eventSource);
-  }
-
-  @Override
-  public void onFailure(EventSource eventSource, Throwable t, Response response) {
-    log.error(t.getMessage(), t);
-    try {
-      int code = response.code();
-      String string = response.body().string();
-      httpResponse.status(code);
-      httpResponse.body(string);
-
-      httpResponse.setSend(true);
-      Tio.send(channelContext, httpResponse);
-    } catch (IOException e) {
-      e.printStackTrace();
-    } finally {
-      response.close();
-    }
-
-    finish(eventSource);
-  }
-
-  private void finish(EventSource eventSource) {
-    log.info("elapse:{}", SystemTimer.currTime - start);
-    eventSource.cancel();
-    Tio.close(channelContext, "finish");
-  }
-
-  /** 三次重试发送 SSE，遇断就放弃 */
-  private void sendPacket(SsePacket packet) {
-    if (!continueSend)
-      return;
-    if (!Tio.bSend(channelContext, packet)) {
-      if (!Tio.bSend(channelContext, packet)) {
-        if (!Tio.bSend(channelContext, packet)) {
-          continueSend = false;
-        }
-      }
-    }
-  }
-}
+```powershell
+mvn test '-Dgpg.skip'
+mvn package '-DskipTests' '-Dgpg.skip' -Pproduction
+python scripts/backend_smoke_test.py
+python scripts/oauth_integration_test.py
+python scripts/plugin_integration_test.py
+python scripts/protocol_matrix_test.py
+python scripts/websocket_integration_test.py
+python scripts/native_endpoint_test.py
+cd frontend
+npm.cmd run build
+cd src-tauri
+cargo test management_api::tests -- --nocapture
+cargo test tests::app_update -- --nocapture
+cargo test tests::core_runtime -- --nocapture
 ```
 
-**核心机制**：
-1. **SSE初始化**：`onOpen`设置`Content-Type: text/event-stream`并建立连接
-2. **数据流式转发**：`onEvent`将收到的数据块实时转发给客户端
-3. **终止信号处理**：识别`[DONE]`标记并关闭连接
-4. **错误处理**：API错误时返回原始错误信息和状态码
+OAuth 测试使用本地模拟授权服务，覆盖八个提供方的流程协议，不代表真实账号和各提供方全部模型均已实测。插件测试用 Rust 编译真实 DLL，验证安装、ABI、OAuth、配额、宿主回调、普通/流式模型调用、管理页面、配置重载和卸载。
 
----
+`scripts/desktop_integration_test.py` 验证运行中的测试桌面、Java 子进程和桌面 Usage 数据库。该测试使用专用测试配置，不应直接针对日常配置运行。
 
-### 5.3 LLMProxyConfig.java - 路由配置
+生成便携包后，`python scripts/portable_package_test.py` 在独立目录显示桌面窗口，验证首次安装内核和管理接口，结束时关闭该测试实例。打包脚本的测试可在 `frontend` 执行 `npx bun test tests/portableUpdateManifest.test.ts tests/portablePreparation.test.ts`。
 
-```java
-package com.litongjava.llm.proxy.config;
-
-import com.litongjava.context.BootConfiguration;
-import com.litongjava.llm.proxy.handler.LLMProxyHandler;
-import com.litongjava.tio.boot.server.TioBootServer;
-import com.litongjava.tio.http.server.router.HttpRequestRouter;
-
-public class LLMProxyConfig implements BootConfiguration {
-
-  public void config() {
-
-    TioBootServer server = TioBootServer.me();
-    HttpRequestRouter requestRouter = server.getRequestRouter();
-
-    LLMProxyHandler LLMProxyHandler = new LLMProxyHandler();
-    requestRouter.add("/openai/v1/chat/completions", LLMProxyHandler::completions);
-    requestRouter.add("/anthropic/v1/messages", LLMProxyHandler::completions);
-    requestRouter.add("/google/v1beta/models/*", LLMProxyHandler::completions);
-  }
-}
-```
-
-**配置说明**：
-1. 统一入口：不同API路径使用相同的处理方法
-2. 通配符支持：Google模型路径支持`*`通配符
-3. 自动装配：通过`BootConfiguration`接口实现启动时自动注册
-
----
-
-### 5.4 LLMProxyApp.java - 应用入口
-
-```java
-package com.litongjava.llm.proxy;
-
-import com.litongjava.llm.proxy.config.LLMProxyConfig;
-import com.litongjava.tio.boot.TioApplication;
-
-public class LLMProxyApp {
-  public static void main(String[] args) {
-    long start = System.currentTimeMillis();
-    TioApplication.run(LLMProxyApp.class, new LLMProxyConfig(), args);
-    long end = System.currentTimeMillis();
-    System.out.println((end - start) + "ms");
-  }
-}
-```
-
----
-
-## 6. 服务启动与测试
-
-### 6.1 启动服务
-```bash
-mvn clean package -DskipTests
-java -jar target/llm-proxy-app-1.0.0.jar
-```
-
-### 6.2 多模型测试示例
-
-**OpenAI非流式测试**：
-```bash
-curl -X POST http://localhost/openai/v1/chat/completions \
-  -H "Authorization: Bearer sk-proj-o" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [{"role":"system","content":"Just say hi"}],
-    "model": "gpt-3.5-turbo",
-    "stream": false
-  }'
-```
-
-**Google Gemini流式测试**：
-```bash
-curl -X POST 'http://localhost/google/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=API_KEY' \
-  -H "Content-Type: application/json" \
-  -d '{
-    "contents": [{"role": "user", "parts": [{"text": "hi"}]}]
-  }'
-```
-
-**Anthropic Claude流式测试**：
-```bash
-curl -X POST http://localhost/anthropic/v1/messages \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "anthropic-version: 2023-06-01" \
-  -d '{
-    "messages": [{"role": "user", "content": "Just say hi"}],
-    "stream": true,
-    "model":"claude-3-7-sonnet-20250219"
-  }'
-```
-
----
-
-## 7. 注意事项
-
-1. **响应体单次读取**：
-   - 在非流式模式中，`response.body().string()`会自动读取并关闭流
-   - 流式模式中避免重复读取响应体
-
-2. **连接管理**：
-   - OkHttpClient应全局复用以保证连接池效率
-   - SSE连接结束时需显式关闭通道
-
-3. **错误处理**：
-   - API错误时透传原始错误码和消息体
-   - 网络异常时记录日志并关闭连接
-
-4. **性能优化**：
-   - 开启DEBUG日志：`app.properties`中设置`app.debug=true`
-   - 监控请求处理时间：关键节点记录时间戳
-
----
-
-## 8. 技术总结
-
-本代理服务基于tio-boot框架实现以下核心功能：
-
-1. **多模型统一接入**：
-   - OpenAI：标准ChatCompletions接口
-   - Anthropic Claude：Messages API
-   - Google Gemini：generateContent/streamGenerateContent
-
-2. **双模式响应支持**：
-   - 同步模式：直接返回完整JSON响应
-   - 流式模式：通过SSE实时传输数据块
-
-3. **高效路由机制**：
-   - 路径前缀匹配不同API服务
-   - 通配符处理模型动态路径
-   - 统一请求处理方法
-
-通过本方案，可快速构建支持多主流语言模型的统一代理服务，有效解决API访问限制问题，并提供一致的开发体验。
+模型目录数据来自 CLIProxyAPI，许可证随资源保存。接口覆盖、验证范围和后续适配项见 [后端适配记录](docs/backend-adaptation.md)。本地模拟服务测试验证协议契约，真实 OAuth 账号、第三方 Go 插件和各提供方专用能力仍需分别验收，不能据此认定与参考项目全部功能等价。

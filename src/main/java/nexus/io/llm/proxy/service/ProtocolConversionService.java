@@ -1,0 +1,283 @@
+package nexus.io.llm.proxy.service;
+
+import java.util.ArrayList;
+import java.util.List;
+import com.jfinal.kit.Kv;
+import nexus.io.tio.utils.json.JsonUtils;
+import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
+
+/** Converts chat payloads while preserving native payloads when protocols match. */
+public class ProtocolConversionService {
+  public Kv request(Kv body, String from, String to, String model, boolean stream) {
+    if (from.equals(to)) { return body; }
+    Kv canonical = canonicalRequest(body, from);
+    canonical.set("model", model).set("stream", stream);
+    if ("openai".equals(to)) { return canonical; }
+    List<Kv> messages = new ArrayList<>();
+    List<Kv> system = new ArrayList<>();
+    List<Kv> inputs = new ArrayList<>();
+    for (Object value : ProxyJson.list(canonical.get("messages"))) {
+      Kv message = ProxyJson.object(value);
+      String role = message.getStr("role");
+      List<Kv> parts = parts(message.get("content"));
+      if ("system".equals(role) || "developer".equals(role)) { system.addAll(parts); continue; }
+      if ("anthropic".equals(to)) {
+        List<Kv> blocks = new ArrayList<>();
+        if ("tool".equals(role)) {
+          blocks.add(Kv.create().set("type", "tool_result").set("tool_use_id", message.get("tool_call_id")).set("content", message.get("content")));
+          role = "user";
+        } else {
+          for (Kv part : parts) { blocks.add(anthropicPart(part)); }
+          for (Object toolValue : ProxyJson.list(message.get("tool_calls"))) {
+            Kv tool = ProxyJson.object(toolValue);
+            Kv function = ProxyJson.object(tool.get("function"));
+            blocks.add(Kv.create().set("type", "tool_use").set("id", tool.get("id")).set("name", function.get("name"))
+                .set("input", arguments(function.get("arguments"))));
+          }
+        }
+        messages.add(Kv.create().set("role", role).set("content", blocks));
+      } else if ("gemini".equals(to)) {
+        List<Kv> blocks = new ArrayList<>();
+        for (Kv part : parts) {
+          if (part.get("text") != null) { blocks.add(Kv.create().set("text", part.get("text"))); }
+          else if (part.get("image_url") != null) { blocks.add(geminiImage(part)); }
+        }
+        if ("tool".equals(role)) {
+          blocks = new ArrayList<>(List.of(Kv.create().set("functionResponse", Kv.create().set("id", message.get("tool_call_id"))
+              .set("name", ProxyJson.text(message, "name", message.getStr("tool_call_id"))).set("response", arguments(message.get("content"))))));
+          role = "user";
+        }
+        for (Object toolValue : ProxyJson.list(message.get("tool_calls"))) {
+          Kv tool = ProxyJson.object(toolValue);
+          Kv function = ProxyJson.object(tool.get("function"));
+          blocks.add(Kv.create().set("functionCall", Kv.create().set("id", tool.get("id")).set("name", function.get("name")).set("args", arguments(function.get("arguments")))));
+        }
+        messages.add(Kv.create().set("role", "assistant".equals(role) ? "model" : role).set("parts", blocks));
+      } else if ("responses".equals(to)) {
+        if ("tool".equals(role)) {
+          inputs.add(Kv.create().set("type", "function_call_output").set("call_id", message.get("tool_call_id")).set("output", message.get("content")));
+          continue;
+        }
+        List<Kv> blocks = new ArrayList<>();
+        for (Kv part : parts) {
+          if (part.get("text") != null) { blocks.add(Kv.create().set("type", "assistant".equals(role) ? "output_text" : "input_text").set("text", part.get("text"))); }
+          else if (part.get("image_url") != null) { blocks.add(Kv.create().set("type", "input_image").set("image_url", ProxyJson.object(part.get("image_url")).get("url"))); }
+        }
+        if (!blocks.isEmpty()) { inputs.add(Kv.create().set("type", "message").set("role", role).set("content", blocks)); }
+        for (Object toolValue : ProxyJson.list(message.get("tool_calls"))) {
+          Kv tool = ProxyJson.object(toolValue);
+          Kv function = ProxyJson.object(tool.get("function"));
+          inputs.add(Kv.create().set("type", "function_call").set("call_id", tool.get("id")).set("name", function.get("name")).set("arguments", function.get("arguments")));
+        }
+      }
+    }
+    Kv output = Kv.create().set("model", model).set("stream", stream);
+    for (String key : List.of("temperature", "top_p", "metadata")) { if (canonical.containsKey(key)) { output.set(key, canonical.get(key)); } }
+    Object max = canonical.get("max_tokens");
+    List<Kv> tools = new ArrayList<>();
+    for (Object value : ProxyJson.list(canonical.get("tools"))) {
+      Kv function = ProxyJson.object(ProxyJson.object(value).get("function"));
+      if ("anthropic".equals(to)) { tools.add(Kv.create().set("name", function.get("name")).set("description", function.get("description")).set("input_schema", function.get("parameters"))); }
+      else { tools.add(Kv.create().set(function).set("type", "responses".equals(to) ? "function" : null)); }
+    }
+    if ("anthropic".equals(to)) {
+      output.set("messages", messages).set("max_tokens", max == null ? 8192 : max);
+      if (!system.isEmpty()) { output.set("system", system); }
+      if (!tools.isEmpty()) { output.set("tools", tools); }
+      if (canonical.get("stop") != null) { output.set("stop_sequences", canonical.get("stop") instanceof String ? List.of(canonical.get("stop")) : canonical.get("stop")); }
+    } else if ("gemini".equals(to)) {
+      output.remove("model"); output.remove("stream"); output.remove("temperature"); output.remove("top_p");
+      output.set("contents", messages);
+      if (!system.isEmpty()) { output.set("systemInstruction", Kv.create().set("parts", system.stream().map(part -> Kv.create().set("text", part.get("text"))).toList())); }
+      Kv generation = Kv.create();
+      if (max != null) { generation.set("maxOutputTokens", max); }
+      if (canonical.get("temperature") != null) { generation.set("temperature", canonical.get("temperature")); }
+      if (canonical.get("top_p") != null) { generation.set("topP", canonical.get("top_p")); }
+      output.set("generationConfig", generation);
+      if (!tools.isEmpty()) { tools.forEach(tool -> tool.remove("type")); output.set("tools", List.of(Kv.create().set("functionDeclarations", tools))); }
+    } else if ("responses".equals(to)) {
+      output.set("input", inputs);
+      if (!system.isEmpty()) { output.set("instructions", system.stream().map(part -> ProxyJson.text(part, "text", "")).reduce((a,b) -> a + "\n" + b).orElse("")); }
+      if (max != null) { output.set("max_output_tokens", max); }
+      if (!tools.isEmpty()) { output.set("tools", tools); }
+    }
+    return output;
+  }
+
+  private Kv canonicalRequest(Kv body, String from) {
+    if ("openai".equals(from)) { return Kv.create().set(body); }
+    List<Kv> messages = new ArrayList<>();
+    List<Kv> tools = new ArrayList<>();
+    Kv result = Kv.create();
+    for (String key : List.of("temperature", "top_p", "metadata", "max_tokens", "stop")) { if (body.containsKey(key)) { result.set(key, body.get(key)); } }
+    if ("anthropic".equals(from)) {
+      if (body.get("system") != null) { messages.add(Kv.create().set("role", "system").set("content", body.get("system"))); }
+      for (Object value : ProxyJson.list(body.get("messages"))) {
+        Kv message = ProxyJson.object(value);
+        List<Kv> content = new ArrayList<>();
+        List<Kv> calls = new ArrayList<>();
+        for (Kv part : parts(message.get("content"))) {
+          switch (ProxyJson.text(part, "type", "text")) {
+            case "tool_use" -> calls.add(call(part.getStr("id"), part.getStr("name"), JsonUtils.toJsonWithLongAsNumber(part.get("input"))));
+            case "tool_result" -> messages.add(Kv.create().set("role", "tool").set("tool_call_id", part.get("tool_use_id")).set("content", part.get("content")));
+            case "image" -> {
+              Kv source = ProxyJson.object(part.get("source"));
+              String url = source.getStr("url");
+              if (url == null) { url = "data:" + source.getStr("media_type") + ";base64," + source.getStr("data"); }
+              content.add(Kv.create().set("type", "image_url").set("image_url", Kv.create().set("url", url)));
+            }
+            default -> content.add(part);
+          }
+        }
+        if (!content.isEmpty() || !calls.isEmpty()) {
+          Kv converted = Kv.create().set("role", message.get("role")).set("content", content);
+          if (!calls.isEmpty()) { converted.set("tool_calls", calls); }
+          messages.add(converted);
+        }
+      }
+      for (Object value : ProxyJson.list(body.get("tools"))) {
+        Kv tool = ProxyJson.object(value);
+        tools.add(Kv.create().set("type", "function").set("function", Kv.create().set("name", tool.get("name"))
+            .set("description", tool.get("description")).set("parameters", tool.get("input_schema"))));
+      }
+    } else if ("responses".equals(from)) {
+      if (body.get("instructions") != null) { messages.add(Kv.create().set("role", "system").set("content", body.get("instructions"))); }
+      Object raw = body.get("input");
+      List<?> input = raw instanceof String ? List.of(Kv.create().set("role", "user").set("content", raw)) : ProxyJson.list(raw);
+      for (Object value : input) {
+        Kv item = ProxyJson.object(value);
+        String type = ProxyJson.text(item, "type", "message");
+        if ("function_call".equals(type)) { messages.add(Kv.create().set("role", "assistant").set("tool_calls", List.of(call(item.getStr("call_id"), item.getStr("name"), item.getStr("arguments"))))); }
+        else if ("function_call_output".equals(type)) { messages.add(Kv.create().set("role", "tool").set("tool_call_id", item.get("call_id")).set("content", item.get("output"))); }
+        else if ("message".equals(type)) {
+          List<Kv> blocks = new ArrayList<>();
+          for (Kv part : parts(item.get("content"))) {
+            if ("input_image".equals(part.getStr("type"))) { blocks.add(Kv.create().set("type", "image_url").set("image_url", Kv.create().set("url", part.get("image_url")))); }
+            else if (part.get("text") != null) { blocks.add(Kv.create().set("type", "text").set("text", part.get("text"))); }
+          }
+          messages.add(Kv.create().set("role", item.get("role")).set("content", blocks));
+        }
+      }
+      for (Object value : ProxyJson.list(body.get("tools"))) { tools.add(Kv.create().set("type", "function").set("function", value)); }
+      if (body.get("max_output_tokens") != null) { result.set("max_tokens", body.get("max_output_tokens")); }
+    } else if ("gemini".equals(from)) {
+      Kv system = ProxyJson.object(body.get("systemInstruction"));
+      if (system.isEmpty()) { system = ProxyJson.object(body.get("system_instruction")); }
+      if (!system.isEmpty()) { messages.add(Kv.create().set("role", "system").set("content", ProxyJson.list(system.get("parts")))); }
+      for (Object value : ProxyJson.list(body.get("contents"))) {
+        Kv item = ProxyJson.object(value);
+        List<Kv> content = new ArrayList<>();
+        List<Kv> calls = new ArrayList<>();
+        for (Object partValue : ProxyJson.list(item.get("parts"))) {
+          Kv part = ProxyJson.object(partValue);
+          if (part.get("text") != null) { content.add(Kv.create().set("type", "text").set("text", part.get("text"))); }
+          else if (part.get("functionCall") != null) {
+            Kv function = ProxyJson.object(part.get("functionCall"));
+            calls.add(call(ProxyJson.text(function, "id", function.getStr("name")), function.getStr("name"), JsonUtils.toJsonWithLongAsNumber(function.get("args"))));
+          } else if (part.get("functionResponse") != null) {
+            Kv function = ProxyJson.object(part.get("functionResponse"));
+            messages.add(Kv.create().set("role", "tool").set("tool_call_id", ProxyJson.text(function, "id", function.getStr("name")))
+                .set("name", function.get("name")).set("content", JsonUtils.toJsonWithLongAsNumber(function.get("response"))));
+          } else if (part.get("inlineData") != null) {
+            Kv image = ProxyJson.object(part.get("inlineData"));
+            content.add(Kv.create().set("type", "image_url").set("image_url", Kv.create().set("url", "data:" + image.getStr("mimeType") + ";base64," + image.getStr("data"))));
+          }
+        }
+        if (!content.isEmpty() || !calls.isEmpty()) {
+          Kv converted = Kv.create().set("role", "model".equals(item.getStr("role")) ? "assistant" : ProxyJson.text(item, "role", "user")).set("content", content);
+          if (!calls.isEmpty()) { converted.set("tool_calls", calls); }
+          messages.add(converted);
+        }
+      }
+      for (Object value : ProxyJson.list(body.get("tools"))) {
+        for (Object declaration : ProxyJson.list(ProxyJson.object(value).get("functionDeclarations"))) { tools.add(Kv.create().set("type", "function").set("function", declaration)); }
+      }
+      Kv generation = ProxyJson.object(body.get("generationConfig"));
+      if (generation.get("maxOutputTokens") != null) { result.set("max_tokens", generation.get("maxOutputTokens")); }
+      if (generation.get("temperature") != null) { result.set("temperature", generation.get("temperature")); }
+    }
+    result.set("messages", messages);
+    if (!tools.isEmpty()) { result.set("tools", tools); }
+    return result;
+  }
+
+  public Kv response(Kv input, String from, String to, String model) {
+    if (from.equals(to)) { return input; }
+    Kv canonical;
+    if ("openai".equals(from)) { canonical = input; }
+    else {
+      Kv request = switch (from) {
+        case "anthropic" -> Kv.create().set("messages", List.of(Kv.create().set("role", "assistant").set("content", input.get("content"))));
+        case "gemini" -> Kv.create().set("contents", ProxyJson.list(input.get("candidates")).stream().map(value -> ProxyJson.object(value).get("content")).toList());
+        default -> Kv.create().set("input", input.get("output"));
+      };
+      List<?> converted = ProxyJson.list(canonicalRequest(request, from).get("messages"));
+      Kv message = Kv.create().set("role", "assistant");
+      StringBuilder text = new StringBuilder();
+      List<Object> calls = new ArrayList<>();
+      for (Object value : converted) {
+        Kv item = ProxyJson.object(value);
+        for (Kv part : parts(item.get("content"))) { text.append(ProxyJson.text(part, "text", "")); }
+        calls.addAll(ProxyJson.list(item.get("tool_calls")));
+      }
+      message.set("content", text.toString());
+      if (!calls.isEmpty()) { message.set("tool_calls", calls); }
+      Kv usage = ProxyJson.object(input.get("usage"));
+      if ("gemini".equals(from)) { usage = ProxyJson.object(input.get("usageMetadata")); }
+      long in = ProxyJson.number(usage, "input_tokens", ProxyJson.number(usage, "promptTokenCount", 0));
+      long out = ProxyJson.number(usage, "output_tokens", ProxyJson.number(usage, "candidatesTokenCount", 0));
+      canonical = Kv.create().set("id", ProxyJson.text(input, "id", "chatcmpl-" + SnowflakeIdUtils.id())).set("object", "chat.completion").set("model", model)
+          .set("choices", List.of(Kv.create().set("index", 0).set("message", message).set("finish_reason", message.containsKey("tool_calls") ? "tool_calls" : "stop")))
+          .set("usage", Kv.create().set("prompt_tokens", (int) in).set("completion_tokens", (int) out).set("total_tokens", (int) (in + out)));
+    }
+    if ("openai".equals(to)) { return canonical; }
+    List<?> choices = ProxyJson.list(canonical.get("choices"));
+    Kv message = choices.isEmpty() ? Kv.create().set("role", "assistant").set("content", "") : ProxyJson.object(ProxyJson.object(choices.getFirst()).get("message"));
+    Kv converted = request(Kv.create().set("messages", List.of(message)), "openai", to, model, false);
+    Kv usage = ProxyJson.object(canonical.get("usage"));
+    int in = (int) ProxyJson.number(usage, "prompt_tokens", 0);
+    int out = (int) ProxyJson.number(usage, "completion_tokens", 0);
+    if ("anthropic".equals(to)) {
+      return Kv.create().set("id", canonical.get("id")).set("type", "message").set("role", "assistant").set("model", model)
+          .set("content", ProxyJson.object(ProxyJson.list(converted.get("messages")).getFirst()).get("content"))
+          .set("stop_reason", message.containsKey("tool_calls") ? "tool_use" : "end_turn").set("stop_sequence", null)
+          .set("usage", Kv.create().set("input_tokens", in).set("output_tokens", out));
+    }
+    if ("gemini".equals(to)) {
+      return Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", ProxyJson.list(converted.get("contents")).getFirst()).set("finishReason", "STOP")))
+          .set("usageMetadata", Kv.create().set("promptTokenCount", in).set("candidatesTokenCount", out).set("totalTokenCount", in + out)).set("modelVersion", model);
+    }
+    return Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
+        .set("output", converted.get("input")).set("usage", Kv.create().set("input_tokens", in).set("output_tokens", out).set("total_tokens", in + out));
+  }
+
+  private List<Kv> parts(Object value) {
+    if (value instanceof String text) { return List.of(Kv.create().set("type", "text").set("text", text)); }
+    return ProxyJson.list(value).stream().map(ProxyJson::object).toList();
+  }
+  private Kv call(String id, String name, String arguments) { return Kv.create().set("id", id).set("type", "function").set("function", Kv.create().set("name", name).set("arguments", arguments)); }
+  private Kv arguments(Object value) {
+    if (value instanceof String text) {
+      try { return ProxyJson.parse(text); } catch (RuntimeException error) { return Kv.create().set("result", text); }
+    }
+    return ProxyJson.object(value);
+  }
+  private Kv anthropicPart(Kv part) {
+    if (part.get("image_url") == null) { return part; }
+    String url = ProxyJson.object(part.get("image_url")).getStr("url");
+    Kv source = Kv.create().set("type", "url").set("url", url);
+    if (url.startsWith("data:") && url.contains(";base64,")) {
+      String[] segments = url.substring(5).split(";base64,", 2);
+      source = Kv.create().set("type", "base64").set("media_type", segments[0]).set("data", segments[1]);
+    }
+    return Kv.create().set("type", "image").set("source", source);
+  }
+  private Kv geminiImage(Kv part) {
+    String url = ProxyJson.object(part.get("image_url")).getStr("url");
+    if (url.startsWith("data:") && url.contains(";base64,")) {
+      String[] segments = url.substring(5).split(";base64,", 2);
+      return Kv.create().set("inlineData", Kv.create().set("mimeType", segments[0]).set("data", segments[1]));
+    }
+    return Kv.create().set("fileData", Kv.create().set("fileUri", url));
+  }
+}

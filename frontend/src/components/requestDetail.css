@@ -1,0 +1,19 @@
+.config-dialog-backdrop.proxy-request-backdrop { padding: 16px; }
+.config-dialog.proxy-request-dialog { display: flex; flex-direction: column; gap: 12px; width: min(1600px, calc(100vw - 32px)); max-width: none; height: calc(100dvh - 32px); max-height: none; min-height: 0; overflow: hidden; padding: 24px; box-sizing: border-box; }
+.proxy-request-dialog > * { flex-shrink: 0; }
+.proxy-request-dialog > p { margin: 0; }
+.proxy-request-toolbar, .proxy-request-section-heading { display: flex; align-items: center; gap: 12px; }
+.proxy-request-toolbar > div, .proxy-request-section-heading h3 { flex: 1; min-width: 0; }
+.proxy-request-toolbar h2 { margin: 0 0 4px; }
+.proxy-request-toolbar small { overflow-wrap: anywhere; }
+.proxy-request-dialog .proxy-request-sections { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 20px; padding-right: 8px; }
+.proxy-request-sections section { min-width: 0; }
+.proxy-request-section-heading h3 { margin: 0; }
+.proxy-request-sections pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60dvh; overflow: auto; padding: 16px; border: 1px solid var(--theme-d5d2cb); border-radius: 8px; font-size: 13px; line-height: 1.6; user-select: text; }
+.proxy-request-row { cursor: pointer; }
+.proxy-request-row:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+@media (max-width: 640px) {
+  .config-dialog-backdrop.proxy-request-backdrop { padding: 8px; }
+  .config-dialog.proxy-request-dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); padding: 12px; }
+  .proxy-request-toolbar { gap: 8px; }
+}

@@ -1,51 +1,114 @@
 package nexus.io.llm.proxy.config;
 
-import nexus.io.llm.proxy.handler.GeminiLiveWsHandler;
-import nexus.io.llm.proxy.handler.LLMChatHandler;
-import nexus.io.llm.proxy.handler.LLMChatProxyHandler;
-import nexus.io.llm.proxy.handler.LLMTestChatHandler;
-import nexus.io.llm.proxy.handler.LLModelProxyHandler;
+import nexus.io.llm.proxy.exception.ProxyExceptionHandler;
+import nexus.io.llm.proxy.handler.*;
+import nexus.io.llm.proxy.interceptor.ProxyTokenInterceptor;
+import nexus.io.llm.proxy.service.PluginService;
+import nexus.io.jfinal.aop.Aop;
+import nexus.io.tio.boot.http.interceptor.HttpInteceptorConfigure;
+import nexus.io.tio.boot.http.interceptor.HttpInterceptorModel;
 import nexus.io.tio.boot.server.TioBootServer;
-import nexus.io.tio.boot.websocket.WebSocketRouter;
 import nexus.io.tio.http.server.router.HttpRequestRouter;
 
 public class LLMProxyAppConfig {
-
   public void config() {
     TioBootServer server = TioBootServer.me();
-    HttpRequestRouter requestRouter = server.getRequestRouter();
-    if (requestRouter != null) {
-      LLMChatHandler llmChatHandler = new LLMChatHandler();
-      requestRouter.add("/v1/chat/completions", llmChatHandler);
-      
-      requestRouter.add("/test/v1/chat/completions", new LLMTestChatHandler());
-      
-      
-      LLMChatProxyHandler openAIV1ChatHandler = new LLMChatProxyHandler();
-      
-      requestRouter.add("/openai/v1/chat/completions", openAIV1ChatHandler);
-      requestRouter.add("/openrouter/v1/chat/completions", openAIV1ChatHandler);
-      requestRouter.add("/cerebras/v1/chat/completions", openAIV1ChatHandler);
-      requestRouter.add("/anthropic/v1/chat/completions", openAIV1ChatHandler);
-      
-      requestRouter.add("/anthropic/v1/messages", openAIV1ChatHandler);
-      requestRouter.add("/google/v1beta/models/*", openAIV1ChatHandler);
-      requestRouter.add("/vertexai/v1beta/models/*", openAIV1ChatHandler);
-      
-      LLModelProxyHandler llModelProxyHandler = new LLModelProxyHandler();
-      requestRouter.add("/openai/v1/models", llModelProxyHandler);
-      
-      
-      
-    }
-    WebSocketRouter webSocketRouter = server.getWebSocketRouter();
-    if (webSocketRouter != null) {
-      String uri = "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
-      String url = "wss://generativelanguage.googleapis.com" + uri;
-      GeminiLiveWsHandler geminiLiveWsHandler = new GeminiLiveWsHandler(url);
-      // GOOGLE_GEMINI_BASE_URL=http://localhost:8080/google/gemini
-      String path = "/google/gemini" + uri;
-      webSocketRouter.add(path, geminiLiveWsHandler);
+    server.setExceptionHandler(new ProxyExceptionHandler());
+    // WebSocket upgrades use these handlers; HTTP POST requests use the routes below.
+    server.getWebSocketRouter().add("/v1/responses", new ResponsesWebSocketHandler());
+    server.getWebSocketRouter().add("/backend-api/codex/responses", new ResponsesWebSocketHandler());
+    server.getWebSocketRouter().add("/v1/realtime", new RealtimeWebSocketHandler());
+    HttpInteceptorConfigure interceptors = new HttpInteceptorConfigure();
+    HttpInterceptorModel token = new HttpInterceptorModel();
+    token.setName("proxy-token");
+    token.addBlockUrl("/**");
+    token.setInterceptor(new ProxyTokenInterceptor());
+    interceptors.add(token);
+    server.setHttpInteceptorConfigure(interceptors);
+    HttpRequestRouter router = server.getRequestRouter();
+    router.get("/api/status", new StatusHandler()::handle);
+    router.get("/v8/management/observability/logs", new LogsGetHandler()::handle);
+    router.post("/v8/management/observability/logs/delete", new LogsClearHandler()::handle);
+    router.get("/v8/management/observability/logs/errors", new ErrorLogsListHandler()::handle);
+    router.get("/v8/management/observability/logs/errors/{name}", new ErrorLogGetHandler()::handle);
+    router.get("/v8/management/observability/logs/requests/{id}", new RequestLogGetHandler()::handle);
+    router.get("/v8/management/observability/usage/api-keys", new ApiKeyUsageHandler()::handle);
+    router.post("/v8/management/routing/cooldown/reset", new CooldownResetHandler()::handle);
+    router.post("/v8/management/config.yaml", new ConfigYamlSaveHandler()::handle);
+    router.get("/v8/management/config.yaml", new ConfigYamlGetHandler()::handle);
+    router.get("/v8/management/credentials/models", new CredentialModelsHandler()::handle);
+    router.get("/v8/management/routing/model-definitions/{channel}", new ModelDefinitionsHandler()::handle);
+    router.get("/v8/management/plugins", new PluginListHandler()::handle);
+    router.get("/v8/management/plugins/store", new PluginStoreListHandler()::handle);
+    router.post("/v8/management/plugins/{id}/delete", new PluginDeleteHandler()::handle);
+    router.post("/v8/management/plugins/store/{id}/install", new PluginInstallHandler()::handle);
+    router.get("/v8/management/plugins/{id}/quota", new PluginQuotaDescribeHandler()::handle);
+    router.post("/v8/management/plugins/{id}/quota", new PluginQuotaFetchHandler()::handle);
+    router.post("/v8/management/plugins/{id}/quota/delete", new PluginQuotaResetHandler()::handle);
+    router.get("/v8/management/credentials", new CredentialsListHandler()::handle);
+    router.get("/v8/management/credentials/download", new CredentialDownloadHandler()::handle);
+    router.post("/v8/management/credentials", new CredentialUploadHandler()::handle);
+    router.post("/v8/management/credentials/delete", new CredentialDeleteHandler()::handle);
+    router.post("/v8/management/credentials/status", new CredentialStatusHandler()::handle);
+    router.post("/v8/management/credentials/fields", new CredentialFieldsHandler()::handle);
+    router.post("/v8/management/credentials/refresh", new CredentialRefreshHandler()::handle);
+    router.get("/v8/management/oauth/auth-url", new OAuthStartHandler()::handle);
+    router.get("/v8/management/oauth/status", new OAuthStatusHandler()::handle);
+    router.post("/v8/management/oauth/session/cancel", new OAuthCancelHandler()::handle);
+    router.post("/v8/management/oauth/callback", new OAuthCallbackHandler()::handle);
+    router.get("/v8/management/oauth/callback", new OAuthCallbackGetHandler()::handle);
+    router.post("/v8/management/oauth/import", new OAuthImportHandler()::handle);
+    router.post("/v8/management/requests/api-call", new ManagementApiCallHandler()::handle);
+    router.get("/v8/management/config", new DesktopConfigGetHandler()::handle);
+    router.get("/v8/management/config/*", new DesktopConfigGetHandler()::handle);
+    router.post("/v8/management/config", new DesktopConfigSaveHandler()::handle);
+    router.post("/v8/management/config/*", new DesktopConfigSaveHandler()::handle);
+    router.get("/api/settings", new SettingsGetHandler()::handle);
+    router.post("/api/settings", new SettingsSaveHandler()::handle);
+    router.get("/api/providers", new ProvidersListHandler()::handle);
+    router.post("/api/providers/save", new ProviderSaveHandler()::handle);
+    router.post("/api/providers/delete", new ProviderDeleteHandler()::handle);
+    router.post("/api/providers/health", new ProviderHealthHandler()::handle);
+    router.post("/api/keys/create", new ApiKeyCreateHandler()::handle);
+    router.get("/api/usage", new UsageListHandler()::handle);
+    router.get("/api/usage/detail", new RequestDetailHandler()::handle);
+    router.get("/api/usage/format", new RequestFormatHandler()::handle);
+    router.get("/v8/management/observability/usage/queue", new UsageQueueHandler()::handle);
+    router.post("/v8/management/observability/usage/ack", new UsageAcknowledgeHandler()::handle);
+    router.get("/v1/models", new ModelsHandler()::handle);
+    router.get("/v1/models/*", new ModelDetailHandler()::handle);
+    router.get("/v1beta/models", new GeminiModelsHandler()::handle);
+    router.get("/v1beta/models/*", new GeminiModelDetailHandler()::handle);
+    router.post("/v1/chat/completions", new ChatCompletionsHandler()::handle);
+    router.post("/openai/v1/chat/completions", new ChatCompletionsHandler()::handle);
+    router.post("/v1/completions", new CompletionsHandler()::handle);
+    router.post("/v1/messages", new MessagesHandler()::handle);
+    router.post("/anthropic/v1/messages", new MessagesHandler()::handle);
+    router.post("/v1/messages/count_tokens", new CountTokensHandler()::handle);
+    router.post("/v1/responses", new ResponsesHandler()::handle);
+    router.post("/backend-api/codex/responses", new ResponsesHandler()::handle);
+    router.post("/v1/responses/compact", new ResponsesCompactHandler()::handle);
+    router.post("/v1beta/models/*", new GeminiGenerateHandler()::handle);
+    router.post("/google/v1beta/models/*", new GeminiGenerateHandler()::handle);
+    router.post("/v1/images/generations", new ImageGenerationsHandler()::handle);
+    router.post("/v1/images/edits", new ImagesEditsHandler()::handle);
+    router.post("/v1/videos", new VideoGenerationsHandler()::handle);
+    router.post("/v1/videos/generations", new VideoGenerationsHandler()::handle);
+    router.post("/v1/videos/edits", new VideoEditsHandler()::handle);
+    router.post("/v1/videos/extensions", new VideoExtensionsHandler()::handle);
+    router.get("/v1/videos/{id}", new VideoRetrieveHandler()::handle);
+    router.post("/openai/v1/videos", new OpenAiVideoCreateHandler()::handle);
+    router.get("/openai/v1/videos/{id}", new VideoRetrieveHandler()::handle);
+    router.get("/openai/v1/videos/{id}/content", new VideoContentHandler()::handle);
+    router.post("/v1/tts", new XaiTtsHandler()::handle);
+    router.post("/v1beta/interactions", new GeminiInteractionsHandler()::handle);
+    router.post("/v1/alpha/search", new CodexSearchHandler()::handle);
+    router.post("/backend-api/codex/alpha/search", new CodexSearchHandler()::handle);
+    router.post("/v1/audio/speech", new AudioSpeechHandler()::handle);
+    try {
+      Aop.get(PluginService.class).refresh();
+    } catch (Exception error) {
+      throw new IllegalStateException("Cannot initialize plugins", error);
     }
   }
 }

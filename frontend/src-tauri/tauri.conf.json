@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LLM Poroxy UI",
+  "identifier": "com.litongjava.llmproxy",
+  "build": {
+    "beforeDevCommand": "node scripts/prepare-core.mjs && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "node scripts/prepare-core.mjs && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "LLM Poroxy UI",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 640,
+        "minHeight": 600,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
+        "backgroundThrottling": "disabled",
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "resources": ["resources/java-llm-proxy.jar"],
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

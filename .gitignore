@@ -155,4 +155,11 @@ vcpkg_installed/
 .env
 .next/
 app.zip
+/data/
 my.txt
+!frontend/package-lock.json
+!frontend/src-tauri/Cargo.lock
+frontend/src-tauri/resources/java-llm-proxy.jar
+
+# Local OAuth credentials
+secrets.txt
