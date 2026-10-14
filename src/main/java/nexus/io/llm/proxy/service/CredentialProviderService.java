@@ -43,7 +43,8 @@ public class CredentialProviderService {
           case "kimi-ai" -> "https://api.kimi.ai/coding/v1";
           case "xai" -> "https://cli-chat-proxy.grok.com/v1";
           case "meta" -> "https://api.meta.ai/v1";
-          case "antigravity" -> "https://cloudcode-pa.googleapis.com/v1internal";
+          // Generation uses the daily endpoint; project discovery keeps its control endpoint.
+          case "antigravity" -> "https://daily-cloudcode-pa.googleapis.com/v1internal";
           case "vertex" -> "https://" + ProxyJson.text(credential, "location", "us-central1") + "-aiplatform.googleapis.com/v1/projects/"
               + credential.getStr("project_id") + "/locations/" + ProxyJson.text(credential, "location", "us-central1") + "/publishers/google/models";
           case "devin" -> "https://server.codeium.com";

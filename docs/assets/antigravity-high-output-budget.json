@@ -1,0 +1,37 @@
+[
+  {
+    "maxOutputTokens": 16,
+    "httpStatus": "200",
+    "text": "",
+    "usage": {
+      "promptTokenCount": 5,
+      "totalTokenCount": 17,
+      "thoughtsTokenCount": 12
+    },
+    "observedAt": "2026-10-14 23:45:13 +0800"
+  },
+  {
+    "maxOutputTokens": null,
+    "httpStatus": "200",
+    "text": "OK.",
+    "usage": {
+      "promptTokenCount": 5,
+      "candidatesTokenCount": 2,
+      "totalTokenCount": 58,
+      "thoughtsTokenCount": 51
+    },
+    "observedAt": "2026-10-14 23:45:21 +0800"
+  },
+  {
+    "maxOutputTokens": 256,
+    "httpStatus": "200",
+    "text": "OK.",
+    "usage": {
+      "promptTokenCount": 5,
+      "candidatesTokenCount": 2,
+      "totalTokenCount": 76,
+      "thoughtsTokenCount": 69
+    },
+    "observedAt": "2026-10-14 23:46:18 +0800"
+  }
+]

@@ -106,7 +106,7 @@ async fn core_health_probe_uses_local_inference_key_and_waits_for_model_text() {
     let body: serde_json::Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
     assert_eq!(body["model"], "custom/model-alias");
     assert_eq!(body["stream"], true);
-    assert_eq!(body["max_tokens"], 16);
+    assert_eq!(body["max_tokens"], 256);
     assert_eq!(body["messages"][0]["role"], "user");
     let payload = serde_json::to_value(result).unwrap();
     assert!(payload["firstTokenLatencyMs"].as_u64().is_some());

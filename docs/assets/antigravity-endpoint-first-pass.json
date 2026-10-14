@@ -1,0 +1,137 @@
+{
+  "status": "FAIL",
+  "sourceRequest": null,
+  "healthModels": [
+    "gemini-3-flash",
+    "gemini-3.1-flash-image",
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash-high",
+    "gemini-3.1-flash-lite",
+    "gemini-4-argon-high"
+  ],
+  "toolCount": 0,
+  "corePort": 2259,
+  "results": [
+    {
+      "case": "stream",
+      "status": "PASS",
+      "httpStatus": 200,
+      "requestId": "700099079843004416",
+      "provider": "antigravity-700095076890402816.json",
+      "requestedModel": "gemini-3-flash",
+      "upstreamModel": "gemini-3-flash",
+      "tools": 0,
+      "checks": {
+        "HTTP 200": true,
+        "Antigravity selected": true,
+        "OK response": true,
+        "Correct model": true,
+        "SSE completion": true
+      },
+      "response": "data: {\"model\":\"gemini-3-flash\",\"id\":\"chatcmpl-700099091628998656\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"OK.\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"model\":\"gemini-3-flash\",\"id\":\"chatcmpl-700099091628998656\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":5,\"total_tokens\":7},\"model\":\"gemini-3-flash\",\"id\":\"chatcmpl-700099091628998656\",\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+      "schemaErrors": [],
+      "observedAt": "2026-10-14 23:43:50 +0800"
+    },
+    {
+      "case": "stream",
+      "status": "PASS",
+      "httpStatus": 200,
+      "requestId": "700099091947765760",
+      "provider": "antigravity-700095076890402816.json",
+      "requestedModel": "gemini-3.1-flash-image",
+      "upstreamModel": "gemini-3.1-flash-image",
+      "tools": 0,
+      "checks": {
+        "HTTP 200": true,
+        "Antigravity selected": true,
+        "OK response": true,
+        "Correct model": true,
+        "SSE completion": true
+      },
+      "response": "data: {\"model\":\"gemini-3.1-flash-image\",\"id\":\"chatcmpl-700099107579936768\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"OK\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"model\":\"gemini-3.1-flash-image\",\"id\":\"chatcmpl-700099107579936768\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":5,\"total_tokens\":6},\"model\":\"gemini-3.1-flash-image\",\"id\":\"chatcmpl-700099107579936768\",\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+      "schemaErrors": [],
+      "observedAt": "2026-10-14 23:43:54 +0800"
+    },
+    {
+      "case": "stream",
+      "status": "PASS",
+      "httpStatus": 200,
+      "requestId": "700099108863393792",
+      "provider": "antigravity-700095076890402816.json",
+      "requestedModel": "gemini-3.5-flash-lite",
+      "upstreamModel": "gemini-3.5-flash-lite",
+      "tools": 0,
+      "checks": {
+        "HTTP 200": true,
+        "Antigravity selected": true,
+        "OK response": true,
+        "Correct model": true,
+        "SSE completion": true
+      },
+      "response": "data: {\"model\":\"gemini-3.5-flash-lite\",\"id\":\"chatcmpl-700099119579840512\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"OK.\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"model\":\"gemini-3.5-flash-lite\",\"id\":\"chatcmpl-700099119579840512\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":5,\"total_tokens\":7},\"model\":\"gemini-3.5-flash-lite\",\"id\":\"chatcmpl-700099119579840512\",\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+      "schemaErrors": [],
+      "observedAt": "2026-10-14 23:43:58 +0800"
+    },
+    {
+      "case": "stream",
+      "status": "FAIL",
+      "httpStatus": 200,
+      "requestId": "700099123103055872",
+      "provider": "antigravity-700095076890402816.json",
+      "requestedModel": "gemini-3.8-flash-high",
+      "upstreamModel": "gemini-3.8-flash-high",
+      "tools": 0,
+      "checks": {
+        "HTTP 200": true,
+        "Antigravity selected": true,
+        "OK response": false,
+        "Correct model": true,
+        "SSE completion": true
+      },
+      "response": "data: {\"model\":\"gemini-3.8-flash-high\",\"id\":\"chatcmpl-700099135723716608\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"usage\":{\"completion_tokens\":0,\"prompt_tokens\":5,\"total_tokens\":5},\"model\":\"gemini-3.8-flash-high\",\"id\":\"chatcmpl-700099135723716608\",\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+      "schemaErrors": [],
+      "observedAt": "2026-10-14 23:44:01 +0800"
+    },
+    {
+      "case": "stream",
+      "status": "PASS",
+      "httpStatus": 200,
+      "requestId": "700099135904071680",
+      "provider": "antigravity-700095076890402816.json",
+      "requestedModel": "gemini-3.1-flash-lite",
+      "upstreamModel": "gemini-3.1-flash-lite",
+      "tools": 0,
+      "checks": {
+        "HTTP 200": true,
+        "Antigravity selected": true,
+        "OK response": true,
+        "Correct model": true,
+        "SSE completion": true
+      },
+      "response": "data: {\"model\":\"gemini-3.1-flash-lite\",\"id\":\"chatcmpl-700099145748103168\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"OK.\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"model\":\"gemini-3.1-flash-lite\",\"id\":\"chatcmpl-700099145748103168\",\"choices\":[{\"finish_reason\":null,\"delta\":{\"content\":\"\"},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: {\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":5,\"total_tokens\":7},\"model\":\"gemini-3.1-flash-lite\",\"id\":\"chatcmpl-700099145748103168\",\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{},\"index\":0}],\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+      "schemaErrors": [],
+      "observedAt": "2026-10-14 23:44:03 +0800"
+    },
+    {
+      "case": "stream",
+      "status": "FAIL",
+      "httpStatus": 404,
+      "requestId": "700099145999761408",
+      "provider": "antigravity-700095076890402816.json",
+      "requestedModel": "gemini-4-argon-high",
+      "upstreamModel": "gemini-4-argon-high",
+      "tools": 0,
+      "checks": {
+        "HTTP 200": false,
+        "Antigravity selected": true,
+        "OK response": false,
+        "Correct model": true,
+        "SSE completion": false
+      },
+      "response": "[{\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"Requested entity was not found.\",\n    \"errors\": [\n      {\n        \"message\": \"Requested entity was not found.\",\n        \"domain\": \"global\",\n        \"reason\": \"notFound\"\n      }\n    ],\n    \"status\": \"NOT_FOUND\"\n  }\n}\n]",
+      "schemaErrors": [],
+      "observedAt": "2026-10-14 23:44:05 +0800"
+    }
+  ],
+  "scope": "Live Antigravity upstream"
+}

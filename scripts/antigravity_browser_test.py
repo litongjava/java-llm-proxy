@@ -42,19 +42,27 @@ def schema_errors(schema, path='parameters'):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
-    parser.add_argument('--database', required=True)
+    parser.add_argument('--database')
+    parser.add_argument('--health-models', nargs='+', help='Run short OpenAI model health probes instead of the schema replay')
     parser.add_argument('--request-id', default='700021355011530752')
     parser.add_argument('--jar', default='target/java-llm-proxy-1.0.0.jar')
     parser.add_argument('--port', type=int, default=18770)
     parser.add_argument('--mock', action='store_true', help='Use a strict local upstream instead of consuming live quota')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    with sqlite3.connect(Path(args.database).resolve().as_uri() + '?mode=ro', uri=True) as connection:
-        row = connection.execute('select body from requests where id=?', (args.request_id,)).fetchone()
-    if not row:
-        raise RuntimeError('Source request not found')
-    source = json.loads(row[0])
-    client = json.loads(source['requestBody'])
+    if args.health_models:
+        if args.mock:
+            parser.error('--health-models requires a live upstream')
+        client = {'model': args.health_models[0], 'tools': []}
+    else:
+        if not args.database:
+            parser.error('--database is required for schema replay')
+        with sqlite3.connect(Path(args.database).resolve().as_uri() + '?mode=ro', uri=True) as connection:
+            row = connection.execute('select body from requests where id=?', (args.request_id,)).fetchone()
+        if not row:
+            raise RuntimeError('Source request not found')
+        source = json.loads(row[0])
+        client = json.loads(source['requestBody'])
     run_dir = Path(tempfile.mkdtemp(prefix='antigravity-browser-', dir=root / 'target'))
     token = secrets.token_urlsafe(32)
     core_port = free_port()
@@ -120,15 +128,22 @@ def main():
         with response:
             return response.status, response.read().decode('utf-8')
 
-    state = {'status': 'READY', 'sourceRequest': args.request_id, 'toolCount': len(client['tools']),
+    state = {'status': 'READY', 'sourceRequest': None if args.health_models else args.request_id,
+             'healthModels': args.health_models, 'toolCount': len(client['tools']),
              'corePort': core_port, 'results': [], 'scope': 'Strict local mock upstream' if args.mock else 'Live Antigravity upstream'}
     lock = threading.Lock()
 
-    def run_case(stream):
+    def run_case(stream, model=None):
         try:
-            body = {'model': client['model'], 'messages': [{'role': 'user', 'content': 'Reply exactly OK. Do not call any tools.'}],
+            if args.health_models:
+                body = {'model': model, 'messages': [{'role': 'user', 'content': 'Reply with OK.'}],
+                        'max_tokens': 256, 'stream': stream}
+                path = '/v1/chat/completions'
+            else:
+                body = {'model': client['model'], 'messages': [{'role': 'user', 'content': 'Reply exactly OK. Do not call any tools.'}],
                     'metadata': {'user_id': 'protocol-schema-smoke-test'}, 'tools': client['tools'], 'max_tokens': 64, 'stream': stream}
-            status, response = call('/tools/claude-desktop/v1/messages', body)
+                path = '/tools/claude-desktop/v1/messages'
+            status, response = call(path, body)
             record = None
             for _ in range(30):
                 with sqlite3.connect((run_dir / 'data/proxy.db').as_uri() + '?mode=ro', uri=True) as connection:
@@ -148,18 +163,31 @@ def main():
                       'All tools retained': len(declarations) == len(client['tools']), 'No request metadata': 'metadata' not in upstream,
                       'No rejected schema keywords': not errors, 'OK response': 'OK' in response}
             if stream:
-                checks['Anthropic SSE completion'] = '"message_stop"' in response
+                checks['SSE completion'] = '[DONE]' in response if args.health_models else '"message_stop"' in response
+            if args.health_models:
+                checks = {key: checks[key] for key in ('HTTP 200', 'Antigravity selected', 'OK response')}
+                checks['Correct model'] = record['model'] == model
+                if stream:
+                    checks['SSE completion'] = '[DONE]' in response
             result = {'case': 'stream' if stream else 'non-stream', 'status': 'PASS' if all(checks.values()) else 'FAIL',
                       'httpStatus': status, 'requestId': record['id'], 'provider': record['provider'], 'requestedModel': record.get('requestedModel'),
                       'upstreamModel': record['model'], 'tools': len(declarations), 'checks': checks,
                       'response': response[:1600], 'schemaErrors': errors[:10], 'observedAt': time.strftime('%Y-%m-%d %H:%M:%S %z')}
             state['results'].append(result)
-            state['status'] = result['status']
         except Exception as error:
             state['status'] = 'ERROR'
             state['error'] = str(error)
         finally:
             (run_dir / 'results.json').write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    def run_suite(stream):
+        for model in args.health_models or [None]:
+            state['status'] = 'RUNNING'
+            run_case(stream, model)
+            if state['status'] == 'ERROR':
+                return
+        state['status'] = 'PASS' if all(result['status'] == 'PASS' for result in state['results']) else 'FAIL'
+        (run_dir / 'results.json').write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -194,7 +222,7 @@ def main():
                     return
                 state.pop('error', None)
                 state['status'] = 'RUNNING'
-                threading.Thread(target=run_case, args=(self.path.endswith('/stream'),), daemon=True).start()
+                threading.Thread(target=run_suite, args=(self.path.endswith('/stream'),), daemon=True).start()
             self.send(b'{"started":true}')
 
     with (run_dir / 'core.log').open('w', encoding='utf-8') as log:

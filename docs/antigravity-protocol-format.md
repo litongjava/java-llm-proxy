@@ -33,10 +33,10 @@ Anthropic 请求转为 Gemini 格式后，代理仍将 `metadata` 放入 Antigra
 | 旧包 + 本地严格校验上游 | HTTP 400；metadata 与 Schema 关键字仍存在 | 复现缺陷：`700027544054358016` |
 | 修复包 + 本地上游，非流式 | HTTP 200，Anthropic message 返回 `OK` | PASS：`700027255091204096` |
 | 修复包 + 本地上游，流式 | HTTP 200，返回 `OK` 和 `message_stop` | PASS：`700027335261130752` |
-| 修复包 + 真实 Antigravity，非流式 | HTTP 429，`RESOURCE_EXHAUSTED` / `rateLimitExceeded` | 生成验证受配额限制：`700026875043315712` |
-| 修复包 + 真实 Antigravity，流式 | 未发送，避免配额错误后继续重试 | NOT_RUN |
+| 修复包 + 真实 Antigravity，非流式 | HTTP 429，`RESOURCE_EXHAUSTED` / `rateLimitExceeded` | 生成验证未通过：`700026875043315712` |
+| 修复包 + 真实 Antigravity，流式 | 未发送，避免 429 后继续重试 | NOT_RUN |
 
-真实上游测试时间为 18:57:01 +0800。转发记录确认走 `antigravity-700008882472550400.json`，116 个工具完整且已无本次被拒字段；但 **429 不证明上游所有格式检查均已通过**，配额恢复后仍需真实端到端复测。
+真实上游测试时间为 18:57:01 +0800。转发记录确认走 `antigravity-700008882472550400.json`，116 个工具完整且已无本次被拒字段；但 **429 不证明上游所有格式检查均已通过，也不能单凭错误文字认定账号配额耗尽**。后续短请求对照发现生成默认地址应使用 daily 服务，同一个 Token 和请求在旧地址返回 429、daily 地址返回 200。详见 [生成地址与模型健康检查](antigravity-generation-endpoint.md)。本节 116 个工具的真实请求尚需单独复测。
 
 原始结果摘要见 [JSON 证据](assets/antigravity-schema-results.json)。DOM 与接口结果属于同一测试数据源，用于内部一致性检查，不作为两个独立来源。
 
@@ -52,7 +52,7 @@ Anthropic 请求转为 Gemini 格式后，代理仍将 `metadata` 放入 Antigra
 
 ![修复后的两种响应链路通过](assets/antigravity-schema-local-pass.png)
 
-### 真实上游：配额限制
+### 真实上游：当时返回 429
 
 ![真实 Antigravity 返回 429](assets/antigravity-schema-live-quota.png)
 

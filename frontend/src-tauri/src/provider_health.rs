@@ -421,7 +421,9 @@ async fn probe_core_model(
         data: serde_json::json!({
             "model": model,
             "messages": [{ "role": "user", "content": "Reply with OK." }],
-            "max_tokens": 16,
+            // Reasoning tokens share the completion budget on some providers.
+            // Leave room for thinking before the short visible health response.
+            "max_tokens": 256,
             "stream": true,
         }).to_string(),
         protocol: "openai-chat".to_string(),
