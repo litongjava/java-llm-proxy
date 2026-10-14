@@ -34,7 +34,9 @@ public class ModelRoutingService {
     for (Kv alias : aliases(provider)) {
       if (model.equals(alias.getStr("alias"))) { model = alias.getStr("name"); break; }
     }
-    if (model == null || (!provider.models.isEmpty() && !provider.models.contains(model))) { return null; }
+    // An OAuth credential with no known models must not become a catch-all route.
+    if (model == null || ((provider.credentialName != null || !provider.models.isEmpty())
+        && !provider.models.contains(model))) { return null; }
     if (!Aop.get(ModelCatalogService.class).allowed(provider.metadata, model)) { return null; }
     return model;
   }

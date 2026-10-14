@@ -4,6 +4,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 import com.jfinal.kit.Kv;
 import nexus.io.jfinal.aop.Aop;
@@ -25,6 +27,17 @@ public class ModelCatalogService {
     NativePlugin plugin = Aop.get(PluginService.class).provider(provider, true);
     if (plugin != null && plugin.supports("model_provider")) { return ProxyJson.list(plugin.call("model.static", Kv.create()).get("Models")); }
     String channel = switch (provider) { case "vertex" -> "gemini"; case "kimi-ai" -> "kimi"; default -> provider; };
+    // Codex's bundled catalog is split by plan, while OAuth credentials use type "codex".
+    if ("codex".equals(channel) && ProxyJson.list(catalog.get(channel)).isEmpty()) {
+      Map<String, Kv> models = new LinkedHashMap<>();
+      for (String plan : List.of("free", "team", "plus", "pro")) {
+        for (Object value : ProxyJson.list(catalog.get("codex-" + plan))) {
+          Kv model = ProxyJson.object(value);
+          if (model.getStr("id") != null) { models.putIfAbsent(model.getStr("id"), model); }
+        }
+      }
+      return new ArrayList<>(models.values());
+    }
     return ProxyJson.list(catalog.get(channel));
   }
   public Kv credentialModels(String name) throws Exception {
