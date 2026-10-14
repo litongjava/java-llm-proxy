@@ -20,6 +20,7 @@ def free_port():
 
 exchanges = []
 polls = {}
+scenario = 'success'
 
 class OAuthMock(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -35,6 +36,8 @@ class OAuthMock(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/profile':
+            if scenario == 'profile_error':
+                return self.reply({'error': 'private-upstream-message'}, 403)
             self.reply({'authorization':self.headers.get('Authorization')})
         else:
             self.reply({'models':[]})
@@ -50,6 +53,8 @@ class OAuthMock(BaseHTTPRequestHandler):
             device = 'device-' + str(len(exchanges))
             self.reply({'device_code':device,'user_code':'TEST-CODE','verification_uri':'http://localhost/verify','expires_in':900,'interval':1})
         elif self.path.startswith('/token/'):
+            if scenario == 'token_error':
+                return self.reply({'error':'invalid_grant','error_description':'private-code-and-token'},400)
             if body.get('grant_type', '').endswith('device_code'):
                 device = body['device_code']
                 polls[device] = polls.get(device,0) + 1
@@ -62,13 +67,24 @@ class OAuthMock(BaseHTTPRequestHandler):
         elif self.path == '/key':
             self.reply({'api_key':'meta-minted','base_url':'http://localhost/v1','user_email':'meta@example.test'})
         elif self.path.endswith(':loadCodeAssist'):
+            assert self.headers.get('User-Agent', '').startswith('antigravity/')
+            if scenario == 'project_error':
+                return self.reply({'error':{'status':'PERMISSION_DENIED','message':'private-account-data'}},403)
+            if scenario == 'onboarding':
+                return self.reply({'allowedTiers':[{'id':'test-tier','isDefault':True}]})
             self.reply({'cloudaicompanionProject':{'id':'mock-google-project'}})
+        elif self.path.endswith(':onboardUser'):
+            assert 'google-api-nodejs-client/' in self.headers.get('User-Agent', '')
+            assert self.headers.get('X-Goog-Api-Client') == 'gl-node/22.21.1'
+            assert body['metadata']['ide_version'] and body['tier_id']=='test-tier'
+            self.reply({'done':True,'response':{'cloudaicompanionProject':{'id':'onboarded-project'}}})
         elif self.path.endswith('/responses'):
             self.reply({'output':[{'type':'message','content':[{'type':'output_text','text':'OAuth proxy works'}]}], 'usage':{'input_tokens':3,'output_tokens':4}})
         else:
             self.reply({'error':'unknown'},404)
 
 def run():
+    global scenario
     root = Path(__file__).resolve().parents[1]
     data = Path(tempfile.mkdtemp(prefix='oauth-review-', dir=root/'target'))
     secrets = data / 'secrets.txt'
@@ -169,6 +185,22 @@ def run():
             api('credentials/fields', {'name':codex['name'],'models':['oauth-test']})
             status,result=call('/v1/responses',{'model':'oauth-test','input':'hello'},'oauth-review-client')
             assert status==200 and 'OAuth proxy works' in json.dumps(result), (status,result)
+            for scenario, expected in [('token_error','invalid_grant'),('profile_error','profile request failed (HTTP 403)'),
+                                       ('project_error','Antigravity loadCodeAssist failed (HTTP 403)'),('onboarding',None)]:
+                before = {path.name: path.read_bytes() for path in (data/'oauth').glob('*.json')}
+                started=api('oauth/auth-url?provider=antigravity')
+                query=urllib.parse.parse_qs(urllib.parse.urlsplit(started['url']).query)
+                callback=query['redirect_uri'][0]+'?'+urllib.parse.urlencode({'code':'test-code','state':started['state']})
+                status,_=call(callback,absolute=True)
+                result=api('oauth/status?state='+started['state'])
+                if expected:
+                    assert status==400 and result['status']=='error' and expected in result['error'], result
+                    assert 'private-' not in json.dumps(result), result
+                    after={path.name:path.read_bytes() for path in (data/'oauth').glob('*.json')}
+                    assert before==after, 'Failed sign-in changed existing credentials'
+                else:
+                    assert status==200 and result['status']=='ok',result
+            print('PASS: Antigravity token/profile/project failure diagnostics, credential preservation, onboarding headers and metadata')
             print('PASS: eight OAuth provider contracts, PKCE, loopback callback, replay protection, device polling, cancellation, credential CRUD, secret redaction, refresh rotation, quota API token substitution and OAuth model invocation')
         finally:
             process.terminate()

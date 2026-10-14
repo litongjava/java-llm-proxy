@@ -16,11 +16,18 @@ npm.cmd ci
 npm.cmd run tauri -- dev
 ```
 
+`tauri dev` 模式的桌面窗口从 `http://localhost:1420` 加载页面，需要保持 Vite 开发服务运行。
+直接重新打开该模式生成的 `cpa-gui.exe` 不会自动启动 Vite；如果出现 `localhost refused to connect`，
+请先在 `frontend` 目录执行 `npm.cmd run dev`，再刷新或重新打开桌面窗口。Java 内核的 `8318` 端口正常并不代表前端服务已启动。
+普通浏览器访问开发地址会使用 Mock 数据，只用于验证页面渲染；真实账号和内核状态请在桌面窗口中查看。
+
 生成可运行的调试桌面程序：
 
 ```powershell
 npm.cmd run tauri -- build --debug --no-bundle
 ```
+
+此构建方式将前端静态文件嵌入桌面程序，适合需要直接启动且不依赖 Vite 的场景。
 
 Tauri 构建脚本把 Java JAR 放入桌面资源目录。启动内核时使用 `java -jar`，优先读取 `JAVA_HOME`。端口、管理密钥、客户端密钥、认证目录和代理设置沿用原桌面配置界面。
 
@@ -59,6 +66,11 @@ Antigravity 的 Google OAuth 凭据从本地 `secrets.txt` 读取，不再内置
 环境变量或启动参数中的 `proxy.oauth.antigravity.client-id` / `client-secret` 优先于文件配置。
 修改文件后需重启 Java 内核。
 凭据缺失时仅 Antigravity OAuth 返回明确的配置错误，其他提供方不受影响。
+
+如果项目根目录已配置却仍提示 `Configure proxy.oauth.antigravity.client-id ...`，
+请检查桌面内核的工作目录：桌面端默认从 `cpa-core` 启动 Java，不会读取项目根目录的文件。
+将上述两项配置合并到内核工作目录的 `secrets.txt`，然后在桌面端重启内核。
+完整排查和验证步骤见 [Antigravity 登录配置](docs/antigravity-oauth.md)。
 
 Java 配置通过 `EnvUtils` 读取，可通过环境变量或启动参数设置。
 

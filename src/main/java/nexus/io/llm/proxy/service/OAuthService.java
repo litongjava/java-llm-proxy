@@ -14,6 +14,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.jfinal.kit.Kv;
 import com.sun.net.httpserver.HttpServer;
 import nexus.io.chat.UniChatClient;
@@ -22,6 +24,7 @@ import nexus.io.llm.proxy.model.OAuthCallbackInput;
 import nexus.io.llm.proxy.model.OAuthProviderSpec;
 import nexus.io.llm.proxy.model.OAuthSession;
 import nexus.io.llm.proxy.model.OAuthStartResult;
+import nexus.io.llm.proxy.exception.OAuthRequestException;
 import nexus.io.llm.proxy.validation.ManagementParameterValidator;
 import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.environment.EnvUtils;
@@ -34,6 +37,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class OAuthService {
+  private static final Logger LOG = LoggerFactory.getLogger(OAuthService.class);
   private final ConcurrentHashMap<String, OAuthSession> sessions = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<Integer, HttpServer> callbacks = new ConcurrentHashMap<>();
   private final SecureRandom random = new SecureRandom();
@@ -225,6 +229,7 @@ public class OAuthService {
         parameters = Kv.create().set("code", input.code).set("code_verifier", session.verifier);
       }
       session.status = "exchanging";
+      String stage = "Token exchange";
       try {
         Kv result = post(session.spec.tokenUrl, parameters, session.spec.jsonToken, null);
         requireTokenResponse(result);
@@ -235,12 +240,16 @@ public class OAuthService {
           }
           result.set("access_token", token);
         }
+        stage = "Account setup";
         complete(session, result);
         return Kv.create().set("status", "ok");
       } catch (Exception error) {
         session.status = "error";
-        session.error = "Token exchange failed";
-        throw error;
+        session.error = OAuthFailureUtils.message(stage, error);
+        session.verifier = null;
+        LOG.warn("OAuth login failed: provider={}, stage={}, type={}, reason={}",
+            session.spec.provider, stage, error.getClass().getSimpleName(), session.error);
+        throw new OAuthRequestException(session.error);
       }
     }
   }
@@ -361,12 +370,18 @@ public class OAuthService {
       builder.header("Authorization", "Bearer " + bearer);
     }
     try (Response response = UniChatClient.execute(client(), builder.build())) {
-      BusinessException.require(response.isSuccessful(), 502, "OAUTH_HTTP_ERROR", "OAuth metadata request failed: HTTP " + response.code());
+      if (!response.isSuccessful()) {
+        throw new OAuthRequestException("OAuth profile request failed (HTTP " + response.code() + "). Check account access and the outbound proxy.");
+      }
       return ProxyJson.parse(response.body().string());
     }
   }
 
   public Kv post(String url, Kv parameters, boolean json, String bearer) throws Exception {
+    return post(url, parameters, json, bearer, Kv.create());
+  }
+
+  public Kv post(String url, Kv parameters, boolean json, String bearer, Kv headers) throws Exception {
     ManagementParameterValidator.httpUrl(url);
     RequestBody body;
     if (json) {
@@ -381,19 +396,24 @@ public class OAuthService {
       body = form.build();
     }
     Request.Builder builder = new Request.Builder().url(url).header("Accept", "application/json").header("User-Agent", "LLMProxy/1.0").post(body);
+    headers.forEach((name, value) -> builder.header(name.toString(), value.toString()));
     if (bearer != null) {
       builder.header("Authorization", "Bearer " + bearer);
     }
     try (Response response = UniChatClient.execute(client(), builder.build())) {
-      Kv result = ProxyJson.parse(response.body().string());
+      Kv result;
+      try {
+        result = ProxyJson.parse(response.body().string());
+      } catch (RuntimeException error) {
+        throw new OAuthRequestException("OAuth endpoint returned invalid JSON (HTTP " + response.code() + "). Check the outbound proxy.");
+      }
       result.set("http_status", response.code());
       return result;
     }
   }
 
   private void requireTokenResponse(Kv response) {
-    BusinessException.require(ProxyJson.number(response, "http_status", 200) < 400 && response.get("error") == null,
-        502, "OAUTH_TOKEN_ERROR", "OAuth server rejected the request: " + ProxyJson.text(response, "error", "HTTP error"));
+    OAuthFailureUtils.requireSuccess(response, "OAuth token request");
   }
 
   private synchronized void startCallbackServer(String redirectUri) throws Exception {
