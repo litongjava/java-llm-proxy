@@ -1,6 +1,8 @@
 import { useConfirmation } from '../components/ConfirmationDialog';
 import { AdvancedSettingsGroup } from '../components/api-access/AdvancedSettingsGroup';
 import { FreeApiProviders } from '../components/api-access/FreeApiProviders';
+import { freeApiProviderText } from '../i18n/freeApiProviders';
+import { handleHorizontalTabKey } from '../components/tabKeyboardNavigation';
 import { normalizeProviderModels } from '../services/providerModels';
 import { ModelSelectionPanel } from '../components/ModelSelectionPanel';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
@@ -1225,7 +1227,8 @@ export const providerRecordWithDisabledState = (
 
 export function ApiAccessPage() {
   const { askConfirmation, confirmationDialog } = useConfirmation();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const [accessTab, setAccessTab] = useState<'connections' | 'discover'>('connections');
   const [records, setRecords] = useState(emptyRecords);
   const [activeCategory, setActiveCategory] = useState<ProviderCategory>(readSelectedCategory);
   const [filter, setFilter] = useState('');
@@ -1597,7 +1600,20 @@ export function ApiAccessPage() {
 
   return (
     <section className="page management-page api-access-page">
+      <div className="agent-subpage-tabs api-access-tabs" role="tablist" aria-label="API Access">
+        {(['connections', 'discover'] as const).map(tab => (
+          <button type="button" key={tab} id={`api-access-tab-${tab}`} role="tab"
+            className={accessTab === tab ? 'active' : ''} aria-selected={accessTab === tab}
+            aria-controls={`api-access-panel-${tab}`} tabIndex={accessTab === tab ? 0 : -1}
+            onClick={() => setAccessTab(tab)}
+            onKeyDown={event => handleHorizontalTabKey(event, ['connections', 'discover'] as const, tab, setAccessTab,
+              next => document.getElementById(`api-access-tab-${next}`))}>
+            {freeApiProviderText(tab, locale)}
+          </button>
+        ))}
+      </div>
       {confirmationDialog}
+      <div id="api-access-panel-connections" role="tabpanel" aria-labelledby="api-access-tab-connections" hidden={accessTab !== 'connections'}>
       {error ? <MessageNotice message={error} onDismiss={() => setError('')} /> : null}
       <div className="provider-workbench real-provider-workbench">
         <aside className="panel provider-category-panel">
@@ -1732,7 +1748,10 @@ export function ApiAccessPage() {
         </section>
       </div>
 
-      <FreeApiProviders />
+      </div>
+      <div id="api-access-panel-discover" role="tabpanel" aria-labelledby="api-access-tab-discover" hidden={accessTab !== 'discover'}>
+        <FreeApiProviders onManage={() => setAccessTab('connections')} />
+      </div>
 
       {dialogOpen ? (
         <ApiProviderDialog
