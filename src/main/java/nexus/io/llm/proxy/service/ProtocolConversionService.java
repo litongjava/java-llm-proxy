@@ -3,11 +3,13 @@ package nexus.io.llm.proxy.service;
 import java.util.ArrayList;
 import java.util.List;
 import com.jfinal.kit.Kv;
+import nexus.io.jfinal.aop.Aop;
 import nexus.io.tio.utils.json.JsonUtils;
 import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
 
 /** Converts chat payloads while preserving native payloads when protocols match. */
 public class ProtocolConversionService {
+  private final GeminiUsageService geminiUsage = Aop.get(GeminiUsageService.class);
   public Kv request(Kv body, String from, String to, String model, boolean stream) {
     if (from.equals(to)) { return body; }
     Kv canonical = canonicalRequest(body, from);
@@ -235,6 +237,9 @@ public class ProtocolConversionService {
       canonical = Kv.create().set("id", ProxyJson.text(input, "id", "chatcmpl-" + SnowflakeIdUtils.id())).set("object", "chat.completion").set("model", model)
           .set("choices", List.of(Kv.create().set("index", 0).set("message", message).set("finish_reason", message.containsKey("tool_calls") ? "tool_calls" : "stop")))
           .set("usage", Kv.create().set("prompt_tokens", (int) in).set("completion_tokens", (int) out).set("total_tokens", (int) (in + out)));
+      if ("gemini".equals(from)) {
+        canonical.set("usage", geminiUsage.openAi(usage));
+      }
     }
     if ("openai".equals(to)) { return canonical; }
     List<?> choices = ProxyJson.list(canonical.get("choices"));
@@ -247,14 +252,15 @@ public class ProtocolConversionService {
       return Kv.create().set("id", canonical.get("id")).set("type", "message").set("role", "assistant").set("model", model)
           .set("content", ProxyJson.object(ProxyJson.list(converted.get("messages")).getFirst()).get("content"))
           .set("stop_reason", message.containsKey("tool_calls") ? "tool_use" : "end_turn").set("stop_sequence", null)
-          .set("usage", Kv.create().set("input_tokens", in).set("output_tokens", out));
+          .set("usage", "gemini".equals(from) ? geminiUsage.anthropic(usage) : Kv.create().set("input_tokens", in).set("output_tokens", out));
     }
     if ("gemini".equals(to)) {
       return Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", ProxyJson.list(converted.get("contents")).getFirst()).set("finishReason", "STOP")))
           .set("usageMetadata", Kv.create().set("promptTokenCount", in).set("candidatesTokenCount", out).set("totalTokenCount", in + out)).set("modelVersion", model);
     }
     return Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
-        .set("output", converted.get("input")).set("usage", Kv.create().set("input_tokens", in).set("output_tokens", out).set("total_tokens", in + out));
+        .set("output", converted.get("input")).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
+            : Kv.create().set("input_tokens", in).set("output_tokens", out).set("total_tokens", in + out));
   }
 
   private List<Kv> parts(Object value) {

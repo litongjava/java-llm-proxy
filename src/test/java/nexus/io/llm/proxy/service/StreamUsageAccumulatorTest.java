@@ -7,6 +7,55 @@ import static org.junit.Assert.assertEquals;
 
 public class StreamUsageAccumulatorTest {
   @Test
+  public void readsNativeGeminiThoughtsAndCacheInStreamingAndBufferedResponses() {
+    assertGeminiUsage("""
+        {"modelVersion":"gemini-test","usageMetadata":{
+          "promptTokenCount":100,"cachedContentTokenCount":80,
+          "candidatesTokenCount":13,"thoughtsTokenCount":7,"totalTokenCount":120}}
+        """, 100, 20, 80, 7);
+  }
+
+  @Test
+  public void nativeGeminiFallbackUsesRawPromptWithoutDoubleCountingCacheOrThoughts() {
+    assertGeminiUsage("""
+        {"modelVersion":"gemini-test","usageMetadata":{
+          "promptTokenCount":100,"cachedContentTokenCount":80,
+          "thoughtsTokenCount":7,"totalTokenCount":120}}
+        """, 100, 20, 80, 7);
+    assertGeminiUsage("""
+        {"modelVersion":"gemini-test","usageMetadata":{
+          "promptTokenCount":142871,"cachedContentTokenCount":140830,
+          "candidatesTokenCount":0,"thoughtsTokenCount":0,"totalTokenCount":142871}}
+        """, 142871, 0, 140830, 0);
+    assertGeminiUsage("""
+        {"modelVersion":"gemini-test","usageMetadata":{
+          "promptTokenCount":100,"cachedContentTokenCount":80,"totalTokenCount":90}}
+        """, 100, 0, 80, 0);
+  }
+
+  private void assertGeminiUsage(String body, long input, long output, long cached, long thoughts) {
+    for (boolean streaming : new boolean[] {false, true}) {
+      RequestRecord record = new RequestRecord();
+      ProtocolFormatService formatter = new ProtocolFormatService();
+      if (streaming) {
+        StreamUsageAccumulator accumulator = new StreamUsageAccumulator(formatter, record);
+        String event = "data: " + body.replace("\n", "") + "\n\n";
+        for (byte value : event.getBytes(StandardCharsets.UTF_8)) {
+          accumulator.accept(new byte[] {value}, 1);
+        }
+        accumulator.finishEvent();
+      } else {
+        formatter.usage(record, body);
+      }
+      assertEquals(input, record.inputTokens);
+      assertEquals(output, record.outputTokens);
+      assertEquals(cached, record.cachedTokens);
+      assertEquals(thoughts, record.reasoningTokens);
+      assertEquals("gemini-test", record.responseModel);
+    }
+  }
+
+  @Test
   public void readsDeepSeekCacheHitAndActualResponseModel() {
     RequestRecord record = new RequestRecord();
     record.model = "deepseek-flash";

@@ -6,6 +6,7 @@ import java.util.Map;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONWriter;
 import com.jfinal.kit.Kv;
+import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.FormattedRequest;
 import nexus.io.llm.proxy.model.RequestRecord;
 import nexus.io.tio.utils.json.JsonUtils;
@@ -90,7 +91,10 @@ public class ProtocolFormatService {
         usage = asObject(asObject(event.get("response")).get("usage"));
       }
       if (usage.isEmpty()) {
-        usage = asObject(event.get("usageMetadata"));
+        Kv metadata = asObject(event.get("usageMetadata"));
+        if (!metadata.isEmpty()) {
+          usage = Aop.get(GeminiUsageService.class).openAi(metadata);
+        }
       }
       record.inputTokens = Math.max(record.inputTokens, number(usage, "prompt_tokens", "input_tokens", "promptTokenCount"));
       record.outputTokens = Math.max(record.outputTokens, number(usage, "completion_tokens", "output_tokens", "candidatesTokenCount"));

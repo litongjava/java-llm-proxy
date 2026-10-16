@@ -9,11 +9,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import com.jfinal.kit.Kv;
+import nexus.io.jfinal.aop.Aop;
 import nexus.io.tio.utils.json.JsonUtils;
 import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
 
 /** Incremental SSE translation; buffering is limited to the current event and tool arguments. */
 public class ProtocolEventStream extends InputStream {
+  private final GeminiUsageService geminiUsage = Aop.get(GeminiUsageService.class);
   private final BufferedReader reader;
   private final String from;
   private final String to;
@@ -26,6 +28,7 @@ public class ProtocolEventStream extends InputStream {
   private boolean terminal;
   private int inputTokens;
   private int outputTokens;
+  private final Kv geminiMetadata = Kv.create();
   private int sequence;
   private final StringBuilder text = new StringBuilder();
 
@@ -115,7 +118,8 @@ public class ProtocolEventStream extends InputStream {
       if ("response.function_call_arguments.delta".equals(type)) { events.append(tool((int) ProxyJson.number(event, "output_index", 0), null, null, event.getStr("delta"))); }
       if ("response.completed".equals(type)) { terminal = true; usage(ProxyJson.object(ProxyJson.object(event.get("response")).get("usage")), "input_tokens", "output_tokens"); }
     } else {
-      usage(ProxyJson.object(event.get("usageMetadata")), "promptTokenCount", "candidatesTokenCount");
+      geminiMetadata.set(ProxyJson.object(event.get("usageMetadata")));
+      usage(geminiUsage.openAi(geminiMetadata), "prompt_tokens", "completion_tokens");
       for (Object candidate : ProxyJson.list(event.get("candidates"))) {
         if (ProxyJson.object(candidate).get("finishReason") != null) { terminal = true; }
         Kv content = ProxyJson.object(ProxyJson.object(candidate).get("content"));
@@ -186,6 +190,9 @@ public class ProtocolEventStream extends InputStream {
   private String finish() {
     StringBuilder result = new StringBuilder(start());
     Kv usage = Kv.create().set("prompt_tokens", inputTokens).set("completion_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens);
+    if ("gemini".equals(from)) {
+      usage = geminiUsage.openAi(geminiMetadata);
+    }
     if ("anthropic".equals(to)) {
       result.append(event("content_block_stop", Kv.create().set("index", 0)));
       for (Object value : tools.values()) {
@@ -196,7 +203,8 @@ public class ProtocolEventStream extends InputStream {
         result.append(event("content_block_stop", Kv.create().set("index", call.get("index"))));
       }
       result.append(event("message_delta", Kv.create().set("delta", Kv.create().set("stop_reason", tools.isEmpty() ? "end_turn" : "tool_use").set("stop_sequence", null))
-          .set("usage", Kv.create().set("input_tokens", inputTokens).set("output_tokens", outputTokens))));
+          .set("usage", "gemini".equals(from) ? geminiUsage.anthropic(usage)
+              : Kv.create().set("input_tokens", inputTokens).set("output_tokens", outputTokens))));
       result.append(event("message_stop", Kv.create()));
     } else if ("gemini".equals(to)) {
       List<Kv> parts = new ArrayList<>();
@@ -220,7 +228,8 @@ public class ProtocolEventStream extends InputStream {
       }
       for (int index = 0; index < outputs.size(); index++) { result.append(event("response.output_item.done", Kv.create().set("output_index", index).set("item", outputs.get(index)))); }
       result.append(event("response.completed", Kv.create().set("response", Kv.create().set("id", id).set("object", "response").set("status", "completed")
-          .set("model", model).set("output", outputs).set("usage", Kv.create().set("input_tokens", inputTokens).set("output_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens)))));
+          .set("model", model).set("output", outputs).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
+              : Kv.create().set("input_tokens", inputTokens).set("output_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens)))));
     } else { result.append(openai(Kv.create(), tools.isEmpty() ? "stop" : "tool_calls", usage)).append("data: [DONE]\n\n"); }
     return result.toString();
   }
