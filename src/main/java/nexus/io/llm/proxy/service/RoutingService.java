@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -17,6 +18,15 @@ public class RoutingService {
   private final ConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();
   private record Binding(String credential, long expires) { }
   private final ConcurrentHashMap<String, Binding> sessions = new ConcurrentHashMap<>();
+  private final LongSupplier cooldownTime;
+
+  public RoutingService() {
+    this(System::currentTimeMillis);
+  }
+
+  RoutingService(LongSupplier cooldownTime) {
+    this.cooldownTime = cooldownTime;
+  }
 
   private Kv configuration() { return ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("routing")); }
 
@@ -59,23 +69,26 @@ public class RoutingService {
   }
   private String key(Provider provider, String model) { return provider.id + "\n" + model; }
   public boolean available(Provider provider, String model) {
-    String key = key(provider, model);
-    Long until = cooldowns.get(key);
-    if (until == null) { return true; }
-    if (until <= System.currentTimeMillis()) { cooldowns.remove(key, until); return true; }
-    return false;
+    return cooldowns.computeIfPresent(key(provider, model),
+        (key, until) -> until <= cooldownTime.getAsLong() ? null : until) == null;
   }
   public void result(Provider provider, String model, int status, String retryAfter) {
-    if (status >= 200 && status < 400) { cooldowns.remove(key(provider, model)); return; }
+    if (status >= 200 && status < 400) {
+      // In-flight successes must not cancel a cooldown recorded by another request.
+      // Routing resumes when the cooldown expires or an operator explicitly resets it.
+      cooldowns.computeIfPresent(key(provider, model),
+          (key, until) -> until <= cooldownTime.getAsLong() ? null : until);
+      return;
+    }
     if (Boolean.TRUE.equals(provider.metadata.getBoolean("disable-cooling")) || Boolean.TRUE.equals(provider.metadata.getBoolean("disable_cooling"))) { return; }
     if (status == 429 || status == 401 || status == 403 || status >= 500) {
       long seconds = status == 429 ? 60 : status >= 500 ? 5 : 300;
       try { if (retryAfter != null) { seconds = Math.max(1, Math.min(3600, Long.parseLong(retryAfter))); } }
       catch (NumberFormatException ignored) {
-        try { seconds = Math.max(1, Math.min(3600, (ZonedDateTime.parse(retryAfter, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() - System.currentTimeMillis()) / 1000)); }
+        try { seconds = Math.max(1, Math.min(3600, (ZonedDateTime.parse(retryAfter, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() - cooldownTime.getAsLong()) / 1000)); }
         catch (RuntimeException invalidDate) { }
       }
-      cooldowns.put(key(provider, model), System.currentTimeMillis() + seconds * 1000);
+      cooldowns.put(key(provider, model), cooldownTime.getAsLong() + seconds * 1000);
     }
   }
   public Provider pick(List<Provider> candidates, String model, String strategy) {
