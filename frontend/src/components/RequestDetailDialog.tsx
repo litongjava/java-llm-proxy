@@ -8,6 +8,9 @@ import './requestDetail.css';
 
 type RequestDetail = {
   id: string;
+  originator?: string;
+  session_id?: string;
+  thread_id?: string;
   protocol: string;
   method: string;
   path: string;
@@ -99,6 +102,13 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
         <button type="button" className="secondary-button" aria-label={label('Close', '关闭')} onClick={onClose}><X size={18} /></button>
       </header>
       {detail && <p>{detail.method} {detail.path} · {detail.status} · {formatted?.protocol ?? detail.protocol}</p>}
+      {detail && <div className="proxy-client-context">
+        {(['originator', 'session_id', 'thread_id'] as const).map(field => <div key={field}>
+          <span>{field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}</span>
+          <div><code>{detail[field] || '—'}</code><button type="button" className="icon-button" disabled={!detail[field]}
+            aria-label={`${label('Copy', '复制')} ${field}`} onClick={() => void copy(detail[field] || '')}><Copy size={14} /></button></div>
+        </div>)}
+      </div>}
       {error && <p role="alert">{error}</p>}
       {notice && <span role="status">{notice}</span>}
       {!detail && !error && <p>{label('Loading…', '加载中…')}</p>}

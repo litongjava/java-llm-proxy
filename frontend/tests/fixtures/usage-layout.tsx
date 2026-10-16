@@ -101,6 +101,7 @@ mockIPC(async (cmd, args) => {
     };
   }
   if (cmd === 'get_usage_events') {
+    (window as any).__clientContextQuery = args?.query;
     const query = args?.query as {
       page: number; page_size: number; model?: string; source?: string;
       provider?: string; upstream?: string; api_key_hash?: string; failed?: boolean; canceled?: boolean;

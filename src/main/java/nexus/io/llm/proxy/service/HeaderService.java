@@ -10,6 +10,25 @@ public final class HeaderService {
       "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length", "content-encoding");
   private HeaderService() { }
 
+  public static void captureClientContext(nexus.io.llm.proxy.model.RequestRecord record) {
+    if (record.requestHeaders == null) return;
+    record.originator = contextHeader(record.requestHeaders, "originator");
+    record.session_id = contextHeader(record.requestHeaders, "session-id");
+    record.thread_id = contextHeader(record.requestHeaders, "thread-id");
+  }
+
+  private static String contextHeader(Map<?, ?> headers, String name) {
+    for (String alias : new String[] {name, name.replace('-', '_')}) {
+      for (Map.Entry<?, ?> entry : headers.entrySet()) {
+        if (alias.equalsIgnoreCase(String.valueOf(entry.getKey())) && entry.getValue() != null) {
+          String value = entry.getValue().toString().trim();
+          if (!value.isEmpty()) return value;
+        }
+      }
+    }
+    return null;
+  }
+
   public static boolean transport(String name) {
     return HOP.contains(name.toLowerCase(Locale.ROOT));
   }

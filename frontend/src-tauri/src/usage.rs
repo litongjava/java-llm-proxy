@@ -227,6 +227,13 @@ pub(crate) struct UsageRecord {
     model: String,
     #[serde(default, alias = "responseModel")]
     response_model: String,
+    #[serde(default)]
+    originator: String,
+    #[serde(default)]
+    session_id: String,
+    #[serde(default)]
+    thread_id: String,
+
     // Derived from the active price catalog when reading a page; never trust imported estimates.
     #[serde(default, skip_deserializing)]
     cost: Option<UsageRecordCost>,
@@ -302,6 +309,13 @@ pub(crate) struct UsageQuery {
     source: Option<String>,
     #[serde(default)]
     upstream: Option<String>,
+    #[serde(default)]
+    originator: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    thread_id: Option<String>,
+
     #[serde(default)]
     api_key_hash: Option<String>,
     #[serde(default)]
@@ -1338,6 +1352,7 @@ fn initialize_usage_schema(connection: &Connection) -> Result<(), String> {
         .map_err(|error| format!("Failed to initialize SQLite usage records schema: {error}"))?;
     ensure_usage_failure_columns(connection)?;
     ensure_usage_response_model_column(connection)?;
+    ensure_usage_client_context_columns(connection)?;
     connection
         .execute(
             "CREATE INDEX IF NOT EXISTS idx_usage_events_canceled_timestamp ON usage_events(canceled, timestamp_ms DESC)",
@@ -1347,6 +1362,19 @@ fn initialize_usage_schema(connection: &Connection) -> Result<(), String> {
     connection
         .pragma_update(None, "user_version", USAGE_DATABASE_SCHEMA_VERSION)
         .map_err(|error| format!("Failed to update SQLite usage records version: {error}"))
+}
+
+fn ensure_usage_client_context_columns(connection: &Connection) -> Result<(), String> {
+    let columns = usage_table_columns(connection, "usage_events")?;
+    for column in ["originator", "session_id", "thread_id"] {
+        if !columns.contains(column) {
+            connection.execute(&format!("ALTER TABLE usage_events ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"), [])
+                .map_err(|error| format!("Failed to add {column}: {error}"))?;
+        }
+        connection.execute(&format!("CREATE INDEX IF NOT EXISTS idx_usage_{column} ON usage_events({column}, timestamp_ms DESC)"), [])
+            .map_err(|error| format!("Failed to index {column}: {error}"))?;
+    }
+    Ok(())
 }
 
 fn ensure_usage_response_model_column(connection: &Connection) -> Result<(), String> {
@@ -2662,12 +2690,12 @@ fn insert_usage_records_in_transaction(
                 generate, cached_tokens, collector_source,
                 input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
                 cache_creation_tokens, total_tokens, canceled, failure_status,
-                failure_body, created_at, response_model
+                failure_body, created_at, response_model, originator, session_id, thread_id
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                 ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
                 ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-                ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41
+                ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44
             )
             "#,
         )
@@ -2739,6 +2767,10 @@ fn insert_usage_records_in_transaction(
                     record.failure_body,
                     created_at,
                     record.response_model,
+                    record.originator,
+                    record.session_id,
+                    record.thread_id,
+
                 ])
                 .map_err(|error| format!("Failed to write SQLite usage records: {error}"))?,
         );
@@ -2858,6 +2890,9 @@ fn normalize_usage_record(value: Value, config: &GuiConfigFile) -> Result<UsageR
             .or_else(|| string_field(object, "resolvedModel"))
             .or_else(|| string_field(object, "model"))
             .unwrap_or_else(|| "unknown".to_string()),
+        originator: string_field(object, "originator").unwrap_or_default(),
+        session_id: string_field(object, "session_id").unwrap_or_default(),
+        thread_id: string_field(object, "thread_id").unwrap_or_default(),
         response_model: string_field(object, "response_model")
             .or_else(|| string_field(object, "responseModel")).unwrap_or_default(),
         cost: None,
@@ -2972,6 +3007,9 @@ fn build_usage_filter(query: &UsageQuery) -> UsageSqlFilter {
         "api_key_hash",
         query.api_key_hash.as_deref(),
     );
+    add_text_filter(&mut clauses, &mut params, "originator", query.originator.as_deref());
+    add_text_filter(&mut clauses, &mut params, "session_id", query.session_id.as_deref());
+    add_text_filter(&mut clauses, &mut params, "thread_id", query.thread_id.as_deref());
     if let Some(canceled) = query.canceled {
         clauses.push("canceled = ?".to_string());
         params.push(SqlValue::Integer(i64::from(canceled)));
@@ -4588,7 +4626,7 @@ fn load_usage_events_with_notes(
             cached_tokens, collector_source,
             input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
             cache_creation_tokens, total_tokens, canceled, failure_status,
-            failure_body, id, response_model
+            failure_body, id, response_model, originator, session_id, thread_id
         FROM usage_events{}
         ORDER BY timestamp_ms DESC, id DESC
         LIMIT ? OFFSET ?
@@ -4650,6 +4688,10 @@ fn usage_record_from_row(row: &Row<'_>) -> rusqlite::Result<UsageRecord> {
         api_group_key: row.get(20)?,
         model: row.get(8)?,
         response_model: row.get(37)?,
+        originator: row.get(38)?,
+        session_id: row.get(39)?,
+        thread_id: row.get(40)?,
+
         cost: None,
         alias: row.get(9)?,
         client_ip: row.get(21)?,
@@ -5441,6 +5483,10 @@ mod tests {
             api_group_key: "hash".to_string(),
             model: model.to_string(),
             response_model: String::new(),
+            originator: String::new(),
+            session_id: String::new(),
+            thread_id: String::new(),
+
             cost: None,
             alias: String::new(),
             client_ip: None,
@@ -5861,6 +5907,36 @@ mod tests {
         let legacy: UsageRecord = serde_json::from_value(encoded).unwrap();
         assert!(legacy.response_model.is_empty());
         assert_eq!(legacy.model, "gpt-a");
+    }
+
+    #[test]
+    fn client_context_migration_roundtrip_and_filters() {
+        let root = test_root("client-context");
+        let mut connection = open_test_database(&root);
+        let old = sample_record("old", "2026-07-17T20:30:00+08:00", "gpt");
+        insert_usage_records(&mut connection, &[old]).unwrap();
+        for column in ["originator", "session_id", "thread_id"] {
+            connection.execute_batch(&format!("DROP INDEX idx_usage_{column}; ALTER TABLE usage_events DROP COLUMN {column};")).unwrap();
+        }
+        ensure_usage_client_context_columns(&connection).unwrap();
+        ensure_usage_client_context_columns(&connection).unwrap();
+        let mut record = sample_record("new", "2026-07-17T20:31:00+08:00", "gpt");
+        record.originator = "codex-tui".into();
+        record.session_id = "session-1".into();
+        record.thread_id = "thread-1".into();
+        insert_usage_records(&mut connection, &[record]).unwrap();
+        let config = GuiConfigFile::default();
+        for (field, value) in [("originator", "codex-tui"), ("session_id", "session-1"), ("thread_id", "thread-1")] {
+            let query: UsageQuery = serde_json::from_value(serde_json::json!({field: value})).unwrap();
+            let page = load_usage_events(&connection, &query, &config).unwrap();
+            assert_eq!(page.total, 1);
+            assert_eq!(page.items[0].session_id, "session-1");
+            let query: UsageQuery = serde_json::from_value(serde_json::json!({field: "' OR 1=1 --"})).unwrap();
+            assert_eq!(load_usage_events(&connection, &query, &config).unwrap().total, 0);
+        }
+        assert_eq!(load_usage_events(&connection, &UsageQuery::default(), &config).unwrap().total, 2);
+        drop(connection);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

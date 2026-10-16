@@ -43,6 +43,14 @@ public class StorageService {
               cost REAL, summary TEXT NOT NULL, body TEXT NOT NULL
             )
             """);
+        for (String column : List.of("originator", "session_id", "thread_id")) {
+          boolean exists = false;
+          try (ResultSet columns = statement.executeQuery("PRAGMA table_info(requests)")) {
+            while (columns.next()) { if (column.equals(columns.getString("name"))) exists = true; }
+          }
+          if (!exists) statement.execute("ALTER TABLE requests ADD COLUMN " + column + " TEXT");
+          statement.execute("CREATE INDEX IF NOT EXISTS requests_" + column + " ON requests(" + column + ", timestamp DESC)");
+        }
         statement.execute("CREATE INDEX IF NOT EXISTS requests_time ON requests(timestamp DESC)");
         statement.execute("CREATE TABLE IF NOT EXISTS usage_queue (id TEXT PRIMARY KEY)");
         statement.execute("""
@@ -148,6 +156,7 @@ public class StorageService {
   }
 
   public void record(RequestRecord record) {
+    HeaderService.captureClientContext(record);
     String body = JsonUtils.toJson(record);
     RequestRecord summary = JsonUtils.parse(body, RequestRecord.class);
     summary.requestBody = null;
@@ -160,12 +169,12 @@ public class StorageService {
     summary.responseHeaders = null;
     try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement("""
         INSERT INTO requests(id,timestamp,model,provider,api_key,source,status,duration,
-          input_tokens,output_tokens,cached_tokens,reasoning_tokens,cost,summary,body)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          input_tokens,output_tokens,cached_tokens,reasoning_tokens,cost,summary,body,originator,session_id,thread_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """)) {
       Object[] values = {record.id, record.timestamp, record.model, record.provider, record.apiKeyName,
           record.source, record.status, record.durationMs, record.inputTokens, record.outputTokens,
-          record.cachedTokens, record.reasoningTokens, record.cost, JsonUtils.toJson(summary), body};
+          record.cachedTokens, record.reasoningTokens, record.cost, JsonUtils.toJson(summary), body, record.originator, record.session_id, record.thread_id};
       bind(statement, Arrays.asList(values));
       statement.executeUpdate();
     } catch (Exception e) {
@@ -227,6 +236,10 @@ public class StorageService {
     filter(where, values, "provider", query.provider);
     filter(where, values, "api_key", query.apiKeyName);
     filter(where, values, "source", query.source);
+    filter(where, values, "originator", query.originator);
+    filter(where, values, "session_id", query.session_id);
+    filter(where, values, "thread_id", query.thread_id);
+
     if ("success".equals(query.result)) {
       where.append(" AND status>=200 AND status<400");
     } else if ("error".equals(query.result)) {

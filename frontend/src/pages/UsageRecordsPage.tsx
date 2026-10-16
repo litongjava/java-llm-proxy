@@ -155,6 +155,10 @@ type UsageQuery = {
   provider?: string;
   source?: string;
   upstream?: string;
+  originator?: string;
+  session_id?: string;
+  thread_id?: string;
+
   api_key_hash?: string;
   failed?: boolean;
   canceled?: boolean;
@@ -261,6 +265,7 @@ export function UsageRecordsPage() {
   const [model, setModel] = useState('');
 
   const [source, setSource] = useState('');
+  const [clientContext, setClientContext] = useState({ originator: '', session_id: '', thread_id: '' });
   const [apiKeyHash, setApiKeyHash] = useState('');
   const [result, setResult] = useState('all');
   const [page, setPage] = useState(1);
@@ -307,6 +312,7 @@ export function UsageRecordsPage() {
       timeQuery: nextTimeQuery,
       query: {
         ...nextTimeQuery,
+        ...(activeTab === 'events' ? Object.fromEntries(Object.entries(clientContext).map(([key, value]) => [key, value.trim() || undefined])) : {}),
         model: model || undefined,
         upstream: source || undefined,
         api_key_hash: apiKeyHash || undefined,
@@ -314,7 +320,7 @@ export function UsageRecordsPage() {
         canceled: result === 'canceled' ? true : result === 'failed' ? false : undefined,
       } satisfies UsageQuery,
     };
-  }, [apiKeyHash, customEnd, customStart, model, range, result, source]);
+  }, [activeTab, clientContext, apiKeyHash, customEnd, customStart, model, range, result, source]);
 
   const filterScopeKey = useMemo(() => usageViewScopeKey({
     tab: 'overview',
@@ -548,6 +554,16 @@ export function UsageRecordsPage() {
         </div>
       </div>
 
+      {activeTab === 'events' && <div className="usage-client-filters">
+        {(['originator', 'session_id', 'thread_id'] as const).map(field => <label key={field}>
+          <span>{field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}</span>
+          <input value={clientContext[field]} placeholder={field === 'originator' ? 'codex-tui' : '01a142df-…'}
+            onChange={event => { setClientContext(current => ({ ...current, [field]: event.target.value })); setPage(1); }} />
+        </label>)}
+        <button type="button" className="secondary-button" disabled={!Object.values(clientContext).some(Boolean)}
+          aria-label={getCurrentLocale().startsWith('zh') ? '清除会话筛选' : 'Clear session filters'}
+          onClick={() => { setClientContext({ originator: '', session_id: '', thread_id: '' }); setPage(1); }}><X size={16} /></button>
+      </div>}
       {range === 'custom' ? (
         <div className="usage-custom-range">
           <input

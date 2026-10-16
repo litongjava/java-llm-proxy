@@ -17,3 +17,13 @@
   .config-dialog.proxy-request-dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); padding: 12px; }
   .proxy-request-toolbar { gap: 8px; }
 }
+
+.proxy-client-context { display: grid; grid-template-columns: .65fr 1fr 1fr; gap: 12px; }
+.proxy-client-context > div { min-width: 0; border: 1px solid var(--theme-d5d2cb); border-radius: 10px; padding: 10px 12px; }
+.proxy-client-context > div > span { font-size: 11px; opacity: .65; }
+.proxy-client-context > div > div { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.proxy-client-context code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; user-select: text; }
+.usage-client-filters { display: grid; grid-template-columns: .65fr 1fr 1fr auto; gap: 12px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--theme-d5d2cb); }
+.usage-client-filters label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 11px; }
+.usage-client-filters input { width: 100%; min-width: 0; box-sizing: border-box; font-family: monospace; font-size: 12px; height: 36px; padding: 8px 10px; border: 1px solid var(--usage-page-border); border-radius: 8px; background: var(--usage-page-surface); color: var(--usage-page-text); }
+@media (max-width: 700px) { .proxy-client-context { grid-template-columns: 1fr; } .usage-client-filters { grid-template-columns: 1fr 1fr; } }

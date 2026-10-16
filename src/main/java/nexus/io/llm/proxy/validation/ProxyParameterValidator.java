@@ -86,6 +86,10 @@ public final class ProxyParameterValidator {
     query.provider = request.getParam("provider");
     query.apiKeyName = request.getParam("apiKeyName");
     query.source = request.getParam("source");
+    query.originator = request.getParam("originator");
+    query.session_id = request.getParam("session_id");
+    query.thread_id = request.getParam("thread_id");
+
     query.result = ParameterValidator.choice(request.getParam("result"), "result", "all", "all", "success", "error");
     return query;
   }

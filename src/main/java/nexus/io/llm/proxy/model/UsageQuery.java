@@ -12,5 +12,8 @@ public class UsageQuery {
   public String provider;
   public String apiKeyName;
   public String source;
+  public String originator;
+  public String session_id;
+  public String thread_id;
   public String result;
 }

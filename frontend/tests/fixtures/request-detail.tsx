@@ -12,7 +12,7 @@ const request = { model: 'claude-sonnet-4-5', messages: [{ role: 'user', content
 mockIPC((command, args) => {
   if (command !== 'get_proxy_request_detail') { throw new Error(`Unexpected command: ${command}`); }
   if (args?.format) { return { protocol: 'anthropic', prompt: 'Layout sample', response: 'Invalid schema for function DesignSync' }; }
-  return { id: 'layout-sample', protocol: 'anthropic', method: 'POST', path: '/v1/messages', status: 400,
+  return { id: 'layout-sample', originator: 'codex-tui', session_id: '01a142df-fc0f-7ac2-9df4-bb63d9d92383', thread_id: '01a142df-fc0f-7ac2-9df4-bb63d9d92383', protocol: 'anthropic', method: 'POST', path: '/v1/messages', status: 400,
     requestHeaders: { 'content-type': 'application/json', authorization: '[REDACTED]' }, requestBody: JSON.stringify(request),
     upstreamRequestHeaders: { 'content-type': 'application/json', authorization: '[REDACTED]' }, upstreamRequestBody: JSON.stringify(request),
     upstreamResponseHeaders: { 'content-type': 'application/json' },
