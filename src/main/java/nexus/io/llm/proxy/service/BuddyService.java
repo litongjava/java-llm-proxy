@@ -23,6 +23,7 @@ import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.environment.EnvUtils;
 import nexus.io.tio.utils.json.JsonUtils;
 import okhttp3.HttpUrl;
+import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
@@ -31,35 +32,57 @@ import okhttp3.Response;
 public class BuddyService {
   private record Reply(int status, Kv body) { }
 
+  public static boolean supports(String provider) {
+    return "buddy".equals(provider) || "workbuddy".equals(provider) || "workbuddycn".equals(provider);
+  }
+
+  private boolean work(String product) {
+    return "workbuddy".equals(product) || "workbuddycn".equals(product);
+  }
+
+  private String version(String product) {
+    return "workbuddycn".equals(product) ? "5.8.1" : "5.5.2";
+  }
+
   public String provider(String provider) {
-    BusinessException.require(List.of("buddy", "codebuddy", "workbuddy").contains(provider), 400, "BUDDY_PROVIDER", "Unsupported Buddy product");
+    BusinessException.require(supports(provider) || "codebuddy".equals(provider), 400, "BUDDY_PROVIDER", "Unsupported Buddy product");
     return "codebuddy".equals(provider) ? "buddy" : provider;
   }
 
   public String origin(String provider) {
     String product = provider(provider);
-    return EnvUtils.get("proxy.oauth." + product + ".origin", "workbuddy".equals(product) ? "https://www.workbuddy.ai" : "https://copilot.tencent.com").replaceAll("/+$", "");
+    String fallback = switch (product) {
+      case "workbuddy" -> "https://www.workbuddy.ai";
+      case "workbuddycn" -> "https://www.workbuddy.cn";
+      default -> "https://copilot.tencent.com";
+    };
+    return EnvUtils.get("proxy.oauth." + product + ".origin", fallback).replaceAll("/+$", "");
   }
 
   public String apiBaseUrl(String provider) { return origin(provider) + "/v2"; }
 
   public Kv headers(String provider, Kv credential, String model) {
-    boolean work = "workbuddy".equals(provider(provider));
-    String ua = work ? "WorkBuddy/5.5.2 WorkBuddy AI/5.5.2 CLI/5.5.2" : "CodeBuddyIDE/1.106.1";
-    if (work && model != null && List.of("glm-", "hy", "kimi-", "minimax-").stream().anyMatch(model.toLowerCase(Locale.ROOT)::startsWith)) {
+    String product = provider(provider);
+    boolean work = work(product);
+    boolean cn = "workbuddycn".equals(product);
+    String ua = cn ? "WorkBuddy/5.8.1 WorkBuddy/5.8.1" : work ? "WorkBuddy/5.5.2 WorkBuddy AI/5.5.2 CLI/5.5.2" : "CodeBuddyIDE/1.106.1";
+    if (work && !cn && model != null && List.of("glm-", "hy", "kimi-", "minimax-").stream().anyMatch(model.toLowerCase(Locale.ROOT)::startsWith)) {
       ua = "WorkBuddy/5.5.2 WorkBuddy/5.5.2 CLI/5.5.2";
     }
     Kv headers = Kv.create().set("X-Domain", URI.create(origin(provider)).getHost()).set("User-Agent", ua)
         .set("X-Product-Code", work ? "workbuddy" : "codebuddy").set("X-Product", "SaaS");
     if (credential != null) {
       if (credential.getStr("access_token") != null) { headers.set("Authorization", "Bearer " + credential.getStr("access_token")); }
+      if (cn && credential.getStr("domain") != null && !credential.getStr("domain").isBlank()) { headers.set("X-Domain", credential.getStr("domain")); }
+      if (cn && credential.getStr("user_id") != null && !credential.getStr("user_id").isBlank()) { headers.set("X-User-Id", credential.getStr("user_id")); }
       String enterprise = credential.getStr("enterprise_id");
       if (enterprise != null && !enterprise.isBlank()) { headers.set("X-Enterprise-Id", enterprise).set("X-Tenant-Id", enterprise); }
     }
     if (model != null) {
       String name = work ? "WorkBuddy" : "CodeBuddy";
-      headers.set("X-Product", name).set("X-IDE-Name", name).set("X-IDE-Type", name)
-          .set("X-IDE-Version", work ? "5.5.2" : "1.106.1").set("X-Agent-Purpose", "conversation").set("Accept", "text/event-stream");
+      headers.set("X-Product", cn ? "SaaS" : name).set("X-IDE-Name", name).set("X-IDE-Type", name)
+          .set("X-IDE-Version", work ? version(product) : "1.106.1").set("X-Agent-Purpose", "conversation").set("Accept", "text/event-stream");
+      if (cn) { headers.set("X-Private-Data", "true"); }
     }
     return headers;
   }
@@ -68,7 +91,12 @@ public class BuddyService {
     String product = provider(provider);
     Kv headers = headers(product, null, null).set("X-No-Authorization", "true").set("X-No-User-Id", "true")
         .set("X-No-Enterprise-Id", "true").set("X-No-Department-Info", "true");
-    Reply reply = request(product, "/v2/plugin/auth/state?platform=" + ("workbuddy".equals(product) ? "workbuddy-ai" : "ide"), true, headers);
+    String platform = switch (product) {
+      case "workbuddy" -> "workbuddy-ai";
+      case "workbuddycn" -> "workbuddy";
+      default -> "ide";
+    };
+    Reply reply = request(product, "/v2/plugin/auth/state?platform=" + platform, true, headers);
     Kv data = success(reply);
     BuddyLoginSession session = new BuddyLoginSession();
     session.provider = product;
@@ -76,8 +104,8 @@ public class BuddyService {
     session.authUrl = required(data.getStr("authUrl"));
     HttpUrl url = HttpUrl.parse(session.authUrl);
     BusinessException.require(url != null && url.isHttps(), 502, "BUDDY_LOGIN_URL", "Buddy returned an invalid login URL");
-    if ("workbuddy".equals(product)) {
-      session.authUrl = url.newBuilder().setQueryParameter("version", "5.5.2").setQueryParameter("loginSessionId", UUID.randomUUID().toString()).build().toString();
+    if (work(product)) {
+      session.authUrl = url.newBuilder().setQueryParameter("version", version(product)).setQueryParameter("loginSessionId", UUID.randomUUID().toString()).build().toString();
     }
     session.expiresAt = System.currentTimeMillis() + 300000;
     session.nextPoll = System.currentTimeMillis() + 1000;
@@ -99,7 +127,8 @@ public class BuddyService {
           if (pending(token, 11217)) { return null; }
           session.token = normalize(session.provider, success(token), Kv.create());
         }
-        Reply account = request(session.provider, "/v2/plugin/login/account" + query, false,
+        String accountPath = "workbuddycn".equals(session.provider) ? "/v2/plugin/account" : "/v2/plugin/login/account" + query;
+        Reply account = request(session.provider, accountPath, false,
             headers(session.provider, session.token, null).set("X-No-User-Id", "true").set("X-No-Enterprise-Id", "true")
                 .set("X-Domain", ProxyJson.text(session.token, "domain", URI.create(origin(session.provider)).getHost())));
         if (pending(account, 12151)) { return null; }
@@ -119,9 +148,20 @@ public class BuddyService {
   }
 
   public Kv refresh(String provider, Kv credential) throws Exception {
-    Kv headers = headers(provider, credential, null).set("X-Refresh-Token", required(credential.getStr("refresh_token"))).set("X-Auth-Refresh-Source", "ide-main");
+    String product = provider(provider);
+    Kv headers = headers(product, credential, null).set("X-Refresh-Token", required(credential.getStr("refresh_token")))
+        .set("X-Auth-Refresh-Source", "workbuddycn".equals(product) ? "plugin" : "ide-main");
     Reply reply = request(provider, "/v2/plugin/auth/token/refresh", true, headers);
-    return normalize(provider, success(reply), Kv.create().set(credential));
+    Kv refreshed = normalize(product, success(reply), Kv.create().set(credential));
+    if ("workbuddycn".equals(product)) {
+      Kv account = success(request(product, "/v2/plugin/account", false, headers(product, refreshed, null)));
+      refreshed.set("user_id", required(account.getStr("uid"))).set("account_id", account.getStr("uid"))
+          .set("account_type", ProxyJson.text(account, "type", "personal"));
+      refreshed.remove("enterprise_id");
+      if (account.get("enterpriseId") != null) { refreshed.set("enterprise_id", account.get("enterpriseId")); }
+      if (account.get("nickname") != null) { refreshed.set("nickname", account.get("nickname")); }
+    }
+    return refreshed;
   }
 
   public Kv normalize(String provider, Kv data, Kv previous) {
@@ -163,10 +203,28 @@ public class BuddyService {
     LinkedHashMap<String, Kv> models = new LinkedHashMap<>();
     Exception failure = null;
     boolean received = false;
-    for (String path : List.of("/console/enterprises/personal/models", "/v3/config")) {
+    String enterprise = "workbuddycn".equals(provider) ? ProxyJson.text(credential, "enterprise_id", "personal") : "personal";
+    if (enterprise.isBlank()) { enterprise = "personal"; }
+    String modelPath = "/console/enterprises/" + URLEncoder.encode(enterprise, StandardCharsets.UTF_8) + "/models";
+    for (String path : List.of(modelPath, "/v3/config")) {
       try {
         Kv data = success(request(provider, path, false, headers(provider, credential, null)));
-        for (Kv model : parseModels(data)) { models.putIfAbsent(model.getStr("id"), model); }
+        Set<String> allowed = null;
+        if ("workbuddycn".equals(provider)) {
+          for (Object raw : ProxyJson.list(data.get("agents"))) {
+            Kv agent = ProxyJson.object(raw);
+            if ("cli".equals(agent.getStr("name"))) {
+              allowed = new HashSet<>();
+              for (Object id : ProxyJson.list(agent.get("models"))) {
+                if (id instanceof String name) { allowed.add(name); }
+              }
+              break;
+            }
+          }
+        }
+        for (Kv model : parseModels(data)) {
+          if (allowed == null || allowed.contains(model.getStr("id"))) { models.putIfAbsent(model.getStr("id"), model); }
+        }
         received = true;
       } catch (Exception error) { failure = error; }
     }
@@ -219,7 +277,10 @@ public class BuddyService {
   private Reply request(String provider, String path, boolean post, Kv headers) throws Exception {
     Request.Builder request = new Request.Builder().url(origin(provider) + path).header("Accept", "application/json");
     headers.forEach((name, value) -> request.header(name.toString(), value.toString()));
-    if (post) { request.post(RequestBody.create(new byte[0], null)); }
+    if (post) {
+      if ("workbuddycn".equals(provider)) { request.post(RequestBody.create("{}", MediaType.get("application/json"))); }
+      else { request.post(RequestBody.create(new byte[0], null)); }
+    }
     ManagementHttpService transport = Aop.get(ManagementHttpService.class);
     try (Response response = UniChatClient.execute(transport.client(transport.configuredProxy(), 20), request.build())) {
       if (response.body() == null) { throw new OAuthRequestException("Buddy returned an empty response"); }

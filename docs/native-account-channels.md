@@ -6,7 +6,7 @@
 
 - Cline：WorkOS 设备授权后注册产品 token，OpenAI Chat，保留 `workos:` 前缀。
 - MiniMax Code：设备码与 PKCE，兼容 HTTP 200 pending 状态，Anthropic Messages。
-- CodeBuddy / WorkBuddy 国际版：腾讯浏览器授权、token 与账号分步轮询，OpenAI Chat，按产品设置身份头。
+- CodeBuddy / WorkBuddy 国际版 / WorkBuddy 国内版：三个独立渠道，腾讯浏览器授权、token 与账号分步轮询，OpenAI Chat，按产品设置身份头。国内版使用独立账户接口，见 [WorkBuddy 国内版](workbuddy-cn.md)。
 - LobsterAI：本地回调授权码交换，保存安装标识，OpenAI Chat。
 - TRAE：本地 token 回调，通过 login trace 关联会话；SOLO 请求与 SSE 事件转换，按远端模型对应的 channel 转发。
 - CodeArts：PKCE 与 DPoP，临时 AK/SK/security token；在请求体确定后进行 SDK-HMAC 签名；支持 DeepSeek DSML 工具事件转换。
@@ -51,7 +51,7 @@ proxy.oauth.trae.redirect-uri=http://localhost:18080/authorize
 
 ## 真实能力边界
 
-- WorkBuddy 当前仅接入国际版：`workbuddy` 默认使用 `https://www.workbuddy.ai` 和 `platform=workbuddy-ai`。`buddy` 是 CodeBuddy（`https://copilot.tencent.com`、`platform=ide`），不能视为 WorkBuddy 国内版。WorkBuddy 国内版尚未作为独立渠道接入。源项目当前 `ALL_PRODUCTS` 也仅注册 CodeBuddy 和 WorkBuddy 国际版；其迁移注释说明旧 WorkBuddy 国内版被切换为国际版，不能据此认为两区账号或模型池通用。
+- WorkBuddy 国内版 `workbuddycn` 使用 `https://www.workbuddy.cn`、`platform=workbuddy`；国际版 `workbuddy` 使用 `https://www.workbuddy.ai`、`platform=workbuddy-ai`。`buddy` 是 CodeBuddy，不能视为 WorkBuddy 国内版，也不能将两区账号或模型池视为通用。
 
 - 登录、模型发现和实际推理是三个不同状态。本文的本地替身测试不能证明真实账号当前额度或模型可用性。
 - Loomy 无刷新接口，session 到期需重新登录；当前提供短信登录，不提供其微信绑定流程。

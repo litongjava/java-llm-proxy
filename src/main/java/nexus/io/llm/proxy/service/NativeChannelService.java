@@ -27,7 +27,7 @@ public class NativeChannelService {
   }
 
   public boolean supports(String provider) {
-    return provider != null && List.of("cline", "minimax", "buddy", "workbuddy", "lobsterai", "trae", "raccoon", "codearts", "loomy", "zcode", "qoder", "qodercn").contains(provider);
+    return provider != null && List.of("cline", "minimax", "buddy", "workbuddy", "workbuddycn", "lobsterai", "trae", "raccoon", "codearts", "loomy", "zcode", "qoder", "qodercn").contains(provider);
   }
 
   public String protocol(String provider) {
@@ -39,7 +39,7 @@ public class NativeChannelService {
       case "qoder", "qodercn" -> Aop.get(QoderService.class).apiBaseUrl(provider);
       case "cline" -> Aop.get(ClineService.class).apiBaseUrl();
       case "minimax" -> Aop.get(MiniMaxService.class).apiBaseUrl();
-      case "buddy", "workbuddy" -> Aop.get(BuddyService.class).apiBaseUrl(provider);
+      case "buddy", "workbuddy", "workbuddycn" -> Aop.get(BuddyService.class).apiBaseUrl(provider);
       case "lobsterai" -> Aop.get(LobsterAiService.class).apiBaseUrl() + "/api/proxy/v1";
       case "trae" -> Aop.get(TraeService.class).apiBaseUrl();
       case "raccoon" -> Aop.get(RaccoonService.class).apiBaseUrl();
@@ -113,7 +113,7 @@ public class NativeChannelService {
       case "qoder", "qodercn" -> Aop.get(QoderModelService.class).models(provider);
       case "cline" -> Aop.get(ClineService.class).models(credential);
       case "minimax" -> Aop.get(MiniMaxService.class).models(credential);
-      case "buddy", "workbuddy" -> credential == null ? List.of() : Aop.get(BuddyService.class).models(provider, credential);
+      case "buddy", "workbuddy", "workbuddycn" -> credential == null ? List.of() : Aop.get(BuddyService.class).models(provider, credential);
       case "lobsterai" -> credential == null ? List.of() : Aop.get(LobsterAiService.class).models(credential);
       case "trae" -> credential == null ? List.of() : Aop.get(TraeService.class).models(credential);
       case "raccoon" -> Aop.get(RaccoonService.class).models(credential);

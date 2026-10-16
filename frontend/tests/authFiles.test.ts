@@ -247,6 +247,20 @@ describe('authentication file priority', () => {
 });
 
 describe('OAuth login account summary', () => {
+  it('keeps WorkBuddy regions and CodeBuddy separate for the same account identity', () => {
+    const files = ['buddy', 'workbuddy', 'workbuddycn'].map(provider => ({
+      name: `${provider}-account.json`, provider, email: 'same@example.test',
+    }));
+    const grouped = groupOAuthAccountsByProvider(files);
+    expect(grouped.size).toBe(3);
+    for (const provider of ['buddy', 'workbuddy', 'workbuddycn']) {
+      expect(grouped.get(provider)?.map(account => account.name)).toEqual([`${provider}-account.json`]);
+    }
+    expect(oauthModelProvidersFromAuthFiles(files)).toEqual(['buddy', 'workbuddy', 'workbuddycn']);
+    const before = snapshotAuthFiles(files);
+    expect(changedOAuthAuthFileNames(before, [...files, { name: 'workbuddycn-new.json', provider: 'workbuddycn' }], 'workbuddy')).toEqual([]);
+    expect(changedOAuthAuthFileNames(before, [...files, { name: 'workbuddycn-new.json', provider: 'workbuddycn' }], 'workbuddycn')).toEqual(['workbuddycn-new.json']);
+  });
   it('groups saved OAuth files by normalized provider and skips runtime or API key entries', () => {
     const grouped = groupOAuthAccountsByProvider([
       { name: 'codex-a.json', provider: 'codex', email: 'a@example.com' },

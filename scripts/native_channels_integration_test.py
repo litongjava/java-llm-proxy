@@ -166,19 +166,48 @@ class Upstream(BaseHTTPRequestHandler):
                     ('message_stop', {'type': 'message_stop'}),
                 ]
                 return self.reply(''.join('event: ' + name + '\ndata: ' + json.dumps(value) + '\n\n' for name, value in events), content_type='text/event-stream')
-        if provider in ('buddy', 'workbuddy'):
+        if provider in ('buddy', 'workbuddy', 'workbuddycn'):
             assert self.headers['X-Product-Code'] == ('codebuddy' if provider == 'buddy' else 'workbuddy')
+            if provider == 'workbuddycn' and endpoint in ('/v2/plugin/auth/state', '/v2/plugin/auth/token/refresh'):
+                assert 'application/json' in self.headers['Content-Type']
+                assert raw.strip() == b'{}', 'Domestic authorization POST must send an empty JSON object'
             if endpoint == '/v2/plugin/auth/state':
                 assert self.command == 'POST'
+                query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query))
+                assert query['platform'] == {'buddy': 'ide', 'workbuddy': 'workbuddy-ai', 'workbuddycn': 'workbuddy'}[provider]
                 return self.reply({'code': 0, 'data': {'state': provider + '-state', 'authUrl': 'https://example.test/authorize'}})
             if endpoint in ('/v2/plugin/auth/token', '/v2/plugin/auth/token/refresh'):
                 if endpoint.endswith('/refresh'):
                     assert self.headers['X-Refresh-Token'] == provider + '-refresh'
-                return self.reply({'code': 0, 'data': {'accessToken': provider + '-access', 'refreshToken': provider + '-refresh', 'expiresIn': 3600}})
-            if endpoint == '/v2/plugin/login/account':
+                    assert self.headers['Authorization'] == 'Bearer ' + provider + '-access'
+                    assert self.headers['X-Auth-Refresh-Source'] == ('plugin' if provider == 'workbuddycn' else 'ide-main')
+                    if provider == 'workbuddycn':
+                        assert self.headers['X-Domain'] == 'domestic.workbuddy.test'
+                else:
+                    query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query))
+                    assert query['state'] == provider + '-state'
+                token_data = {'accessToken': provider + '-access', 'refreshToken': provider + '-refresh', 'expiresIn': 3600}
+                if provider == 'workbuddycn':
+                    token_data['domain'] = 'domestic.workbuddy.test'
+                return self.reply({'code': 0, 'data': token_data})
+            if endpoint == ('/v2/plugin/account' if provider == 'workbuddycn' else '/v2/plugin/login/account'):
                 assert self.headers['Authorization'] == 'Bearer ' + provider + '-access'
-                return self.reply({'code': 0, 'data': {'uid': provider + '-user', 'nickname': provider, 'type': 'personal'}})
-            if endpoint in ('/console/enterprises/personal/models', '/v3/config'):
+                if provider != 'workbuddycn':
+                    query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query))
+                    assert query['state'] == provider + '-state'
+                else:
+                    assert not urllib.parse.urlsplit(self.path).query
+                    assert self.headers['X-Domain'] == 'domestic.workbuddy.test'
+                account_data = {'uid': provider + '-user', 'nickname': provider, 'type': 'personal'}
+                if provider == 'workbuddycn':
+                    account_data.update({'enterpriseId': 'cn-tenant', 'type': 'enterprise'})
+                return self.reply({'code': 0, 'data': account_data})
+            model_endpoint = '/console/enterprises/' + ('cn-tenant' if provider == 'workbuddycn' else 'personal') + '/models'
+            if endpoint in (model_endpoint, '/v3/config'):
+                assert self.headers['Authorization'] == 'Bearer ' + provider + '-access'
+                if provider == 'workbuddycn':
+                    assert self.headers['X-Domain'] == 'domestic.workbuddy.test'
+                    assert self.headers['X-Enterprise-Id'] == 'cn-tenant' and self.headers['X-Tenant-Id'] == 'cn-tenant'
                 return self.reply({'code': 0, 'data': {'models': [{'id': model, 'name': model}]}})
         if provider == 'lobsterai':
             if endpoint in ('/api/auth/exchange', '/api/auth/refresh'):
@@ -233,6 +262,14 @@ class Upstream(BaseHTTPRequestHandler):
                 assert self.headers['token'] == 'loomy-access'
             else:
                 assert body['stream'] is True
+            if provider == 'workbuddycn':
+                assert self.headers['X-Product'] == 'SaaS'
+                assert self.headers['X-IDE-Name'] == 'WorkBuddy' and self.headers['X-IDE-Type'] == 'WorkBuddy'
+                assert self.headers['X-IDE-Version'] == '5.8.1' and self.headers['X-Private-Data'] == 'true'
+                assert self.headers['User-Agent'].startswith('WorkBuddy/5.8.1 WorkBuddy/5.8.1')
+                assert self.headers['X-Domain'] == 'domestic.workbuddy.test'
+                assert self.headers['X-User-Id'] == 'workbuddycn-user'
+                assert self.headers['X-Enterprise-Id'] == 'cn-tenant' and self.headers['X-Tenant-Id'] == 'cn-tenant'
             if body.get('stream'):
                 chunks = [{'id': 'chat-test', 'model': model, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': provider + ' works'}}]},
                           {'id': 'chat-test', 'model': model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'usage': {'prompt_tokens': 3, 'completion_tokens': 2, 'total_tokens': 5}}]
@@ -260,7 +297,7 @@ class Upstream(BaseHTTPRequestHandler):
         assert hmac.compare_digest(expected, fields['Signature']), ('Huawei canonical headers differ from transmitted headers', header_lines)
 
 
-def run(providers=('minimax', 'buddy', 'workbuddy', 'lobsterai', 'trae', 'loomy', 'raccoon', 'zcode', 'codearts')):
+def run(providers=('minimax', 'buddy', 'workbuddy', 'workbuddycn', 'lobsterai', 'trae', 'loomy', 'raccoon', 'zcode', 'codearts')):
     Upstream.calls.clear()
     Upstream.failures.clear()
     Upstream.qoder_starts.clear()
@@ -281,6 +318,7 @@ def run(providers=('minimax', 'buddy', 'workbuddy', 'lobsterai', 'trae', 'loomy'
         'proxy.oauth.minimax.device-url': mock + '/minimax/device', 'proxy.oauth.minimax.token-url': mock + '/minimax/token',
         'proxy.oauth.minimax.models-url': mock + '/minimax/models', 'proxy.oauth.minimax.api-base-url': mock + '/minimax',
         'proxy.oauth.buddy.origin': mock + '/buddy', 'proxy.oauth.workbuddy.origin': mock + '/workbuddy',
+        'proxy.oauth.workbuddycn.origin': mock + '/workbuddycn',
         'proxy.oauth.lobsterai.api-base-url': mock + '/lobsterai', 'proxy.oauth.lobsterai.portal-base-url': mock + '/lobsterai',
         'proxy.oauth.lobsterai.client-version': '2026.9.4', 'proxy.oauth.lobsterai.redirect-uri': f'http://127.0.0.1:{lobster_port}/auth/callback',
         'proxy.oauth.trae.api-base-url': mock + '/trae', 'proxy.oauth.trae.oauth-base-url': mock + '/trae',
@@ -388,9 +426,18 @@ def run(providers=('minimax', 'buddy', 'workbuddy', 'lobsterai', 'trae', 'loomy'
                 files = management('credentials')['files']
                 account = next(item for item in files if item['type'] == provider)
                 assert provider + '-access' not in json.dumps(files)
+                if provider in ('buddy', 'workbuddy', 'workbuddycn'):
+                    assert account['metadata']['account_id'] == provider + '-user'
+                    buddy_accounts = [item for item in files if item['type'] in ('buddy', 'workbuddy', 'workbuddycn')]
+                    assert len({item['name'] for item in buddy_accounts}) == len(buddy_accounts)
+                    assert len({item['metadata']['account_id'] for item in buddy_accounts}) == len(buddy_accounts)
                 if provider not in ('loomy', 'zcode'):
+                    account_calls_before = len([call for call in Upstream.calls if call[1] == '/workbuddycn/v2/plugin/account'])
                     refreshed = management('credentials/refresh', {'name': account['name']})
                     assert refreshed['success'] == 1 and refreshed['failed'] == 0, (provider, refreshed, Upstream.failures)
+                    if provider == 'workbuddycn':
+                        account_calls_after = len([call for call in Upstream.calls if call[1] == '/workbuddycn/v2/plugin/account'])
+                        assert account_calls_after == account_calls_before + 1, 'Domestic refresh must reload account identity'
                 model = {'minimax': 'MiniMax-M3.1-test', 'zcode': 'glm-5.2', 'qoder': 'auto', 'qodercn': 'auto'}.get(provider, provider + '-test')
                 payload = {'model': model, 'messages': [{'role': 'user', 'content': 'hello'}], 'max_tokens': 64}
                 status, answer = request('/v1/chat/completions', payload, 'native-client')

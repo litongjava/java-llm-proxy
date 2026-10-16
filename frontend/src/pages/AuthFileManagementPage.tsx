@@ -104,6 +104,7 @@ const providerIcons: Record<string, string> = {
   buddy: buddyIcon,
   codebuddy: buddyIcon,
   workbuddy: workbuddyIcon,
+  workbuddycn: workbuddyIcon,
   codearts: codeartsIcon,
   raccoon: raccoonIcon,
   zcode: zcodeIcon,
@@ -128,6 +129,7 @@ const providerName = (file: AuthFile) => {
   if (value === 'devin') return 'Devin';
   if (value === 'meta') return 'Muse (Meta)';
   if (value === 'workbuddy') { return getCurrentLocale().startsWith('zh') ? 'WorkBuddy（国际版）' : 'WorkBuddy (International)'; }
+  if (value === 'workbuddycn') { return getCurrentLocale().startsWith('zh') ? 'WorkBuddy（国内版）' : 'WorkBuddy (China)'; }
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : translate(getCurrentLocale(), 'authFiles.unknownProvider');
 };
 

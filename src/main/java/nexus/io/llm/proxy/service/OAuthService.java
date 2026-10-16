@@ -122,7 +122,7 @@ public class OAuthService {
       startCallbackServer(spec.redirectUri);
       result.url = Aop.get(TraeService.class).initialize(session);
       result.flow = "authorization_code";
-    } else if ("buddy".equals(provider) || "workbuddy".equals(provider)) {
+    } else if (BuddyService.supports(provider)) {
       session.buddy = Aop.get(BuddyService.class).start(provider);
       session.expiresAt = session.buddy.expiresAt;
       result.url = session.buddy.authUrl;
@@ -446,7 +446,7 @@ public class OAuthService {
     String provider = credential.getStr("type");
     if ("qoder".equals(provider) || "qodercn".equals(provider)) { return Aop.get(QoderService.class).refresh(provider, credential); }
     if ("minimax".equals(provider)) { return Aop.get(MiniMaxService.class).refresh(credential); }
-    if ("buddy".equals(provider) || "workbuddy".equals(provider)) { return Aop.get(BuddyService.class).refresh(provider, credential); }
+    if (BuddyService.supports(provider)) { return Aop.get(BuddyService.class).refresh(provider, credential); }
     if ("lobsterai".equals(provider)) { return Aop.get(LobsterAiService.class).refresh(credential); }
     if ("trae".equals(provider)) { return Aop.get(TraeService.class).refresh(credential); }
     if ("raccoon".equals(provider)) { return Aop.get(RaccoonService.class).refresh(credential); }

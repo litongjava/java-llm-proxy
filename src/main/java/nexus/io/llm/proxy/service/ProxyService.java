@@ -257,7 +257,7 @@ public class ProxyService {
           Request retried = Aop.get(CodeArtsTransportService.class).prepare(prepared.request(), refreshed, selection.model());
           rawResponse = UniChatClient.execute(outbound, retried);
         } else if ("trae".equals(provider.upstreamType) || "loomy".equals(provider.upstreamType) || "raccoon".equals(provider.upstreamType)
-            || "buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+            || BuddyService.supports(provider.upstreamType)) {
           provider.metadata = refreshed;
           Request.Builder retried = upstreamRequest.newBuilder().header("Authorization", "Bearer " + provider.apiKey);
           oauthTransport.headers(provider, retried);

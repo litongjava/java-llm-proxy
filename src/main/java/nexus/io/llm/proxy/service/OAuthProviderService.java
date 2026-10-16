@@ -15,7 +15,7 @@ public class OAuthProviderService {
     case "zcode" -> Aop.get(ZCodeService.class).spec();
     case "codearts" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", null, true);
     case "trae" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", "http://localhost:18080/authorize", true);
-    case "buddy", "workbuddy" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", null, true);
+    case "buddy", "workbuddy", "workbuddycn" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", null, true);
     case "lobsterai" -> new OAuthProviderSpec(provider, "", null, null, null, null, "",
         "http://127.0.0.1:18321/auth/callback", true);
     case "codex" -> new OAuthProviderSpec(provider, "app_EMoamEEZ73f0CkXaXp7hrann", null,

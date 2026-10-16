@@ -37,7 +37,7 @@ public class OAuthTransportService {
       BusinessException.require("/chat/completions".equals(endpoint), 400, "UNSUPPORTED_ENDPOINT", "TRAE supports chat completions");
       return Aop.get(TraeService.class).payload(body, provider.metadata);
     }
-    if ("buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+    if (BuddyService.supports(provider.upstreamType)) {
       return Aop.get(BuddyTransportService.class).payload(body, model, endpoint);
     }
     if ("lobsterai".equals(provider.upstreamType)) {
@@ -76,7 +76,7 @@ public class OAuthTransportService {
       Aop.get(RaccoonService.class).headers(provider.metadata).forEach((key, value) -> request.header(key.toString(), value.toString()));
     }
     if ("minimax".equals(provider.upstreamType)) { Aop.get(MiniMaxTransportService.class).headers(request); }
-    if ("buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+    if (BuddyService.supports(provider.upstreamType)) {
       try {
         Buffer buffer = new Buffer();
         request.build().body().writeTo(buffer);
@@ -115,7 +115,7 @@ public class OAuthTransportService {
     }
     if ("raccoon".equals(provider.upstreamType)) { return Aop.get(RaccoonTransportService.class).response(response, clientStream); }
     if ("minimax".equals(provider.upstreamType)) { return Aop.get(MiniMaxTransportService.class).response(response, clientStream); }
-    if ("buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+    if (BuddyService.supports(provider.upstreamType)) {
       return Aop.get(BuddyTransportService.class).response(response, clientStream);
     }
     if ("lobsterai".equals(provider.upstreamType)) { return Aop.get(LobsterAiService.class).response(response, clientStream); }

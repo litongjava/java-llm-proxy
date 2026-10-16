@@ -20,7 +20,7 @@ OFM 将匿名免费渠道、自带 API Key 的聚合渠道、账号渠道和 EAC
 
 - **CodeArts**：OAuth authorization code，PKCE S256，加 ES256 DPoP。授权结果是临时 AK/SK/security token，后续推理需要华为签名，不是 Bearer token 直传。参考 `src/oauth.ts`、`src/login.ts`、`src/sign.ts`、`src/llm-adapter.ts`，这里的 `src/` 均位于 `vendor/channel-pack/` 下。令牌端点为华为 STS `/v1/oauth2/tokens`。
 - **CodeBuddy**：腾讯 external-link-v2 浏览器授权，先请求 state，再轮询 token 和账号资料，并支持刷新。它是产品专用授权协议，不能按标准 OAuth token 表单处理。参考 `vendor/channel-pack/src/buddy-oauth.ts`、`buddy.ts`、`buddy-adapter.ts`。
-- **WorkBuddy 国际版**：复用 Buddy 授权与适配实现，使用 `www.workbuddy.ai` 和 `platform=workbuddy-ai`。参考 `vendor/channel-pack/src/product.ts`；源当前仅注册此版本，国内版曾使用 `copilot.tencent.com`，不能将 CodeBuddy 当作 WorkBuddy 国内版，也不能混用两区凭据。当前迁移尚未独立接入 WorkBuddy 国内版。
+- **WorkBuddy 国际版**：复用 Buddy 授权与适配实现，使用 `www.workbuddy.ai` 和 `platform=workbuddy-ai`。参考 `vendor/channel-pack/src/product.ts`；源当前仅注册此版本。源历史国内配置指向 `copilot.tencent.com`，不应当作现行国内版参数。后续依据官方客户端公开配置另行接入 `workbuddycn`，实际使用 `www.workbuddy.cn`、`platform=workbuddy` 和独立账号接口，详见 [国内版说明](workbuddy-cn.md)。
 - **LobsterAI**：本地浏览器回调收到 authCode 后换 token，源码不要求 PKCE/DPoP；推理接口为 `/api/proxy/v1/chat/completions`。参考 `vendor/channel-pack/src/lobsterai-oauth.ts`、`lobsterai.ts`、`lobsterai-adapter.ts`。
 - **Qoder 国际版**：设备授权加 PKCE，浏览器授权后轮询 `/api/v1/deviceToken/poll`，无需本地回调。真实推理使用加密请求体及专有 SSE 接口。参考 `vendor/channel-pack/src/qoder-oauth.ts`、`qoder-product.ts`、`qoder-wasm.ts`。
 - **Qoder 中国版**：复用 Qoder 流程，具有独立授权、OpenAPI 和推理域名；不能只替换模型名称。参考 `vendor/channel-pack/src/qoder-product.ts`。
