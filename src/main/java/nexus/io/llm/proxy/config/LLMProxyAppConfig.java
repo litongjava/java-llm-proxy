@@ -64,6 +64,9 @@ public class LLMProxyAppConfig {
     router.post("/v8/management/oauth/callback", new OAuthCallbackHandler()::handle);
     router.get("/v8/management/oauth/callback", new OAuthCallbackGetHandler()::handle);
     router.post("/v8/management/oauth/import", new OAuthImportHandler()::handle);
+    router.post("/v8/management/oauth/loomy/sms", new LoomySmsHandler()::handle);
+    router.post("/v8/management/zcode/channel", new ZCodeChannelHandler()::handle);
+    router.post("/v8/management/oauth/loomy/login", new LoomyLoginHandler()::handle);
     router.post("/v8/management/requests/api-call", new ManagementApiCallHandler()::handle);
     router.get("/v8/management/config", new DesktopConfigGetHandler()::handle);
     router.get("/v8/management/config/*", new DesktopConfigGetHandler()::handle);

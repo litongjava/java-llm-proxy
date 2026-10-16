@@ -1,6 +1,6 @@
 # OFM 账号登录与 API 能力整合方案
 
-状态：设计提案，尚未实施。目标：在 Java LLM Proxy 现有桌面界面中管理 OFM 渠道账号，并通过 Java 的统一地址提供模型 API。
+状态：历史设计提案。2026-10-16 用户选择先完成非 WASM 渠道的原生 Java 接入，当前实现以[原生渠道接入说明](native-account-channels.md)为准，本文的 Node 辅助进程方案未实施。源项目 Gemini 实际采用与现有 Antigravity 相同的 OAuth 客户端和产品身份，不作为独立新增渠道。
 
 ## 1. 结论与范围
 

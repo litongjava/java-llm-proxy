@@ -30,7 +30,7 @@ OFM 将匿名免费渠道、自带 API Key 的聚合渠道、账号渠道和 EAC
 - **Raccoon**：微信扫码轮询或短信验证码登录，获得 access/refresh token；短信路径需要验证码参数及手机号加密。源码保留桌面授权码交换，但默认采用扫码流程。参考 `vendor/channel-pack/src/raccoon-oauth.ts`、`raccoon-login-page.ts`。它不是直接可复用的通用 OAuth provider。
 - **MiniMax Code**：OAuth 设备授权加 PKCE，具有 device code、token、refresh 流程。等待授权既可能表现为标准 OAuth error，也可能是 HTTP 200 的 `status=pending`。推理采用 Anthropic Messages。参考 `vendor/channel-pack/src/minimax-oauth.ts`、`minimax-product.ts`、`minimax-messages.ts`。
 - **ZCode**：服务端中介设备授权，初始化 `/api/v1/oauth/cli/init`，用户在返回链接登录，轮询 `/api/v1/oauth/cli/poll/{flow_id}` 获得 token。源码明确使用这一授权路径，不读取本机 ZCode 客户端凭据。参考 `vendor/channel-pack/src/zcode-login.ts`、`zcode-upstream.ts`、`zcode-anthropic.ts`。
-- **Gemini**：Google OAuth authorization code 加 refresh token；使用客户端 ID 与客户端 secret，不采用该项目 CodeArts 的 PKCE/DPoP。Google Cloud Code 推理走 `generateContent` / `streamGenerateContent`，还涉及项目发现与配额查询。参考 `vendor/channel-pack/src/gemini-oauth.ts`、`gemini-project.ts`、`gemini-adapter.ts`。应与本项目已有 Gemini/Antigravity 能力比较后再决定复用边界。
+- **Gemini（实际为 Antigravity）**：Google OAuth authorization code 加 refresh token。源项目默认 OAuth client ID 与当前项目配置的 Antigravity client ID 一致，项目发现发送 `ideType: ANTIGRAVITY`，请求头发送 `x-client-name: antigravity`，推理同样使用 daily Cloud Code。它是同一产品渠道的另一套实现，不新增独立 Gemini OAuth 渠道，也不表示额外额度。参考 `vendor/channel-pack/src/gemini-oauth.ts`、`gemini.ts`、`gemini-project.ts`、`gemini-adapter.ts`。项目发现、身份头和工具调用签名等差异需验证后再改进现有 Antigravity。
 
 ## 不属于上述 OAuth 移植范围的功能
 

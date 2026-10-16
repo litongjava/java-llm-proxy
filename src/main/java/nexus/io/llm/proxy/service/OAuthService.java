@@ -55,6 +55,7 @@ public class OAuthService {
 
   private synchronized void expireSessions() {
     long now = System.currentTimeMillis();
+    sessions.values().stream().filter(session -> session.expiresAt < now && session.codearts != null).forEach(session -> session.codearts.close());
     sessions.entrySet().removeIf(entry -> entry.getValue().expiresAt < now);
     for (Integer port : callbacks.keySet()) {
       boolean active = sessions.values().stream().anyMatch(session -> session.spec != null && session.spec.redirectUri != null
@@ -100,7 +101,33 @@ public class OAuthService {
     OAuthStartResult result = new OAuthStartResult();
     result.state = session.state;
     result.expires_in = 900;
-    if (spec.deviceUrl != null) {
+    if ("minimax".equals(provider)) {
+      Aop.get(MiniMaxService.class).start(session, result);
+    } else if ("codearts".equals(provider)) {
+      session.codearts = Aop.get(CodeArtsService.class).start();
+      session.expiresAt = session.codearts.expiresAt;
+      result.url = session.codearts.authUrl;
+      result.flow = "authorization_code";
+      result.expires_in = (int) ((session.expiresAt - now) / 1000);
+    } else if ("raccoon".equals(provider)) {
+      Aop.get(RaccoonService.class).start(session, result);
+    } else if ("zcode".equals(provider)) {
+      Aop.get(ZCodeService.class).start(session, result);
+    } else if ("trae".equals(provider)) {
+      startCallbackServer(spec.redirectUri);
+      result.url = Aop.get(TraeService.class).initialize(session);
+      result.flow = "authorization_code";
+    } else if ("buddy".equals(provider) || "workbuddy".equals(provider)) {
+      session.buddy = Aop.get(BuddyService.class).start(provider);
+      session.expiresAt = session.buddy.expiresAt;
+      result.url = session.buddy.authUrl;
+      result.flow = "device";
+      result.expires_in = (int) ((session.expiresAt - now) / 1000);
+    } else if ("lobsterai".equals(provider)) {
+      startCallbackServer(spec.redirectUri);
+      result.url = Aop.get(LobsterAiService.class).initialize(session);
+      result.flow = "authorization_code";
+    } else if (spec.deviceUrl != null) {
       Kv parameters = Kv.create().set("client_id", spec.clientId).set("scope", spec.scope);
       if ("cline".equals(provider)) {
         parameters.remove("scope");
@@ -152,6 +179,38 @@ public class OAuthService {
   public Kv status(String state) throws Exception {
     OAuthSession session = session(state);
     synchronized (session) {
+      if ("wait".equals(session.status) && session.codearts != null) {
+        try {
+          Kv credential = Aop.get(CodeArtsService.class).poll(session.codearts);
+          if (credential != null) { complete(session, credential); session.codearts.close(); }
+        } catch (Exception error) {
+          session.status = "error";
+          session.error = OAuthFailureUtils.message("CodeArts login", error);
+          session.codearts.close();
+        }
+      }
+      if ("wait".equals(session.status) && session.buddy != null) {
+        try {
+          Kv token = Aop.get(BuddyService.class).poll(session.buddy);
+          if (token != null) { complete(session, token); session.buddy = null; }
+        } catch (Exception error) {
+          session.status = "error";
+          session.error = OAuthFailureUtils.message("Buddy login", error);
+          session.buddy = null;
+        }
+      }
+      if ("wait".equals(session.status) && session.spec != null && "minimax".equals(session.spec.provider)) {
+        Kv token = Aop.get(MiniMaxService.class).poll(session);
+        if (token != null) { complete(session, token); }
+      }
+      if ("wait".equals(session.status) && session.spec != null && "raccoon".equals(session.spec.provider)) {
+        Kv token = Aop.get(RaccoonService.class).poll(session);
+        if (token != null) { complete(session, token); }
+      }
+      if ("wait".equals(session.status) && session.spec != null && "zcode".equals(session.spec.provider)) {
+        Kv token = Aop.get(ZCodeService.class).poll(session);
+        if (token != null) { complete(session, token); }
+      }
       if ("wait".equals(session.status) && session.pluginId != null) {
         Kv result = Aop.get(PluginService.class).require(session.pluginId).call("auth.login.poll",
             Kv.create().set("Provider", session.pluginProvider).set("State", session.pluginState).set("Metadata", session.pluginMetadata).set("Host", Kv.create()));
@@ -171,6 +230,9 @@ public class OAuthService {
         pollCline(session);
       }
       if ("wait".equals(session.status) && session.deviceCode != null && !"cline".equals(session.spec.provider)
+          && !"minimax".equals(session.spec.provider)
+          && !"raccoon".equals(session.spec.provider)
+          && !"zcode".equals(session.spec.provider)
           && System.currentTimeMillis() >= session.nextPoll) {
         session.nextPoll = System.currentTimeMillis() + session.interval * 1000L;
         Kv parameters = Kv.create().set("client_id", session.spec.clientId).set("device_code", session.deviceCode)
@@ -226,6 +288,8 @@ public class OAuthService {
       BusinessException.require(!"ok".equals(session.status), 409, "COMPLETED", "OAuth session already completed");
       session.status = "error";
       session.error = "cancelled";
+      if (session.codearts != null) { session.codearts.close(); session.codearts = null; }
+      session.buddy = null;
       session.verifier = null;
       session.deviceCode = null;
       return Kv.create().set("status", "ok");
@@ -234,12 +298,17 @@ public class OAuthService {
 
   public Kv callback(OAuthCallbackInput input) throws Exception {
     BusinessException.require(input != null, 400, "INVALID_CALLBACK", "OAuth callback is required");
+    Kv callbackParameters = Kv.create();
     if (input.redirect_url != null && !input.redirect_url.isBlank()) {
       URI redirect = URI.create(input.redirect_url);
       Kv query = query(redirect.getRawQuery());
+      callbackParameters = query;
       input.code = query.getStr("code");
       input.state = query.getStr("state");
       input.error = query.getStr("error");
+      if (input.state == null && query.getStr("login_trace_id") != null) {
+        input.state = traeSession(query.getStr("login_trace_id")).state;
+      }
     }
     OAuthSession session = session(input.state);
     synchronized (session) {
@@ -254,6 +323,17 @@ public class OAuthService {
         session.status = "error";
         session.error = input.error;
         return Kv.create().set("status", "error").set("error", input.error);
+      }
+      if ("trae".equals(session.spec.provider)) {
+        session.status = "exchanging";
+        try {
+          complete(session, Aop.get(TraeService.class).exchange(callbackParameters, session));
+          return Kv.create().set("status", "ok");
+        } catch (Exception error) {
+          session.status = "error";
+          session.error = OAuthFailureUtils.message("TRAE login", error);
+          throw new OAuthRequestException(session.error);
+        }
       }
       BusinessException.require(input.code != null && !input.code.isBlank(), 400, "MISSING_CODE", "OAuth code is required");
       Kv parameters = Kv.create().set("grant_type", "authorization_code").set("client_id", session.spec.clientId)
@@ -271,7 +351,9 @@ public class OAuthService {
       session.status = "exchanging";
       String stage = "Token exchange";
       try {
-        Kv result = post(session.spec.tokenUrl, parameters, session.spec.jsonToken, null);
+        Kv result = "lobsterai".equals(session.spec.provider)
+            ? Aop.get(LobsterAiService.class).exchange(input.code, session)
+            : post(session.spec.tokenUrl, parameters, session.spec.jsonToken, null);
         requireTokenResponse(result);
         if ("devin".equals(session.spec.provider)) {
           String token = result.getStr("token");
@@ -296,6 +378,14 @@ public class OAuthService {
 
   public Kv refreshCredential(Kv credential) throws Exception {
     String provider = credential.getStr("type");
+    if ("minimax".equals(provider)) { return Aop.get(MiniMaxService.class).refresh(credential); }
+    if ("buddy".equals(provider) || "workbuddy".equals(provider)) { return Aop.get(BuddyService.class).refresh(provider, credential); }
+    if ("lobsterai".equals(provider)) { return Aop.get(LobsterAiService.class).refresh(credential); }
+    if ("trae".equals(provider)) { return Aop.get(TraeService.class).refresh(credential); }
+    if ("raccoon".equals(provider)) { return Aop.get(RaccoonService.class).refresh(credential); }
+    if ("codearts".equals(provider)) { return Aop.get(CodeArtsService.class).refresh(credential); }
+    if ("loomy".equals(provider)) { return Aop.get(LoomyService.class).refresh(credential); }
+    if ("zcode".equals(provider)) { return Aop.get(ZCodeService.class).refresh(credential); }
     NativePlugin plugin = Aop.get(PluginService.class).provider(provider, false);
     if (plugin != null) {
       Kv result = plugin.call("auth.refresh", Kv.create().set("AuthProvider", provider).set("StorageJSON", PluginHostCallbacks.encode(JsonUtils.toJson(credential).getBytes(StandardCharsets.UTF_8)))
@@ -338,7 +428,9 @@ public class OAuthService {
   }
 
   private void complete(OAuthSession session, Kv token) throws Exception {
-    BusinessException.require(token.getStr("access_token") != null, 502, "NO_ACCESS_TOKEN", "Token endpoint returned no access token");
+    BusinessException.require(token.getStr("access_token") != null || ("codearts".equals(session.spec.provider)
+        && token.getStr("access_key_id") != null && token.getStr("secret_access_key") != null && token.getStr("security_token") != null),
+        502, "NO_ACCESS_TOKEN", "Token endpoint returned no access credential");
     Kv credential = Kv.create().set("type", session.spec.provider);
     mergeToken(credential, token);
     String idToken = token.getStr("id_token");
@@ -399,6 +491,14 @@ public class OAuthService {
     BusinessException.require(session != null, 404, "INVALID_STATE", "Unknown OAuth state");
     BusinessException.require(System.currentTimeMillis() < session.expiresAt, 410, "EXPIRED", "OAuth session expired");
     return session;
+  }
+
+  private OAuthSession traeSession(String trace) {
+    OAuthSession matched = sessions.values().stream().filter(candidate -> candidate.spec != null
+        && "trae".equals(candidate.spec.provider) && candidate.pluginMetadata != null
+        && trace.equals(candidate.pluginMetadata.getStr("login_trace_id"))).findFirst().orElse(null);
+    BusinessException.require(matched != null, 400, "INVALID_STATE", "Unknown TRAE login trace");
+    return session(matched.state);
   }
 
   private OkHttpClient client() {
@@ -473,7 +573,8 @@ public class OAuthService {
       try {
         BusinessException.require("GET".equals(exchange.getRequestMethod()), 405, "METHOD_NOT_ALLOWED", "GET is required");
         Kv parameters = query(exchange.getRequestURI().getRawQuery());
-        OAuthSession pending = session(parameters.getStr("state"));
+        OAuthSession pending = parameters.getStr("state") == null && parameters.getStr("login_trace_id") != null
+            ? traeSession(parameters.getStr("login_trace_id")) : session(parameters.getStr("state"));
         URI expected = URI.create(pending.spec.redirectUri);
         BusinessException.require(expected.getPort() == uri.getPort() && expected.getPath().equals(exchange.getRequestURI().getPath()),
             400, "CALLBACK_PATH", "Callback path does not match this OAuth session");
@@ -481,6 +582,9 @@ public class OAuthService {
         input.state = parameters.getStr("state");
         input.code = parameters.getStr("code");
         input.error = parameters.getStr("error");
+        if ("trae".equals(pending.spec.provider)) {
+          input.redirect_url = pending.spec.redirectUri + "?" + exchange.getRequestURI().getRawQuery();
+        }
         Kv result = callback(input);
         if (!"ok".equals(result.getStr("status"))) {
           status = 400;

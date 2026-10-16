@@ -22,6 +22,13 @@ import grokIcon from '../assets/icons/grok.svg';
 import devinIcon from '../assets/icons/devin.svg';
 import kimiIcon from '../assets/icons/kimi-light.svg';
 import metaIcon from '../assets/icons/meta.svg';
+import clineIcon from '../assets/icons/ofm-cline.png';
+import buddyIcon from '../assets/icons/ofm-buddy.png';
+import workbuddyIcon from '../assets/icons/ofm-workbuddy.png';
+import raccoonIcon from '../assets/icons/ofm-raccoon.png';
+import codeartsIcon from '../assets/icons/ofm-codearts.png';
+import zcodeIcon from '../assets/icons/ofm-zcode.png';
+import { QRCodeSVG } from 'qrcode.react';
 import { useI18n } from '../i18n';
 import { usePrivacyMask } from '../privacy';
 import { FloatingNotice, useAppNotice } from '../appNotice';
@@ -41,11 +48,14 @@ import { handleHorizontalTabKey } from '../components/tabKeyboardNavigation';
 import { PluginOAuthProviders } from './PluginOAuthProviders';
 import { notifyPluginResourcesChanged, PLUGIN_RESOURCES_REFRESH_EVENT } from '../services/pluginResources';
 import { VertexLoginCard } from './VertexLoginCard';
+import { LoomyLoginCard } from './LoomyLoginCard';
 
-type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta' | 'cline';
+type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta' | 'cline'
+  | 'minimax' | 'buddy' | 'workbuddy' | 'lobsterai' | 'trae' | 'raccoon' | 'codearts' | 'zcode';
 type OAuthFlowStatus = 'idle' | 'waiting' | 'success' | 'error';
 
 type OAuthProviderState = {
+  flow?: string;
   url?: string;
   userCode?: string;
   state?: string;
@@ -80,7 +90,15 @@ type OAuthStatusResult = {
 };
 
 const oauthProviders = [
-  { id: 'cline' as const, name: 'Cline OAuth', icon: '' },
+  { id: 'zcode' as const, name: 'ZCode', icon: zcodeIcon },
+  { id: 'minimax' as const, name: 'MiniMax Code', icon: '' },
+  { id: 'buddy' as const, name: 'CodeBuddy', icon: buddyIcon },
+  { id: 'workbuddy' as const, name: 'WorkBuddy', icon: workbuddyIcon },
+  { id: 'lobsterai' as const, name: 'LobsterAI', icon: '' },
+  { id: 'trae' as const, name: 'TRAE', icon: '' },
+  { id: 'raccoon' as const, name: 'Raccoon', icon: raccoonIcon },
+  { id: 'codearts' as const, name: 'CodeArts', icon: codeartsIcon },
+  { id: 'cline' as const, name: 'Cline OAuth', icon: clineIcon },
   { id: 'codex' as const, name: 'Codex OAuth', icon: codexIcon },
   { id: 'claude' as const, name: 'Claude OAuth', icon: claudeIcon },
   { id: 'antigravity' as const, name: 'Antigravity OAuth', icon: antigravityIcon },
@@ -91,6 +109,8 @@ const oauthProviders = [
 ];
 
 const OAUTH_CALLBACK_SUPPORTED = new Set<OAuthProviderId>([
+  'lobsterai',
+  'trae',
   'codex',
   'claude',
   'antigravity',
@@ -197,7 +217,7 @@ export function OAuthManagementPage() {
 }
 
 export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const privacy = usePrivacyMask();
   const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
   const [states, setStates] = useState<Partial<Record<OAuthProviderId, OAuthProviderState>>>(
@@ -428,12 +448,13 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
         url: result.url,
         state: result.state,
         userCode: result.userCode ?? undefined,
+        flow: result.flow ?? undefined,
         status: 'waiting',
         polling: true,
       });
       startPolling(provider, result.state);
 
-      if (!result.opened) {
+      if (!result.opened && result.flow !== 'qr') {
         showNotice(
           result.openError
             ? t('oauth.openFailedDetail', { error: result.openError })
@@ -671,9 +692,14 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                     <span>{t('oauth.flow.error', { error: privacy.text(state.error || t('oauth.authFailed')) })}</span>
                   </div>
                 ) : null}
-                <p className="oauth-hint">{t(provider.id === 'devin' ? 'oauth.devinHint' : provider.id === 'meta' ? 'oauth.metaHint' : 'oauth.hint')}</p>
+                <p className="oauth-hint">{provider.id === 'raccoon'
+                  ? (locale.startsWith('zh') ? '点击登录后，使用微信扫描二维码完成授权。' : 'Start login, then scan the QR code with WeChat to authorize.')
+                  : t(provider.id === 'devin' ? 'oauth.devinHint' : provider.id === 'meta' ? 'oauth.metaHint' : 'oauth.hint')}</p>
                 {state.url ? (
                   <div className="oauth-auth-url-box">
+                    {state.flow === 'qr' ? <div style={{ background: 'white', padding: 16, width: 'fit-content', margin: '8px auto' }}>
+                      <QRCodeSVG value={state.url} size={192} title="微信扫码登录 / Scan with WeChat" />
+                    </div> : null}
                     <div className="oauth-auth-url-label">{t('oauth.authorizationLink')}</div>
                     <div className="oauth-auth-url-value" title={state.url}>{state.url}</div>
                     <div className="oauth-auth-url-actions">
@@ -736,6 +762,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
           );
         })}
         <VertexLoginCard />
+          <LoomyLoginCard />
         <PluginOAuthProviders
           builtInProviderIds={[...BUILTIN_OAUTH_PROVIDER_IDS, 'vertex']}
           browser={selectedBrowser === NO_AUTO_OPEN_BROWSER_ID ? 'default' : selectedBrowser || 'default'}

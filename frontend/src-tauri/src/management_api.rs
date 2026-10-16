@@ -288,9 +288,11 @@ pub(crate) async fn start_oauth_login(
         .map_err(|err| format_management_request_error("Failed to request OAuth login URL", &err))?;
     let payload = read_management_json::<OAuthStartApiResponse>(response).await?;
     let mut result = normalize_oauth_start_response(payload)?;
-    match open_oauth_url_inner(&app, &result.url, browser.as_deref()) {
-        Ok(()) => result.opened = true,
-        Err(error) => result.open_error = Some(error),
+    if result.flow.as_deref() != Some("qr") {
+        match open_oauth_url_inner(&app, &result.url, browser.as_deref()) {
+            Ok(()) => result.opened = true,
+            Err(error) => result.open_error = Some(error),
+        }
     }
     Ok(result)
 }

@@ -1,0 +1,7 @@
+.loomy-login-dialog { width: min(480px, calc(100vw - 32px)); }
+.loomy-login-form { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+.loomy-login-form label { display: flex; flex-direction: column; gap: 7px; }
+.loomy-login-form input { width: 100%; min-width: 0; }
+.loomy-login-form p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.loomy-login-actions { justify-content: flex-end; margin-top: 8px; }
+.loomy-login-error { color: var(--danger, #c53030); }

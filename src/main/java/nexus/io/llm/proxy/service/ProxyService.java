@@ -17,6 +17,7 @@ import nexus.io.llm.proxy.model.Provider;
 import nexus.io.llm.proxy.model.ProxySettings;
 import nexus.io.llm.proxy.model.RequestRecord;
 import nexus.io.model.body.RespBodyVo;
+import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.boot.http.TioRequestContext;
 import nexus.io.tio.core.Tio;
 import nexus.io.tio.http.common.HttpRequest;
@@ -209,6 +210,10 @@ public class ProxyService {
     if (settings.captureBodies) { record.upstreamRequestBody = truncate(executedPayload, captureLimit); }
     Request upstreamRequest = "devin".equals(provider.upstreamType)
         ? Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload) : prepared.request();
+    if ("codearts".equals(provider.upstreamType)) {
+      upstreamRequest = Aop.get(CodeArtsTransportService.class).prepare(upstreamRequest, provider.metadata, selection.model());
+    }
+    Request signedRequest = upstreamRequest;
     record.upstreamRequestHeaders = HeaderService.redact(upstreamRequest.headers().toMultimap());
     response.removeHeaders("x-request-id");
     response.addHeader("x-request-id", record.id);
@@ -220,9 +225,10 @@ public class ProxyService {
       String proxyUrl = ProxyJson.text(provider.metadata, "proxy_url", ProxyJson.text(provider.metadata, "proxy-url", transport.configuredProxy()));
       OkHttpClient outbound = proxyUrl.isBlank() ? client : transport.client(proxyUrl, 0).newBuilder().readTimeout(0, TimeUnit.SECONDS).build();
       Response rawResponse = prepared.terminated() != null ? prepared.terminated() : Aop.get(RequestRetryService.class).execute(provider, () -> "devin".equals(provider.upstreamType)
-          ? Aop.get(DevinTransportService.class).execute(outbound, upstreamRequest, selection.model(), record.stream) : executor == null ? UniChatClient.execute(outbound, upstreamRequest)
-          : executor.execute(upstreamRequest, provider.metadata, selection.model(), upstreamProtocol, record.stream, executedPayload));
+          ? Aop.get(DevinTransportService.class).execute(outbound, signedRequest, selection.model(), record.stream) : executor == null ? UniChatClient.execute(outbound, signedRequest)
+          : executor.execute(signedRequest, provider.metadata, selection.model(), upstreamProtocol, record.stream, executedPayload));
       owned = rawResponse;
+      if ("zcode".equals(provider.upstreamType)) { Aop.get(ZCodeTransportService.class).rejectAccessChallenge(rawResponse); }
       if (rawResponse.code() == 401 && provider.credentialName != null && executor == null && prepared.terminated() == null) {
         rawResponse.close();
         CredentialService credentials = Aop.get(CredentialService.class);
@@ -231,12 +237,23 @@ public class ProxyService {
         if ("devin".equals(provider.upstreamType)) {
           Request retried = Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload);
           rawResponse = Aop.get(DevinTransportService.class).execute(outbound, retried, selection.model(), record.stream);
+        } else if ("codearts".equals(provider.upstreamType)) {
+          provider.metadata = refreshed;
+          Request retried = Aop.get(CodeArtsTransportService.class).prepare(prepared.request(), refreshed, selection.model());
+          rawResponse = UniChatClient.execute(outbound, retried);
+        } else if ("trae".equals(provider.upstreamType) || "loomy".equals(provider.upstreamType) || "raccoon".equals(provider.upstreamType)
+            || "buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+          provider.metadata = refreshed;
+          Request.Builder retried = upstreamRequest.newBuilder().header("Authorization", "Bearer " + provider.apiKey);
+          oauthTransport.headers(provider, retried);
+          rawResponse = UniChatClient.execute(outbound, retried.build());
         } else {
           rawResponse = UniChatClient.execute(outbound, upstreamRequest.newBuilder().header("Authorization", "Bearer " + provider.apiKey).build());
         }
       }
       owned = rawResponse;
       if (prepared.terminated() == null && CredentialRetryState.retryable(rawResponse.code())) {
+        if ("zcode".equals(provider.upstreamType)) { Aop.get(ZCodeTransportService.class).rejectAccessChallenge(rawResponse); }
         Aop.get(RoutingService.class).result(provider, selection.model(), rawResponse.code(), rawResponse.header("Retry-After"));
         if (route.executor() == null && retry.advance(provider, route.model(), protocol, route.provider(), session)) {
           rawResponse.close();
@@ -274,6 +291,14 @@ public class ProxyService {
         upstream = normalized.newBuilder().removeHeader("Content-Length").body(translated).build();
       } else { upstream = normalized; }
     } catch (CredentialRetryState.NextCredential next) { throw next; }
+    catch (BusinessException error) {
+      if (owned != null) { owned.close(); }
+      record.status = error.getStatus();
+      record.error = error.getMessage();
+      finish(record, provider, settings);
+      response.setStatus(error.getStatus());
+      return response.respond(RespBodyVo.fail(error.getStatus(), error.getMessage()));
+    }
     catch (Exception error) {
       if (owned != null) { owned.close(); }
       if (error instanceof IOException && route.executor() == null) {

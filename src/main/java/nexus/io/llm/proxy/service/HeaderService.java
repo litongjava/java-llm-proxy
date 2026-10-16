@@ -42,7 +42,8 @@ public final class HeaderService {
   public static Kv redact(Map<?, ?> headers) {
     Kv result = Kv.create();
     if (headers != null) {
-      headers.forEach((name, value) -> result.set(name.toString(), secret(name.toString()) ? "[REDACTED]" : value));
+      headers.forEach((name, value) -> result.set(name.toString(), secret(name.toString())
+          || "x-aliyun-captcha-verify-param".equalsIgnoreCase(name.toString()) ? "[REDACTED]" : value));
     }
     return result;
   }

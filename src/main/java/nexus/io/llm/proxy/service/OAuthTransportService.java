@@ -19,11 +19,30 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import okio.BufferedSource;
+import okio.Buffer;
 import okio.Okio;
 
 public class OAuthTransportService {
   public Kv payload(Provider provider, Kv body, String model, String endpoint) {
     if (!"oauth".equals(provider.authType)) { return body; }
+    if ("zcode".equals(provider.upstreamType)) { return Aop.get(ZCodeTransportService.class).payload(body, endpoint); }
+    if ("codearts".equals(provider.upstreamType)) { return Aop.get(CodeArtsTransportService.class).payload(body, model, endpoint); }
+    if ("loomy".equals(provider.upstreamType)) {
+      BusinessException.require("/chat/completions".equals(endpoint), 400, "UNSUPPORTED_ENDPOINT", "Loomy supports chat completions");
+    }
+    if ("minimax".equals(provider.upstreamType)) { return Aop.get(MiniMaxTransportService.class).payload(body, model, endpoint); }
+    if ("raccoon".equals(provider.upstreamType)) { return Aop.get(RaccoonTransportService.class).payload(body, endpoint); }
+    if ("trae".equals(provider.upstreamType)) {
+      BusinessException.require("/chat/completions".equals(endpoint), 400, "UNSUPPORTED_ENDPOINT", "TRAE supports chat completions");
+      return Aop.get(TraeService.class).payload(body, provider.metadata);
+    }
+    if ("buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+      return Aop.get(BuddyTransportService.class).payload(body, model, endpoint);
+    }
+    if ("lobsterai".equals(provider.upstreamType)) {
+      BusinessException.require("/chat/completions".equals(endpoint), 400, "UNSUPPORTED_ENDPOINT", "LobsterAI supports chat completions");
+      return Aop.get(LobsterAiService.class).payload(body);
+    }
     if ("cline".equals(provider.upstreamType)) { return Aop.get(ClineTransportService.class).payload(body, endpoint); }
     if ("codex".equals(provider.upstreamType) && !endpoint.endsWith("compact")) {
       body.set("stream", true).set("store", false);
@@ -38,12 +57,36 @@ public class OAuthTransportService {
     return body;
   }
   public String url(Provider provider, String url, String endpoint, boolean stream) {
+    if ("trae".equals(provider.upstreamType)) { return provider.baseUrl + "/api/agent/v3/llm_utils_chat"; }
     if ("antigravity".equals(provider.upstreamType)) {
       return provider.baseUrl + (stream ? ":streamGenerateContent?alt=sse" : ":generateContent");
     }
     return url;
   }
   public void headers(Provider provider, Request.Builder request) {
+    if ("zcode".equals(provider.upstreamType)) { Aop.get(ZCodeTransportService.class).headers(provider.metadata, request); }
+    if ("loomy".equals(provider.upstreamType)) {
+      Aop.get(LoomyService.class).headers(provider.metadata).forEach((key, value) -> request.header(key.toString(), value.toString()));
+    }
+    if ("trae".equals(provider.upstreamType)) {
+      Aop.get(TraeService.class).headers(provider.metadata, true).forEach((key, value) -> request.header(key.toString(), value.toString()));
+    }
+    if ("raccoon".equals(provider.upstreamType)) {
+      Aop.get(RaccoonService.class).headers(provider.metadata).forEach((key, value) -> request.header(key.toString(), value.toString()));
+    }
+    if ("minimax".equals(provider.upstreamType)) { Aop.get(MiniMaxTransportService.class).headers(request); }
+    if ("buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+      try {
+        Buffer buffer = new Buffer();
+        request.build().body().writeTo(buffer);
+        String model = ProxyJson.parse(buffer.readUtf8()).getStr("model");
+        Aop.get(BuddyService.class).headers(provider.upstreamType, provider.metadata, model)
+            .forEach((key, value) -> request.header(key.toString(), value.toString()));
+      } catch (IOException error) { throw new IllegalStateException("Cannot read Buddy request", error); }
+    }
+    if ("lobsterai".equals(provider.upstreamType)) {
+      Aop.get(LobsterAiService.class).headers(true).forEach((key, value) -> request.header(key.toString(), value.toString()));
+    }
     if ("cline".equals(provider.upstreamType)) {
       Aop.get(ClineService.class).headers().forEach((key, value) -> request.header(String.valueOf(key), String.valueOf(value)));
       request.header("Accept", "text/event-stream");
@@ -61,6 +104,19 @@ public class OAuthTransportService {
     }
   }
   public Response response(Provider provider, Response response, boolean clientStream) throws Exception {
+    if ("zcode".equals(provider.upstreamType)) { return Aop.get(ZCodeTransportService.class).response(response, clientStream); }
+    if ("codearts".equals(provider.upstreamType)) { return Aop.get(CodeArtsTransportService.class).response(response, clientStream); }
+    if ("trae".equals(provider.upstreamType)) {
+      Buffer buffer = new Buffer();
+      if (response.request().body() != null) { response.request().body().writeTo(buffer); }
+      return Aop.get(TraeTransportService.class).response(response, clientStream, ProxyJson.parse(buffer.readUtf8()).getStr("model"));
+    }
+    if ("raccoon".equals(provider.upstreamType)) { return Aop.get(RaccoonTransportService.class).response(response, clientStream); }
+    if ("minimax".equals(provider.upstreamType)) { return Aop.get(MiniMaxTransportService.class).response(response, clientStream); }
+    if ("buddy".equals(provider.upstreamType) || "workbuddy".equals(provider.upstreamType)) {
+      return Aop.get(BuddyTransportService.class).response(response, clientStream);
+    }
+    if ("lobsterai".equals(provider.upstreamType)) { return Aop.get(LobsterAiService.class).response(response, clientStream); }
     if ("cline".equals(provider.upstreamType)) { return Aop.get(ClineTransportService.class).response(response, clientStream); }
     if (!response.isSuccessful() || response.body() == null) { return response; }
     String type = response.header("Content-Type", "");

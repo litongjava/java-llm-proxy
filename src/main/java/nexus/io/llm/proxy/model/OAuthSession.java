@@ -17,4 +17,6 @@ public class OAuthSession {
   public String pluginProvider;
   public String pluginState;
   public Kv pluginMetadata;
+  public BuddyLoginSession buddy;
+  public CodeArtsLoginSession codearts;
 }

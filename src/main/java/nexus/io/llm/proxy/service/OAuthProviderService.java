@@ -9,6 +9,14 @@ import nexus.io.tio.utils.environment.EnvUtils;
 public class OAuthProviderService {
   public OAuthProviderSpec get(String provider) throws Exception {
     OAuthProviderSpec spec = switch (provider) {
+    case "minimax" -> Aop.get(MiniMaxService.class).spec();
+    case "raccoon" -> Aop.get(RaccoonService.class).spec();
+    case "zcode" -> Aop.get(ZCodeService.class).spec();
+    case "codearts" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", null, true);
+    case "trae" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", "http://localhost:18080/authorize", true);
+    case "buddy", "workbuddy" -> new OAuthProviderSpec(provider, "", null, null, null, null, "", null, true);
+    case "lobsterai" -> new OAuthProviderSpec(provider, "", null, null, null, null, "",
+        "http://127.0.0.1:18321/auth/callback", true);
     case "codex" -> new OAuthProviderSpec(provider, "app_EMoamEEZ73f0CkXaXp7hrann", null,
         "https://auth.openai.com/oauth/authorize", "https://auth.openai.com/oauth/token", null,
         "openid email profile offline_access", "http://localhost:1455/auth/callback", false);

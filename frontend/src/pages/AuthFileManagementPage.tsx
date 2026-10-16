@@ -35,6 +35,14 @@ import devinIcon from '../assets/icons/devin.svg';
 import kimiIcon from '../assets/icons/kimi-light.svg';
 import metaIcon from '../assets/icons/meta.svg';
 import vertexIcon from '../assets/icons/vertex.svg';
+import clineIcon from '../assets/icons/ofm-cline.png';
+import buddyIcon from '../assets/icons/ofm-buddy.png';
+import workbuddyIcon from '../assets/icons/ofm-workbuddy.png';
+import codeartsIcon from '../assets/icons/ofm-codearts.png';
+import raccoonIcon from '../assets/icons/ofm-raccoon.png';
+import zcodeIcon from '../assets/icons/ofm-zcode.png';
+import qoderIcon from '../assets/icons/ofm-qoder.png';
+import qodercnIcon from '../assets/icons/ofm-qodercn.png';
 import {
   formatDate,
   managementApi,
@@ -92,6 +100,15 @@ import { usePrivacyMask } from '../privacy';
 type AuthFile = Record<string, unknown>;
 
 const providerIcons: Record<string, string> = {
+  cline: clineIcon,
+  buddy: buddyIcon,
+  codebuddy: buddyIcon,
+  workbuddy: workbuddyIcon,
+  codearts: codeartsIcon,
+  raccoon: raccoonIcon,
+  zcode: zcodeIcon,
+  qoder: qoderIcon,
+  qodercn: qodercnIcon,
   antigravity: antigravityIcon,
   claude: claudeIcon,
   codex: codexIcon,
@@ -534,7 +551,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
             {pageFiles.map((file) => {
               const name = fileName(file);
               const key = quotaKey(file);
-              const icon = providerIcons[providerKey(file)] ?? geminiIcon;
+              const icon = providerIcons[providerKey(file)];
               const disabled = readBoolean(file, 'disabled');
               const priority = parseAuthFilePriority(file.priority) ?? 0;
               const identities = authFileIdentities(file);
@@ -560,9 +577,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
                 <article className={`auth-file-card ${disabled ? 'is-disabled' : ''}`} key={key} role="listitem" aria-label={identity || displayName}>
                   <div className="auth-credential-row">
                   <header className={`auth-card-header auth-list-cell ${identity ? '' : 'filename-only'}`}>
-                    {providerKey(file) === 'cline' ? (
-                      <FileKey className="provider-logo" data-provider="cline" aria-hidden="true" />
-                    ) : <img src={icon} alt="" data-provider={providerKey(file)} className={providerKey(file) === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />}
+                    {icon ? <img src={icon} alt="" data-provider={providerKey(file)} className={providerKey(file) === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} /> : <FileKey className="provider-logo" aria-hidden="true" />}
                     <div className="auth-card-identity">
                       <strong title={identity || displayName}>{identity || displayName}</strong>
                       <span className="auth-card-filename" title={displayName}>{identity ? displayName : providerName(file)}</span>

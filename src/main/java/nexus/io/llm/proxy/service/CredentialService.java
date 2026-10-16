@@ -260,6 +260,10 @@ public class CredentialService {
 
   public synchronized Kv refreshed(String name, boolean force) throws Exception {
     Kv value = read(name);
+    if ("zcode".equals(value.getStr("type")) && "coding-plan".equals(value.getStr("zcode_channel"))
+        && value.getStr("coding_plan_key") != null && !value.getStr("coding_plan_key").isBlank()) {
+      return value;
+    }
     String expiry = ProxyJson.text(value, "expired", ProxyJson.text(value, "expires_at", ""));
     long expiresAt = Long.MAX_VALUE;
     if (!expiry.isBlank()) {

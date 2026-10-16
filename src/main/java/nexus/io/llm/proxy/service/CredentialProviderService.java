@@ -10,15 +10,34 @@ import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.environment.EnvUtils;
 
 public class CredentialProviderService {
+  protected CredentialService credentials() {
+    return Aop.get(CredentialService.class);
+  }
+
+  protected NativeChannelService channels() {
+    return Aop.get(NativeChannelService.class);
+  }
+
   public List<Provider> providers() {
     List<Provider> providers = new ArrayList<>();
     try {
-      CredentialService service = Aop.get(CredentialService.class);
+      CredentialService service = credentials();
+      NativeChannelService channels = channels();
       for (CredentialInfo info : service.list()) {
         if (info.disabled || info.unavailable || info.type == null) {
           continue;
         }
-        Kv credential = service.read(info.name);
+        Kv credential;
+        try {
+          credential = service.read(info.name);
+          if (channels.supports(info.type)) {
+            // Discover with a usable token before model-based routing can select this account.
+            credential = service.refreshed(info.name, false);
+          }
+        } catch (Exception error) {
+          // One expired or unreadable account must not suppress every other provider.
+          continue;
+        }
         if (ProxyJson.list(credential.get("excluded_models")).contains("*")) {
           continue;
         }
@@ -51,11 +70,20 @@ public class CredentialProviderService {
           case "devin" -> "https://server.codeium.com";
           default -> "https://api.openai.com/v1";
         };
-        provider.baseUrl = ProxyJson.text(credential, "base_url", EnvUtils.get("proxy.oauth." + info.type + ".api-base-url", base)).replaceAll("/+$", "");
+        if (channels.supports(info.type)) {
+          base = channels.baseUrl(info.type);
+          provider.protocol = channels.protocol(info.type);
+        }
+        provider.baseUrl = ProxyJson.text(credential, "base_url", base).replaceAll("/+$", "");
+        if (!channels.supports(info.type)) {
+          provider.baseUrl = ProxyJson.text(credential, "base_url", EnvUtils.get("proxy.oauth." + info.type + ".api-base-url", base)).replaceAll("/+$", "");
+        }
+        if ("zcode".equals(info.type)) { provider.baseUrl = Aop.get(ZCodeService.class).apiBaseUrl(credential); }
         List<?> availableModels = ProxyJson.list(credential.get("models"));
-        if ("cline".equals(info.type)) {
+        if (channels.supports(info.type)) {
           try {
-            availableModels = Aop.get(ClineService.class).models(credential);
+            availableModels = channels.models(info.type, credential);
+            provider.metadata.set("models", availableModels);
           } catch (Exception error) {
             // A transient catalog outage must not disable unrelated OAuth providers.
             availableModels = List.of();
@@ -83,12 +111,18 @@ public class CredentialProviderService {
       return provider;
     }
     try {
-      CredentialService service = Aop.get(CredentialService.class);
+      CredentialService service = credentials();
       Kv credential = service.refreshed(provider.credentialName, false);
+      if (Aop.get(NativeChannelService.class).supports(provider.upstreamType) && provider.metadata.get("models") != null) {
+        credential.set("models", provider.metadata.get("models"));
+      }
       provider.metadata = credential;
       if (provider.metadata.getStr("id") == null) { provider.metadata.set("id", provider.credentialName); }
       provider.apiKey = service.accessToken(credential);
-      BusinessException.require(provider.apiKey != null || Aop.get(PluginService.class).provider(provider.upstreamType, true) != null,
+      if ("zcode".equals(provider.upstreamType)) { provider.apiKey = Aop.get(ZCodeService.class).accessToken(credential); }
+      BusinessException.require(provider.apiKey != null || ("codearts".equals(provider.upstreamType)
+          && credential.getStr("access_key_id") != null && credential.getStr("secret_access_key") != null && credential.getStr("security_token") != null)
+          || Aop.get(PluginService.class).provider(provider.upstreamType, true) != null,
           401, "NO_ACCESS_TOKEN", "Credential has no access token");
       return provider;
     } catch (BusinessException error) {

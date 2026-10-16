@@ -30,6 +30,9 @@ public class RequestRetryService {
         Thread.sleep(delay); waited += delay; continue;
       }
       int status = response.code();
+      if ("zcode".equals(provider.upstreamType)) {
+        Aop.get(ZCodeTransportService.class).rejectAccessChallenge(response);
+      }
       if (index >= retries || (status != 403 && status != 429 && status != 408 && status < 500)) { return response; }
       long delay = retryDelay(response.header("Retry-After"), index);
       if (waited + delay > maximumWait) { return response; }
