@@ -127,6 +127,7 @@ const providerName = (file: AuthFile) => {
   if (value === 'xai') return 'xAI';
   if (value === 'devin') return 'Devin';
   if (value === 'meta') return 'Muse (Meta)';
+  if (value === 'workbuddy') { return getCurrentLocale().startsWith('zh') ? 'WorkBuddy（国际版）' : 'WorkBuddy (International)'; }
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : translate(getCurrentLocale(), 'authFiles.unknownProvider');
 };
 

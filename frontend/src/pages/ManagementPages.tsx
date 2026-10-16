@@ -98,7 +98,7 @@ const oauthProviders = [
   { id: 'zcode' as const, name: 'ZCode', icon: zcodeIcon },
   { id: 'minimax' as const, name: 'MiniMax Code', icon: '' },
   { id: 'buddy' as const, name: 'CodeBuddy', icon: buddyIcon },
-  { id: 'workbuddy' as const, name: 'WorkBuddy', icon: workbuddyIcon },
+  { id: 'workbuddy' as const, name: 'WorkBuddy (International)', icon: workbuddyIcon },
   { id: 'lobsterai' as const, name: 'LobsterAI', icon: '' },
   { id: 'trae' as const, name: 'TRAE', icon: '' },
   { id: 'raccoon' as const, name: 'Raccoon', icon: raccoonIcon },
@@ -645,7 +645,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                   <img src={provider.icon} alt="" className={provider.id === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
                 ) : <FileKey className="provider-logo" aria-hidden="true" />}
                 <div>
-                  <h2>{provider.name}</h2>
+                  <h2>{provider.id === 'workbuddy' && locale.startsWith('zh') ? 'WorkBuddy（国际版）' : provider.name}</h2>
                   {accounts === null ? null : hasAccounts ? (
                     <button
                       type="button"
