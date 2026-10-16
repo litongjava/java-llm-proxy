@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
@@ -6,6 +6,7 @@ import { Copy, X } from 'lucide-react';
 import { useDialogFocusTrap } from './useDialogFocusTrap';
 import { getCurrentLocale } from '../i18n';
 import './requestDetail.css';
+import { RequestDetailText } from './RequestDetailText';
 
 type RequestDetail = {
   id: string;
@@ -31,15 +32,67 @@ type FormattedRequest = { protocol: string; prompt: string; response: string };
 type DetailSection = { id: string; title: string; text: string; formatted?: boolean };
 
 function imageUrl(url: string): string {
-  return /^(https?:\/\/|data:image\/(?:png|jpe?g|gif|webp|avif);base64,)/i.test(url) ? url : '';
+  return isStoredImage(url) || /^(https?:\/\/|data:image\/(?:png|jpe?g|gif|webp|avif);base64,)/i.test(url) ? url : '';
+}
+
+function isStoredImage(url: string) {
+  return /^request-images\/[a-f0-9]{64}\.(png|jpe?g|gif|webp|avif)$/.test(url);
 }
 
 function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
   const [failed, setFailed] = useState(false);
+  const [resolved, setResolved] = useState<string>();
+  const placeholder = useRef<HTMLSpanElement>(null);
   const zh = getCurrentLocale().startsWith('zh');
+  useEffect(() => {
+    if (!src || !isStoredImage(src)) return;
+    let active = true;
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      observer.disconnect();
+      invoke<string>('get_proxy_request_image', { path: src })
+        .then(value => { if (active) setResolved(value); })
+        .catch(() => { if (active) setFailed(true); });
+    });
+    if (placeholder.current) observer.observe(placeholder.current);
+    return () => { active = false; observer.disconnect(); };
+  }, [src]);
   if (!src || failed) return <span className="proxy-image-unavailable">{zh ? '图片无法加载' : 'Image unavailable'}</span>;
-  return <img src={src} alt={alt || 'Image'} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+  if (isStoredImage(src) && !resolved) return <span ref={placeholder} className="proxy-image-unavailable">{zh ? '加载图片…' : 'Loading image…'}</span>;
+  return <img src={resolved || src} alt={alt || 'Image'} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
+
+function FormattedPreview({ text }: { text: string }) {
+  const { markdown, images } = useMemo(() => {
+    // Keep image URLs out of the Markdown parser and never cut a base64 image in half.
+    const images: string[] = [];
+    const pattern = /!\[([^\]]*)\]\(<?([^\r\n)>]+)>?\)/g;
+    let markdown = '';
+    let offset = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) && markdown.length + match.index - offset < 10_000) {
+      markdown += text.slice(offset, match.index);
+      const index = images.push(imageUrl(match[2])) - 1;
+      markdown += `![${match[1]}](request-preview-image:${index})`;
+      offset = pattern.lastIndex;
+    }
+    markdown += text.slice(offset, offset + Math.max(0, 10_000 - markdown.length));
+    return { markdown, images };
+  }, [text]);
+  const components = useMemo(() => ({ img: ({ src, alt }: { src?: string; alt?: string }) => {
+    const index = /^request-preview-image:(\d+)$/.exec(src || '');
+    const resolved = index ? images[Number(index[1])] : imageUrl(src || '');
+    return <PreviewImage key={resolved} src={resolved} alt={alt} />;
+  } }), [images]);
+  return <div className="proxy-formatted-content">
+    <ReactMarkdown urlTransform={(url, key) => key === 'src' && /^request-preview-image:\d+$/.test(url)
+      ? url : key === 'src' ? imageUrl(url) : defaultUrlTransform(url)} components={components}>
+      {markdown || (getCurrentLocale().startsWith('zh') ? '（空）' : '(empty)')}
+    </ReactMarkdown>
+  </div>;
+}
+
+function renderFormattedText(text: string) { return <FormattedPreview text={text} />; }
 
 function pretty(value: unknown): string {
   if (value == null) { return ''; }
@@ -116,23 +169,26 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
     } catch (reason) { setError(String(reason)); }
   }
 
-  const body = (value: string | null) => prettyJson ? pretty(value) : value ?? '';
-  const sections: DetailSection[] = detail ? [
-    { id: 'request-headers', title: label('Request headers', '请求头'), text: pretty(detail.requestHeaders) },
-    { id: 'request-body', title: label('Request body', '请求体'), text: body(detail.requestBody) },
-    { id: 'upstream-request-headers', title: label('Upstream request headers', '上游请求头'), text: pretty(detail.upstreamRequestHeaders) },
-    { id: 'upstream-request-body', title: label('Upstream request body', '上游请求体'), text: body(detail.upstreamRequestBody) },
-    { id: 'upstream-response-headers', title: label('Upstream response headers', '上游响应头'), text: pretty(detail.upstreamResponseHeaders ?? {}) },
-    { id: 'upstream-response-body', title: label('Upstream response body', '上游响应体'), text: body(detail.upstreamResponseBody ?? null) },
-    { id: 'response-headers', title: label('Response headers', '响应头'), text: pretty(detail.responseHeaders) },
-    { id: 'response-body', title: label('Response body', '响应体'), text: body(detail.responseBody) },
-  ] : [];
-  if (formatted) {
-    sections.unshift(
-      { id: 'formatted-prompt', formatted: true, title: label('Formatted prompt', '格式化提示词'), text: formatted.prompt },
-      { id: 'formatted-response', formatted: true, title: label('Formatted response', '格式化响应'), text: formatted.response },
-    );
-  }
+  const sections = useMemo(() => {
+    const body = (value: string | null) => prettyJson ? pretty(value) : value ?? '';
+    const sections: DetailSection[] = detail ? [
+      { id: 'request-headers', title: label('Request headers', '请求头'), text: pretty(detail.requestHeaders) },
+      { id: 'request-body', title: label('Request body', '请求体'), text: body(detail.requestBody) },
+      { id: 'upstream-request-headers', title: label('Upstream request headers', '上游请求头'), text: pretty(detail.upstreamRequestHeaders) },
+      { id: 'upstream-request-body', title: label('Upstream request body', '上游请求体'), text: body(detail.upstreamRequestBody) },
+      { id: 'upstream-response-headers', title: label('Upstream response headers', '上游响应头'), text: pretty(detail.upstreamResponseHeaders ?? {}) },
+      { id: 'upstream-response-body', title: label('Upstream response body', '上游响应体'), text: body(detail.upstreamResponseBody ?? null) },
+      { id: 'response-headers', title: label('Response headers', '响应头'), text: pretty(detail.responseHeaders) },
+      { id: 'response-body', title: label('Response body', '响应体'), text: body(detail.responseBody) },
+    ] : [];
+    if (formatted) {
+      sections.unshift(
+        { id: 'formatted-prompt', formatted: true, title: label('Formatted prompt', '格式化提示词'), text: formatted.prompt },
+        { id: 'formatted-response', formatted: true, title: label('Formatted response', '格式化响应'), text: formatted.response },
+      );
+    }
+    return sections;
+  }, [detail, formatted, prettyJson, zh]);
 
   return createPortal(<div className="config-dialog-backdrop proxy-request-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { onClose(); } }}>
     <div ref={dialogRef} className="config-dialog proxy-request-dialog" role="dialog" aria-modal="true" aria-labelledby="proxy-request-title">
@@ -163,12 +219,8 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
       <div className="proxy-request-sections" ref={sectionsRef} onScroll={trackSection}>
         {sections.map(section => <section key={section.id} id={`proxy-section-${section.id}`} data-section-id={section.id}>
           <div className="proxy-request-section-heading"><h3>{section.title}</h3><button type="button" className="secondary-button" onClick={() => void copy(section.text)}><Copy size={14} />{label('Copy', '复制')}</button></div>
-          {section.formatted ? <div className="proxy-formatted-content">
-            <ReactMarkdown urlTransform={(url, key) => key === 'src' ? imageUrl(url) : defaultUrlTransform(url)}
-              components={{ img: ({ src, alt }) => <PreviewImage key={src} src={src} alt={alt} /> }}>
-              {section.text || label('(empty)', '（空）')}
-            </ReactMarkdown>
-          </div> : <pre tabIndex={0}>{section.text || label('(empty)', '（空）')}</pre>}
+          <RequestDetailText key={`${requestId}-${section.id}-${prettyJson}`} text={section.text} title={section.title} zh={zh}
+            renderFormatted={section.formatted ? renderFormattedText : undefined} />
         </section>)}
       </div>
       </div>

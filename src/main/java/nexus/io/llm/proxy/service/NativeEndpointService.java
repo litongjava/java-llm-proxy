@@ -61,7 +61,11 @@ public class NativeEndpointService {
     record.requestHeaders = HeaderService.redact(request.getHeaders());
     int captureLimit = EnvUtils.getInt("proxy.capture.max-bytes", 4194304);
     byte[] original = request.getBody() == null ? new byte[0] : request.getBody();
-    if (configuration.captureBodies) { record.requestBody = capture(original, contentType, captureLimit); record.requestTruncated = original.length > captureLimit; }
+    if (configuration.captureBodies) {
+      byte[] captured = requestCaptureBytes(original, contentType);
+      record.requestBody = capture(captured, contentType, captureLimit);
+      record.requestTruncated = captured.length > captureLimit;
+    }
     String base = provider.baseUrl;
     if ("gemini".equals(protocol) && base.endsWith("/models")) { base = base.substring(0, base.length() - 7); }
     HttpUrl.Builder url = HttpUrl.get(base + endpoint).newBuilder();
@@ -101,7 +105,8 @@ public class NativeEndpointService {
     record.upstreamRequestHeaders = HeaderService.redact(upstream.headers().toMultimap());
     if (body != null && configuration.captureBodies) {
       Buffer sent = new Buffer(); body.writeTo(sent);
-      record.upstreamRequestBody = capture(sent.readByteArray(), body.contentType() == null ? contentType : body.contentType().toString(), captureLimit);
+      String sentType = body.contentType() == null ? contentType : body.contentType().toString();
+      record.upstreamRequestBody = capture(requestCaptureBytes(sent.readByteArray(), sentType), sentType, captureLimit);
     }
     ManagementHttpService transport = Aop.get(ManagementHttpService.class);
     String proxy = ProxyJson.text(provider.metadata, "proxy_url", ProxyJson.text(provider.metadata, "proxy-url", transport.configuredProxy()));
@@ -153,9 +158,18 @@ public class NativeEndpointService {
     finally { if (!streaming) { Aop.get(ProxyService.class).finish(record, provider, configuration); } }
   }
 
+  private byte[] requestCaptureBytes(byte[] bytes, String type) {
+    if (type != null && type.contains("json")) {
+      return Aop.get(RequestImageService.class).externalize(new String(bytes, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+    }
+    return bytes;
+  }
+
   private String capture(byte[] bytes, String type, int limit) {
     int count = Math.min(bytes.length, limit);
-    if (type != null && (type.contains("json") || type.startsWith("text/"))) { return new String(bytes, 0, count, StandardCharsets.UTF_8); }
+    if (type != null && (type.contains("json") || type.startsWith("text/"))) {
+      return Utf8Capture.prefix(bytes, limit);
+    }
     return "base64:" + Base64.getEncoder().encodeToString(Arrays.copyOf(bytes, count));
   }
 }

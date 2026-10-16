@@ -157,10 +157,10 @@ public class ProxyWebSocketService {
     else { input.set("model", resolved); }
     if (Aop.get(SettingsService.class).snapshot().captureBodies) {
       int limit = EnvUtils.getInt("proxy.capture.max-bytes", 4194304);
-      byte[] bytes = original.getBytes(StandardCharsets.UTF_8);
+      byte[] bytes = Aop.get(RequestImageService.class).externalize(original).getBytes(StandardCharsets.UTF_8);
       record.requestBody = new String(Arrays.copyOf(bytes, Math.min(bytes.length, limit)), StandardCharsets.UTF_8);
       record.requestTruncated = bytes.length > limit;
-      byte[] translated = JsonUtils.toJsonWithLongAsNumber(input).getBytes(StandardCharsets.UTF_8);
+      byte[] translated = Aop.get(RequestImageService.class).externalize(JsonUtils.toJsonWithLongAsNumber(input)).getBytes(StandardCharsets.UTF_8);
       record.upstreamRequestBody = new String(Arrays.copyOf(translated, Math.min(translated.length, limit)), StandardCharsets.UTF_8);
     }
     session.record = record; session.captured.reset();

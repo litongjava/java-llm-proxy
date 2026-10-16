@@ -133,6 +133,33 @@ pub(crate) async fn management_request(
 }
 
 #[tauri::command]
+pub(crate) async fn get_proxy_request_image(
+    gui_config_state: tauri::State<'_, GuiConfigState>,
+    path: String,
+) -> Result<String, String> {
+    use base64::Engine;
+    let name = path.strip_prefix("request-images/").ok_or("Invalid image path")?;
+    let (hash, extension) = name.split_once('.').ok_or("Invalid image path")?;
+    if hash.len() != 64 || !hash.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        || !matches!(extension, "png" | "jpeg" | "jpg" | "gif" | "webp" | "avif") {
+        return Err("Invalid image path".to_string());
+    }
+    let config = gui_config_state.snapshot()?;
+    let origin = core_origin(&config.host, config.port, current_core_tls_settings()?.enabled);
+    let response = management_http_client()?
+        .get(format!("{origin}/api/usage/image"))
+        .header("Authorization", management_authorization(&config)?)
+        .query(&[("path", &path)])
+        .send().await.map_err(|error| format_management_request_error("Failed to read image", &error))?;
+    if !response.status().is_success() {
+        return Err(format!("Image request failed ({})", response.status()));
+    }
+    let bytes = response.bytes().await.map_err(|error| format_management_request_error("Failed to read image", &error))?;
+    let mime = if extension == "jpg" { "jpeg" } else { extension };
+    Ok(format!("data:image/{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+#[tauri::command]
 pub(crate) async fn get_proxy_request_detail(
     gui_config_state: tauri::State<'_, GuiConfigState>,
     request_id: String,

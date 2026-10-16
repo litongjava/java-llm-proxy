@@ -82,6 +82,7 @@ public class LLMProxyAppConfig {
     router.post("/api/keys/create", new ApiKeyCreateHandler()::handle);
     router.get("/api/usage", new UsageListHandler()::handle);
     router.get("/api/usage/detail", new RequestDetailHandler()::handle);
+    router.get("/api/usage/image", new RequestImageHandler()::handle);
     router.get("/api/usage/format", new RequestFormatHandler()::handle);
     router.get("/v8/management/observability/usage/queue", new UsageQueueHandler()::handle);
     router.post("/v8/management/observability/usage/ack", new UsageAcknowledgeHandler()::handle);

@@ -2798,6 +2798,7 @@ fn main() {
             clear_core_management_secret_key,
             management_api::management_request,
             management_api::get_proxy_request_detail,
+            management_api::get_proxy_request_image,
             plugins::get_plugin_support,
             plugins::get_plugin_resource_url,
             provider_health::provider_health_probe,

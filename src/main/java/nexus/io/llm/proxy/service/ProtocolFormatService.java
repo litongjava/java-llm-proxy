@@ -206,6 +206,11 @@ public class ProtocolFormatService {
     if (inlineValue instanceof Map<?, ?> inline) {
       url = dataImage(inline.containsKey("mimeType") ? inline.get("mimeType") : inline.get("mime_type"), inline.get("data"));
     }
+    Object fileValue = map.containsKey("fileData") ? map.get("fileData") : map.get("file_data");
+    if (fileValue instanceof Map<?, ?> file) {
+      Object stored = file.containsKey("fileUri") ? file.get("fileUri") : file.get("file_uri");
+      if (stored instanceof String path && RequestImageService.isImagePath(path)) url = path;
+    }
     if ("image_generation_call".equals(map.get("type")) && map.get("result") instanceof String) {
       url = dataImage("image/" + map.get("output_format"), map.get("result"));
       if (url == null) {
@@ -215,7 +220,7 @@ public class ProtocolFormatService {
     if (!(url instanceof String text) || text.contains("<") || text.contains(">") || text.contains("\n") || text.contains("\r")) {
       return null;
     }
-    return text.matches("(?is)^(https?://.+|data:image/(png|jpeg|jpg|gif|webp|avif);base64,[a-z0-9+/=\\s]+)$") ? text : null;
+    return RequestImageService.isImagePath(text) || text.matches("(?is)^(https?://.+|data:image/(png|jpeg|jpg|gif|webp|avif);base64,[a-z0-9+/=\\s]+)$") ? text : null;
   }
 
   private String dataImage(Object mime, Object data) {

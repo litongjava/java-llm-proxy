@@ -134,7 +134,7 @@ public class ProxyService {
     else if (pluginPayload != null) { payload = pluginPayload; }
     int captureLimit = EnvUtils.getInt("proxy.capture.max-bytes", 4194304);
     if (settings.captureBodies) {
-      String originalBody = request.getBodyString();
+      String originalBody = Aop.get(RequestImageService.class).externalize(request.getBodyString());
       record.requestBody = truncate(originalBody, captureLimit);
       record.requestTruncated = record.requestBody.length() < originalBody.length();
     }
@@ -160,7 +160,7 @@ public class ProxyService {
     OAuthTransportService oauthTransport = Aop.get(OAuthTransportService.class);
     Kv outboundPayload = oauthTransport.payload(provider, payload, selection.model(), endpoint);
     String upstreamBody = JsonUtils.toJsonWithLongAsNumber(outboundPayload);
-    record.upstreamRequestBody = settings.captureBodies ? truncate(upstreamBody, captureLimit) : null;
+    record.upstreamRequestBody = settings.captureBodies ? truncate(Aop.get(RequestImageService.class).externalize(upstreamBody), captureLimit) : null;
     String url = provider.baseUrl + ("gemini".equals(upstreamProtocol) ? "/" + selection.model() : "") + endpoint;
     if (record.stream && "gemini".equals(upstreamProtocol)) {
       url += "?alt=sse";
@@ -215,7 +215,7 @@ public class ProxyService {
     if (prepared.bodyChanged() && !"gemini".equals(upstreamProtocol) && !executedPayload.isBlank()) {
       record.model = ProxyJson.text(ProxyJson.parse(executedPayload), "model", selection.model());
     } else if (!"gemini".equals(upstreamProtocol)) { record.model = ProxyJson.text(outboundPayload, "model", selection.model()); }
-    if (settings.captureBodies) { record.upstreamRequestBody = truncate(executedPayload, captureLimit); }
+    if (settings.captureBodies) { record.upstreamRequestBody = truncate(Aop.get(RequestImageService.class).externalize(executedPayload), captureLimit); }
     Request upstreamRequest = "devin".equals(provider.upstreamType)
         ? Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload) : prepared.request();
     if ("codearts".equals(provider.upstreamType)) {

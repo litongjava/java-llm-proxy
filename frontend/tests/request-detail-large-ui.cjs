@@ -1,0 +1,42 @@
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const assert = require('node:assert/strict');
+(async () => {
+  const browser = await chromium.launch({channel:'msedge',headless:true});
+  try {
+    const page = await browser.newPage({viewport:{width:1400,height:950}});
+    const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
+    await page.goto('http://127.0.0.1:1421/tests/fixtures/request-detail-large.html');
+    const request=page.locator('#proxy-section-request-body');
+    await request.locator('pre').waitFor();
+    assert.equal((await request.locator('pre').textContent()).length,10000);
+    assert.equal(await page.evaluate(()=>window.imageReads),0);
+    await request.getByRole('button',{name:'Copy',exact:true}).click();
+    assert(await page.evaluate(()=>window.copied.endsWith('REQUEST_END') && window.copied.length>4000000));
+    const start=Date.now();
+    await request.getByRole('button',{name:'Expand full text'}).click();
+    const viewport=request.locator('.proxy-virtual-text');
+    await viewport.waitFor();
+    assert(await viewport.locator('.proxy-virtual-row').count()<60);
+    await viewport.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+    await page.waitForFunction(()=>document.querySelector('#proxy-section-request-body .proxy-virtual-text').textContent.includes('REQUEST_END'));
+    assert(await viewport.locator('.proxy-virtual-row').count()<60);
+    console.log('Expand and scroll multi-megabyte request:',Date.now()-start,'ms');
+    await request.getByRole('button',{name:'Collapse',exact:true}).click();
+    assert.equal(await request.locator('.proxy-virtual-text').count(),0);
+    await page.getByRole('navigation').getByRole('button',{name:'Response body',exact:true}).click();
+    const response=page.locator('#proxy-section-response-body');
+    await response.getByRole('button',{name:'Expand full text'}).click();
+    await response.locator('.proxy-virtual-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});
+    await page.waitForFunction(()=>document.querySelector('#proxy-section-response-body .proxy-virtual-text').textContent.includes('RESPONSE_END'));
+    assert(await response.locator('.proxy-virtual-row').count()<60);
+    await page.getByRole('button',{name:'Format',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.proxy-formatted-content img')?.naturalWidth>0);
+    assert.equal(await page.evaluate(()=>window.imageReads),1);
+    await page.getByRole('button',{name:'Close',exact:true}).click();
+    await page.getByRole('button',{name:'Open detail'}).click();
+    await request.locator('pre').waitFor();
+    assert.equal(await page.locator('.proxy-virtual-text').count(),0);
+    assert.deepEqual(errors,[]);
+    console.log('Preview, full copy, bounded rows, tail access, collapse, lazy image and reopen passed.');
+  } finally {await browser.close();}
+})().catch(error=>{console.error(error);process.exit(1)});

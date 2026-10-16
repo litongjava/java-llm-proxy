@@ -25,10 +25,12 @@ import nexus.io.tio.utils.json.JsonUtils;
 
 public class StorageService {
   private final String url;
+  private final RequestImageService requestImages;
 
   public StorageService() {
     try {
       Path directory = Path.of(EnvUtils.get("proxy.data-dir", "data")).toAbsolutePath();
+      requestImages = new RequestImageService(directory);
       Files.createDirectories(directory);
       Class.forName("org.sqlite.JDBC");
       url = "jdbc:sqlite:" + directory.resolve("proxy.db");
@@ -157,6 +159,8 @@ public class StorageService {
 
   public void record(RequestRecord record) {
     HeaderService.captureClientContext(record);
+    record.requestBody = requestImages.externalize(record.requestBody);
+    record.upstreamRequestBody = requestImages.externalize(record.upstreamRequestBody);
     String body = JsonUtils.toJson(record);
     RequestRecord summary = JsonUtils.parse(body, RequestRecord.class);
     summary.requestBody = null;
