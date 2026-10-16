@@ -16,6 +16,15 @@ import {
 } from '../src/services/authFiles';
 
 describe('credential display names', () => {
+  it('groups Cline device credentials separately and exposes their model filter', () => {
+    const files = [
+      { name: 'cline-account.json', type: 'cline', email: 'cline@example.com' },
+      { name: 'codex-account.json', type: 'codex', email: 'codex@example.com' },
+    ];
+    expect(groupOAuthAccountsByProvider(files).get('cline')?.map((account) => account.name)).toEqual(['cline-account.json']);
+    expect(oauthModelProvidersFromAuthFiles(files)).toEqual(['cline', 'codex']);
+    expect(normalizeOAuthProvider(' Cline ')).toBe('cline');
+  });
   it('adds email without changing the filename used for operations', () => {
     const file = { name: 'codex-700057367249616896.json', email: 'account@example.com' };
     expect(authFileDisplayName(file)).toBe('codex-700057367249616896-account@example.com.json');

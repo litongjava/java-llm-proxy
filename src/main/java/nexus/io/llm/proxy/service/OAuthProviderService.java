@@ -33,6 +33,9 @@ public class OAuthProviderService {
     case "xai" -> new OAuthProviderSpec(provider, "b1a00492-073a-47ea-816f-4c329264a828", null, null,
         "https://auth.x.ai/oauth/token", "https://auth.x.ai/oauth/device/code",
         "openid profile email offline_access grok-cli:access api:access", null, false);
+    case "cline" -> new OAuthProviderSpec(provider, "client_01K3A541FN8TA3EPPHTD2325AR", null, null,
+        "https://api.workos.com/user_management/authenticate", "https://api.workos.com/user_management/authorize/device",
+        "", null, false);
     case "devin" -> new OAuthProviderSpec(provider, "", null, "https://app.devin.ai/auth/cli/continue",
         "https://api.devin.ai/auth/cli/token", null, "", "http://localhost:18320/callback", true);
     default -> null;

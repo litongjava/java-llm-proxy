@@ -42,7 +42,7 @@ import { PluginOAuthProviders } from './PluginOAuthProviders';
 import { notifyPluginResourcesChanged, PLUGIN_RESOURCES_REFRESH_EVENT } from '../services/pluginResources';
 import { VertexLoginCard } from './VertexLoginCard';
 
-type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta';
+type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta' | 'cline';
 type OAuthFlowStatus = 'idle' | 'waiting' | 'success' | 'error';
 
 type OAuthProviderState = {
@@ -80,6 +80,7 @@ type OAuthStatusResult = {
 };
 
 const oauthProviders = [
+  { id: 'cline' as const, name: 'Cline OAuth', icon: '' },
   { id: 'codex' as const, name: 'Codex OAuth', icon: codexIcon },
   { id: 'claude' as const, name: 'Claude OAuth', icon: claudeIcon },
   { id: 'antigravity' as const, name: 'Antigravity OAuth', icon: antigravityIcon },
@@ -613,7 +614,9 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
           return (
             <section className={`panel oauth-card${state.polling ? ' is-waiting' : ''}`} key={provider.id}>
               <div className="provider-title-row">
-                <img src={provider.icon} alt="" className={provider.id === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
+                {provider.icon ? (
+                  <img src={provider.icon} alt="" className={provider.id === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
+                ) : <FileKey className="provider-logo" aria-hidden="true" />}
                 <div>
                   <h2>{provider.name}</h2>
                   {accounts === null ? null : hasAccounts ? (

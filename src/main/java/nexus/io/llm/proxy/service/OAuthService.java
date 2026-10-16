@@ -102,6 +102,9 @@ public class OAuthService {
     result.expires_in = 900;
     if (spec.deviceUrl != null) {
       Kv parameters = Kv.create().set("client_id", spec.clientId).set("scope", spec.scope);
+      if ("cline".equals(provider)) {
+        parameters.remove("scope");
+      }
       if ("kimi".equals(provider) || "kimi-ai".equals(provider)) {
         parameters.set("code_challenge", challenge(session.verifier)).set("code_challenge_method", "S256");
       }
@@ -115,7 +118,13 @@ public class OAuthService {
       result.flow = "device";
       result.expires_in = (int) Math.min(1800, ProxyJson.number(response, "expires_in", 900));
       session.expiresAt = now + result.expires_in * 1000L;
-      session.interval = (int) Math.max(1, ProxyJson.number(response, "interval", 5));
+      session.interval = (int) Math.min(60, Math.max(1, ProxyJson.number(response, "interval", 5)));
+      if ("cline".equals(provider)) {
+        BusinessException.require(session.deviceCode != null && !session.deviceCode.isBlank()
+            && result.user_code != null && !result.user_code.isBlank() && result.url != null && !result.url.isBlank(),
+            502, "INVALID_DEVICE_RESPONSE", "Cline device authorization returned incomplete fields");
+        session.nextPoll = System.currentTimeMillis() + session.interval * 1000L;
+      }
     } else {
       startCallbackServer(spec.redirectUri);
       Kv query = Kv.create().set("client_id", spec.clientId).set("response_type", "code")
@@ -157,7 +166,12 @@ public class OAuthService {
           session.error = result.getStr("Message");
         }
       }
-      if ("wait".equals(session.status) && session.deviceCode != null && System.currentTimeMillis() >= session.nextPoll) {
+      if ("wait".equals(session.status) && session.deviceCode != null && System.currentTimeMillis() >= session.nextPoll
+          && "cline".equals(session.spec.provider)) {
+        pollCline(session);
+      }
+      if ("wait".equals(session.status) && session.deviceCode != null && !"cline".equals(session.spec.provider)
+          && System.currentTimeMillis() >= session.nextPoll) {
         session.nextPoll = System.currentTimeMillis() + session.interval * 1000L;
         Kv parameters = Kv.create().set("client_id", session.spec.clientId).set("device_code", session.deviceCode)
             .set("grant_type", "urn:ietf:params:oauth:grant-type:device_code").set("code_verifier", session.verifier);
@@ -177,6 +191,32 @@ public class OAuthService {
         result.set("error", session.error);
       }
       return result;
+    }
+  }
+
+  private void pollCline(OAuthSession session) {
+    session.nextPoll = System.currentTimeMillis() + session.interval * 1000L;
+    try {
+      Kv result = post(session.spec.tokenUrl, Kv.create().set("client_id", session.spec.clientId)
+          .set("device_code", session.deviceCode).set("grant_type", "urn:ietf:params:oauth:grant-type:device_code"), false, null);
+      String error = result.getStr("error");
+      if ("authorization_pending".equals(error)) {
+        return;
+      }
+      long status = ProxyJson.number(result, "http_status", 200);
+      if ("slow_down".equals(error) || status == 429 || status >= 500) {
+        session.interval = Math.min(60, session.interval + 5);
+        session.nextPoll = System.currentTimeMillis() + session.interval * 1000L;
+        return;
+      }
+      requireTokenResponse(result);
+      Kv token = Aop.get(ClineService.class).register(result);
+      complete(session, token);
+    } catch (Exception error) {
+      session.status = "error";
+      session.error = OAuthFailureUtils.message("Cline device login", error);
+      session.deviceCode = null;
+      session.verifier = null;
     }
   }
 
@@ -261,6 +301,9 @@ public class OAuthService {
       Kv result = plugin.call("auth.refresh", Kv.create().set("AuthProvider", provider).set("StorageJSON", PluginHostCallbacks.encode(JsonUtils.toJson(credential).getBytes(StandardCharsets.UTF_8)))
           .set("Metadata", credential).set("Attributes", Kv.create()).set("Host", Kv.create()));
       return pluginCredential(ProxyJson.object(result.get("Auth")));
+    }
+    if ("cline".equals(provider)) {
+      return Aop.get(ClineService.class).refresh(credential);
     }
     if ("vertex".equals(provider)) {
       return Aop.get(VertexCredentialService.class).refresh(credential);

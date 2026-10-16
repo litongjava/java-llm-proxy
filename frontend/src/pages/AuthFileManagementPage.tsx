@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDown,
+  FileKey,
   FolderOpen,
   Import,
   LoaderCircle,
@@ -559,7 +560,9 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
                 <article className={`auth-file-card ${disabled ? 'is-disabled' : ''}`} key={key} role="listitem" aria-label={identity || displayName}>
                   <div className="auth-credential-row">
                   <header className={`auth-card-header auth-list-cell ${identity ? '' : 'filename-only'}`}>
-                    <img src={icon} alt="" data-provider={providerKey(file)} className={providerKey(file) === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
+                    {providerKey(file) === 'cline' ? (
+                      <FileKey className="provider-logo" data-provider="cline" aria-hidden="true" />
+                    ) : <img src={icon} alt="" data-provider={providerKey(file)} className={providerKey(file) === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />}
                     <div className="auth-card-identity">
                       <strong title={identity || displayName}>{identity || displayName}</strong>
                       <span className="auth-card-filename" title={displayName}>{identity ? displayName : providerName(file)}</span>

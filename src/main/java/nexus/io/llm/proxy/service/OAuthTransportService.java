@@ -8,6 +8,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import com.jfinal.kit.Kv;
+import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.Provider;
 import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.json.JsonUtils;
@@ -23,6 +24,7 @@ import okio.Okio;
 public class OAuthTransportService {
   public Kv payload(Provider provider, Kv body, String model, String endpoint) {
     if (!"oauth".equals(provider.authType)) { return body; }
+    if ("cline".equals(provider.upstreamType)) { return Aop.get(ClineTransportService.class).payload(body, endpoint); }
     if ("codex".equals(provider.upstreamType) && !endpoint.endsWith("compact")) {
       body.set("stream", true).set("store", false);
       body.putIfAbsent("instructions", "");
@@ -42,7 +44,10 @@ public class OAuthTransportService {
     return url;
   }
   public void headers(Provider provider, Request.Builder request) {
-    if ("codex".equals(provider.upstreamType)) {
+    if ("cline".equals(provider.upstreamType)) {
+      Aop.get(ClineService.class).headers().forEach((key, value) -> request.header(String.valueOf(key), String.valueOf(value)));
+      request.header("Accept", "text/event-stream");
+    } else if ("codex".equals(provider.upstreamType)) {
       request.header("originator", "codex_cli_rs").header("OpenAI-Beta", "responses=experimental").header("Accept", "text/event-stream");
     } else if ("kimi".equals(provider.upstreamType) || "kimi-ai".equals(provider.upstreamType)) {
       String version = EnvUtils.get("proxy.client-version", "1.0.0");
@@ -56,6 +61,7 @@ public class OAuthTransportService {
     }
   }
   public Response response(Provider provider, Response response, boolean clientStream) throws Exception {
+    if ("cline".equals(provider.upstreamType)) { return Aop.get(ClineTransportService.class).response(response, clientStream); }
     if (!response.isSuccessful() || response.body() == null) { return response; }
     String type = response.header("Content-Type", "");
     if ("codex".equals(provider.upstreamType) && !clientStream && type.contains("text/event-stream")) {

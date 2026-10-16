@@ -47,12 +47,22 @@ public class CredentialProviderService {
           case "antigravity" -> "https://daily-cloudcode-pa.googleapis.com/v1internal";
           case "vertex" -> "https://" + ProxyJson.text(credential, "location", "us-central1") + "-aiplatform.googleapis.com/v1/projects/"
               + credential.getStr("project_id") + "/locations/" + ProxyJson.text(credential, "location", "us-central1") + "/publishers/google/models";
+          case "cline" -> "https://api.cline.bot/api/v1";
           case "devin" -> "https://server.codeium.com";
           default -> "https://api.openai.com/v1";
         };
         provider.baseUrl = ProxyJson.text(credential, "base_url", EnvUtils.get("proxy.oauth." + info.type + ".api-base-url", base)).replaceAll("/+$", "");
         List<?> availableModels = ProxyJson.list(credential.get("models"));
-        if (availableModels.isEmpty()) { availableModels = Aop.get(ModelCatalogService.class).definitions(info.type); }
+        if ("cline".equals(info.type)) {
+          try {
+            availableModels = Aop.get(ClineService.class).models(credential);
+          } catch (Exception error) {
+            // A transient catalog outage must not disable unrelated OAuth providers.
+            availableModels = List.of();
+          }
+        } else if (availableModels.isEmpty()) {
+          availableModels = Aop.get(ModelCatalogService.class).definitions(info.type);
+        }
         for (Object item : availableModels) {
           Kv details = ProxyJson.object(item);
           String model = item instanceof String ? item.toString() : ProxyJson.text(details, "id", ProxyJson.text(details, "ID", details.getStr("name")));

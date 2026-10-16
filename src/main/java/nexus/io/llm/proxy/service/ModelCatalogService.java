@@ -26,6 +26,9 @@ public class ModelCatalogService {
     ManagementParameterValidator.identifier(provider);
     NativePlugin plugin = Aop.get(PluginService.class).provider(provider, true);
     if (plugin != null && plugin.supports("model_provider")) { return ProxyJson.list(plugin.call("model.static", Kv.create()).get("Models")); }
+    if ("cline".equals(provider)) {
+      return Aop.get(ClineService.class).models(null);
+    }
     String channel = switch (provider) { case "vertex" -> "gemini"; case "kimi-ai" -> "kimi"; default -> provider; };
     // Codex's bundled catalog is split by plan, while OAuth credentials use type "codex".
     if ("codex".equals(channel) && ProxyJson.list(catalog.get(channel)).isEmpty()) {
@@ -56,6 +59,9 @@ public class ModelCatalogService {
         if (update.getStr("FileName") == null) { update.set("FileName", name); }
         Aop.get(OAuthService.class).savePluginAuth(update);
       }
+    } else if ("cline".equals(provider)) {
+      credential = Aop.get(CredentialService.class).refreshed(name, false);
+      models = Aop.get(ClineService.class).models(credential);
     } else if (models.isEmpty()) { models = definitions(provider); }
     List<Kv> result = new ArrayList<>();
     for (Object value : models) {

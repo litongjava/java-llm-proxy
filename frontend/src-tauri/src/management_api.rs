@@ -762,6 +762,15 @@ mod tests {
     }
 
     #[test]
+    fn cline_oauth_uses_the_builtin_device_flow() {
+        for provider in ["cline", " Cline "] {
+            let key = normalize_oauth_request_provider(provider, false).unwrap();
+            assert_eq!(key, "cline");
+            assert!(!management_oauth_uses_webui_callback(&key));
+        }
+    }
+
+    #[test]
     fn oauth_start_preserves_device_authorization_fields_for_the_frontend() {
         let payload = serde_json::from_value::<OAuthStartApiResponse>(serde_json::json!({
             "status": "ok",
