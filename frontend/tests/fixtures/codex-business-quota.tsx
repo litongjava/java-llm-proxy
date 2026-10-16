@@ -6,6 +6,7 @@ import { AuthFileQuotaPanel } from '../../src/components/AuthFileQuotaPanel';
 import { quotaRowsFor } from '../../src/services/quotaService';
 import payload from './codex-business-spend-control.json';
 import '../../src/styles/index.css';
+import '../../src/pages/AuthFileManagementPage.css';
 
 localStorage.setItem('easy-cli-proxy-api.locale', new URLSearchParams(location.search).get('locale') || 'en');
 const file = { name: 'codex-business-fixture.json', provider: 'codex', auth_index: 'business-fixture' };

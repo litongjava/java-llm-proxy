@@ -121,6 +121,9 @@ describe('quota API compatibility', () => {
     const requests = calls.filter((request) => request.url.endsWith(':retrieveUserQuotaSummary'));
     expect(requests).toHaveLength(2);
     expect(requests[1].url).toContain('sandbox.googleapis.com');
+    for (const request of calls) {
+      expect(request.header['User-Agent']).toBe('antigravity/hub/2.23.0 darwin/arm64');
+    }
     requests.forEach((request) => expect(JSON.parse(request.data!)).toEqual({ project: 'project-test' }));
     expect(Math.abs((result.serverTimeOffsetMs ?? 0) - (Date.parse(serverTime) - Date.now()))).toBeLessThan(1000);
   });
