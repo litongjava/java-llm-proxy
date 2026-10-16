@@ -3,6 +3,9 @@ package nexus.io.llm.proxy.service;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +26,13 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public class DesktopConfigService {
   private String appliedContent;
+  private Path cachedPath;
+  private FileTime cachedModified;
+  private Object cachedFileKey;
+  private long cachedSize = -1;
+  private long lastContentCheck;
+  private String cachedText;
+  private Kv cachedConfig;
 
   private Path path() {
     return Path.of(EnvUtils.get("proxy.config", "data/config.yaml")).toAbsolutePath();
@@ -37,25 +47,85 @@ public class DesktopConfigService {
 
   public synchronized String text() {
     try {
-      return Files.exists(path()) ? Files.readString(path()) : "{}\n";
+      Path file = path().normalize();
+      BasicFileAttributes attributes;
+      try { attributes = Files.readAttributes(file, BasicFileAttributes.class); }
+      catch (NoSuchFileException missing) { attributes = null; }
+      FileTime modified = attributes == null ? null : attributes.lastModifiedTime();
+      long size = attributes == null ? -1 : attributes.size();
+      Object fileKey = attributes == null ? null : attributes.fileKey();
+      long now = System.nanoTime();
+      // Metadata catches normal edits immediately; a periodic content check also catches
+      // replacements which deliberately preserve size and modification time.
+      if (cachedText == null || !file.equals(cachedPath) || size != cachedSize
+          || !Objects.equals(modified, cachedModified) || !Objects.equals(fileKey, cachedFileKey)
+          || now - lastContentCheck >= 1_000_000_000L) {
+        String content = attributes == null ? "{}\n" : Files.readString(file);
+        if (!content.equals(cachedText)) { cachedConfig = null; }
+        cachedText = content;
+        cachedPath = file;
+        cachedModified = modified;
+        cachedSize = size;
+        cachedFileKey = fileKey;
+        lastContentCheck = now;
+      }
+      return cachedText;
     } catch (Exception error) {
       throw new IllegalStateException("Cannot read desktop configuration", error);
     }
   }
 
   public synchronized Object get(String node) {
-    Object current = object(yaml().load(text()));
+    Object current = configuration();
     if (!node.isEmpty()) {
       for (String key : node.split("/")) {
         current = object(current).get(key);
         BusinessException.require(current != null, 404, "NOT_FOUND", "not_found");
       }
     }
-    return current;
+    return copy(current);
+  }
+
+  /** Read only the requested subtree, without copying or parsing unrelated settings. */
+  public synchronized Object section(String... keys) {
+    Object current = configuration();
+    for (String key : keys) {
+      current = current instanceof Map<?, ?> map ? map.get(key) : null;
+      if (current == null) { return null; }
+    }
+    return copy(current);
+  }
+
+  private Kv configuration() {
+    String content = text();
+    if (cachedConfig == null) { cachedConfig = object(yaml().load(content)); }
+    return cachedConfig;
+  }
+
+  // Callers may mutate returned maps/lists. Never expose the cached tree itself.
+  private Object copy(Object value) {
+    if (value instanceof Map<?, ?> map) {
+      Kv result = Kv.create();
+      map.forEach((key, item) -> result.set(String.valueOf(key), copy(item)));
+      return result;
+    }
+    if (value instanceof List<?> list) {
+      List<Object> result = new ArrayList<>(list.size());
+      for (Object item : list) { result.add(copy(item)); }
+      return result;
+    }
+    if (value instanceof java.util.Set<?> set) {
+      java.util.Set<Object> result = new java.util.LinkedHashSet<>();
+      for (Object item : set) { result.add(copy(item)); }
+      return result;
+    }
+    if (value instanceof java.util.Date date) { return new java.util.Date(date.getTime()); }
+    if (value instanceof byte[] bytes) { return bytes.clone(); }
+    return value;
   }
 
   public synchronized void mutate(String node, String operation, Object value) {
-    Kv config = object(yaml().load(text()));
+    Kv config = object(copy(configuration()));
     if (node.isEmpty()) {
       BusinessException.require(!"DELETE".equals(operation), 400, "INVALID_CONFIG", "Cannot delete root configuration");
       config = object(value);
@@ -97,6 +167,8 @@ public class DesktopConfigService {
       try {
         Files.writeString(temporary, content);
         Files.move(temporary, path(), StandardCopyOption.REPLACE_EXISTING);
+        cachedText = null;
+        cachedConfig = null;
       } finally {
         Files.deleteIfExists(temporary);
       }
@@ -113,7 +185,7 @@ public class DesktopConfigService {
     if (content.equals(appliedContent)) {
       return previous;
     }
-    Kv config = object(yaml().load(content));
+    Kv config = configuration();
     ProxySettings settings = JsonUtils.parse(JsonUtils.toJson(previous), ProxySettings.class);
     Kv access = object(config.get("access"));
     if (access.containsKey("api-keys")) {

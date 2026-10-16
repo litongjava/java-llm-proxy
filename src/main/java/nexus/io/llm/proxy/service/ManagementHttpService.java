@@ -95,9 +95,10 @@ public class ManagementHttpService {
   }
 
   public String configuredProxy() {
-    Kv config = ProxyJson.object(Aop.get(DesktopConfigService.class).get(""));
-    return ProxyJson.text(ProxyJson.object(config.get("requests")), "proxy-url",
-        ProxyJson.text(config, "proxy-url", EnvUtils.get("proxy.outbound-proxy", "")));
+    DesktopConfigService config = Aop.get(DesktopConfigService.class);
+    Object legacy = config.section("proxy-url");
+    return ProxyJson.text(ProxyJson.object(config.section("requests")), "proxy-url",
+        legacy instanceof String value && !value.isBlank() ? value : EnvUtils.get("proxy.outbound-proxy", ""));
   }
 
   private static final class ListMethods {

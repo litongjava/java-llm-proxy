@@ -71,8 +71,9 @@ public class CredentialService {
     if (explicit != null && !explicit.isBlank()) {
       path = Path.of(explicit);
     } else {
-      Kv config = ProxyJson.object(Aop.get(DesktopConfigService.class).get(""));
-      String configured = ProxyJson.text(ProxyJson.object(config.get("oauth")), "auth-dir", ProxyJson.text(config, "auth-dir", "oauth"));
+      DesktopConfigService config = Aop.get(DesktopConfigService.class);
+      Object legacy = config.section("auth-dir");
+      String configured = ProxyJson.text(ProxyJson.object(config.section("oauth")), "auth-dir", legacy instanceof String value && !value.isBlank() ? value : "oauth");
       Path base = Path.of(EnvUtils.get("proxy.config", "data/config.yaml")).toAbsolutePath().getParent();
       path = base.resolve(configured);
     }

@@ -119,7 +119,10 @@ public class NativeEndpointService {
         streaming = true; record.stream = true;
         Response captured = configuration.captureBodies && received.body() != null ? received.newBuilder().body(new CapturedResponseBody(received.body(), record, captureLimit)).build() : received;
         response.addServerSentEventsHeader(); response.setSend(false); response.setSkipGzipped(true); response.addHeader("Transfer-Encoding", "chunked");
-        Thread.startVirtualThread(() -> Aop.get(ProxyService.class).stream(request, response, captured, record, provider, configuration, captureLimit, record.upstreamRequestBody));
+        var downstream = request.getChannelContext();
+        PluginHookService.StreamHooks streamHooks = Aop.get(PluginHookService.class).streamHooks();
+        String originalForStream = streamHooks.active() ? request.getBodyString() : null;
+        Thread.startVirtualThread(() -> Aop.get(ProxyService.class).stream(downstream, originalForStream, response, captured, record, provider, configuration, captureLimit, record.upstreamRequestBody, streamHooks));
         return response;
       }
       try (received) {

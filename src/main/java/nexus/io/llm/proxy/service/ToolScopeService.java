@@ -43,8 +43,7 @@ public class ToolScopeService {
   }
 
   public Kv config(String tool) {
-    Kv root = ProxyJson.object(Aop.get(DesktopConfigService.class).get(""));
-    return ProxyJson.object(ProxyJson.object(root.get("tool-model-aliases")).get(tool));
+    return ProxyJson.object(Aop.get(DesktopConfigService.class).section("tool-model-aliases", tool));
   }
 
   public List<?> aliases(Provider provider, String tool, List<Kv> legacy) {

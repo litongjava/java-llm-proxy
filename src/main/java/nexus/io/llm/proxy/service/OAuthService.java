@@ -316,6 +316,51 @@ public class OAuthService {
     }
   }
 
+  // This transport must never inherit an upstream proxy or follow callback redirects.
+  private static final OkHttpClient CALLBACK_CLIENT = new OkHttpClient.Builder()
+      .proxy(java.net.Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
+      .connectTimeout(5, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS)
+      .callTimeout(65, TimeUnit.SECONDS).build();
+
+  public Kv forwardCallback(OAuthCallbackInput input) throws Exception {
+    BusinessException.require(input != null && input.redirect_url != null && !input.redirect_url.isBlank()
+        && input.redirect_url.length() <= 32768, 400, "INVALID_CALLBACK", "A complete callback URL is required");
+    URI supplied;
+    try { supplied = URI.create(input.redirect_url.trim()); }
+    catch (IllegalArgumentException error) { throw new BusinessException(400, "INVALID_CALLBACK", "Invalid callback URL"); }
+    BusinessException.require("http".equals(supplied.getScheme()) && supplied.getUserInfo() == null
+        && supplied.getFragment() == null && ("127.0.0.1".equals(supplied.getHost()) || "localhost".equals(supplied.getHost())),
+        400, "INVALID_CALLBACK", "Callback URL must use HTTP loopback");
+    Kv parameters = query(supplied.getRawQuery());
+    OAuthSession pending = parameters.getStr("state") == null && parameters.getStr("login_trace_id") != null
+        ? traeSession(parameters.getStr("login_trace_id")) : session(parameters.getStr("state"));
+    synchronized (pending) {
+      BusinessException.require("wait".equals(pending.status), 409, "CONSUMED", "OAuth session is no longer waiting");
+      // Plugins own their callback transports. Deliver to the existing session handler,
+      // which passes the URL to that plugin without making an arbitrary HTTP request.
+      if (pending.pluginId != null) {
+        OAuthCallbackInput forwarded = new OAuthCallbackInput();
+        forwarded.redirect_url = supplied.toString();
+        return callback(forwarded);
+      }
+      BusinessException.require(pending.spec != null && pending.spec.redirectUri != null && pending.deviceCode == null
+          && pending.qoder == null, 400, "INVALID_CALLBACK", "This session does not use a local HTTP callback");
+      URI expected = URI.create(pending.spec.redirectUri);
+      BusinessException.require("http".equals(expected.getScheme())
+          && ("127.0.0.1".equals(expected.getHost()) || "localhost".equals(expected.getHost()))
+          && expected.getPort() == supplied.getPort() && expected.getRawPath().equals(supplied.getRawPath())
+          && callbacks.containsKey(expected.getPort()), 400, "INVALID_CALLBACK", "URL does not match the waiting OAuth callback");
+    }
+    // Do not hold the session lock while the HTTP callback acquires it.
+    String target = "http://127.0.0.1:" + supplied.getPort() + supplied.getRawPath() + "?" + supplied.getRawQuery();
+    try (Response response = CALLBACK_CLIENT.newCall(new Request.Builder().url(target).get().build()).execute()) {
+      BusinessException.require(response.isSuccessful(), 400, "CALLBACK_FAILED", "OAuth callback failed; check the authorization status");
+      return Kv.create().set("status", "ok").set("http_status", response.code());
+    } catch (java.io.IOException error) {
+      throw new BusinessException(502, "CALLBACK_UNAVAILABLE", "Local callback could not be reached or timed out; check authorization status before retrying");
+    }
+  }
+
   public Kv callback(OAuthCallbackInput input) throws Exception {
     BusinessException.require(input != null, 400, "INVALID_CALLBACK", "OAuth callback is required");
     Kv callbackParameters = Kv.create();

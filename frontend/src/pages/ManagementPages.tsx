@@ -1,3 +1,4 @@
+import { OAuthCallbackForward } from '../components/OAuthCallbackForward';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -610,6 +611,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
       </header>
 
       <FloatingNotice key={feedback.revision} notice={feedback.notice} onDismiss={feedback.clearNotice} />
+      <OAuthCallbackForward />
       <aside className="oauth-intro" aria-label={t('oauth.intro.title')}>
         <span className="oauth-intro-icon" aria-hidden="true"><Info size={18} /></span>
         <div className="oauth-intro-text">

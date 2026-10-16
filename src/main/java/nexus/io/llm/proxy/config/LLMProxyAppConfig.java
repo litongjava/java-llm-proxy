@@ -61,6 +61,7 @@ public class LLMProxyAppConfig {
     router.get("/v8/management/oauth/auth-url", new OAuthStartHandler()::handle);
     router.get("/v8/management/oauth/status", new OAuthStatusHandler()::handle);
     router.post("/v8/management/oauth/session/cancel", new OAuthCancelHandler()::handle);
+    router.post("/v8/management/oauth/callback/forward", new OAuthCallbackForwardHandler()::handle);
     router.post("/v8/management/oauth/callback", new OAuthCallbackHandler()::handle);
     router.get("/v8/management/oauth/callback", new OAuthCallbackGetHandler()::handle);
     router.post("/v8/management/oauth/import", new OAuthImportHandler()::handle);

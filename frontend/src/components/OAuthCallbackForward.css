@@ -1,0 +1,8 @@
+.oauth-callback-forward { padding: 18px; margin-bottom: 18px; }
+.oauth-callback-forward > label { font-weight: 600; }
+.oauth-callback-forward > p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.oauth-callback-forward-row { display: flex; gap: 12px; }
+.oauth-callback-forward-row input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); }
+.oauth-callback-forward-row input:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.oauth-callback-forward-row button { flex-shrink: 0; }
+@media (max-width: 640px) { .oauth-callback-forward-row { flex-direction: column; } }

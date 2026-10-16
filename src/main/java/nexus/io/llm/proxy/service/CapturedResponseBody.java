@@ -1,8 +1,6 @@
 package nexus.io.llm.proxy.service;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import nexus.io.llm.proxy.model.RequestRecord;
 import okhttp3.MediaType;
 import okhttp3.ResponseBody;
@@ -17,7 +15,7 @@ public class CapturedResponseBody extends ResponseBody {
   private final BufferedSource source;
   public CapturedResponseBody(ResponseBody body, RequestRecord record, int limit) {
     original = body;
-    ByteArrayOutputStream capture = new ByteArrayOutputStream();
+    Utf8Capture capture = new Utf8Capture();
     source = Okio.buffer(new ForwardingSource(body.source()) {
       @Override
       public long read(Buffer sink, long count) throws IOException {
@@ -30,12 +28,12 @@ public class CapturedResponseBody extends ResponseBody {
           capture.write(copied.readByteArray());
           record.responseTruncated |= keep < read;
         }
-        if (read < 0) { record.upstreamResponseBody = capture.toString(StandardCharsets.UTF_8); }
+        if (read < 0) { record.upstreamResponseBody = capture.utf8(); }
         return read;
       }
       @Override
       public void close() throws IOException {
-        record.upstreamResponseBody = capture.toString(StandardCharsets.UTF_8);
+        record.upstreamResponseBody = capture.utf8();
         super.close();
       }
     });

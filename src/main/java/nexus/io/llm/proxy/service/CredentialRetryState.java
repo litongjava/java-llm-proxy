@@ -19,8 +19,7 @@ public class CredentialRetryState {
   public String tool = "";
 
   public CredentialRetryState() {
-    Kv root = ProxyJson.object(Aop.get(DesktopConfigService.class).get(""));
-    Kv retry = ProxyJson.object(ProxyJson.object(root.get("routing")).get("retry"));
+    Kv retry = ProxyJson.object(Aop.get(DesktopConfigService.class).section("routing", "retry"));
     long configured = ProxyJson.number(retry, "max-retry-credentials", 0);
     maximum = configured <= 0 ? Integer.MAX_VALUE : (int) Math.min(Integer.MAX_VALUE, configured);
   }

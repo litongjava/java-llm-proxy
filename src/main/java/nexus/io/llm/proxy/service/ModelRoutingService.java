@@ -15,7 +15,7 @@ public class ModelRoutingService {
       for (String key : List.of("model_aliases", "model-aliases")) {
         for (Object value : ProxyJson.list(provider.metadata.get(key))) { result.add(ProxyJson.object(value)); }
       }
-      Kv oauth = ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("oauth"));
+      Kv oauth = ProxyJson.object(Aop.get(DesktopConfigService.class).section("oauth"));
       for (Object value : ProxyJson.list(ProxyJson.object(oauth.get("model-alias")).get(provider.upstreamType))) { result.add(ProxyJson.object(value)); }
     } else {
       for (Object value : ProxyJson.list(provider.metadata.get("models"))) { result.add(ProxyJson.object(value)); }
@@ -36,7 +36,7 @@ public class ModelRoutingService {
     String model = requested;
     if (!prefix.isEmpty() && model.startsWith(prefix + "/")) { model = model.substring(prefix.length() + 1); }
     else if (!prefix.isEmpty()) {
-      Kv routing = ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("routing"));
+      Kv routing = ProxyJson.object(Aop.get(DesktopConfigService.class).section("routing"));
       if (Boolean.TRUE.equals(routing.getBoolean("force-model-prefix"))) { return null; }
     }
     for (Kv alias : aliases(provider, tool)) {

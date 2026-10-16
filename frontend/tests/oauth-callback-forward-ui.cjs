@@ -1,0 +1,46 @@
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+(async () => {
+  const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--no-proxy-server'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto((process.env.OAUTH_FORWARD_TEST_BASE_URL || 'http://127.0.0.1:1421') + '/tests/fixtures/oauth-callback-forward.html');
+    const input = page.getByRole('textbox');
+    const button = page.getByRole('button', { name: 'Send request', exact: true });
+    assert.equal(await button.isDisabled(), true);
+    const url = 'http://127.0.0.1:1455/auth/callback?code=a%2Bb&state=state-1';
+    await input.fill(url);
+    await button.click();
+    await page.waitForFunction(() => window.forwardFixture.calls.length === 1);
+    assert.equal(await input.isDisabled(), true);
+    const request = await page.evaluate(() => window.forwardFixture.calls[0].request);
+    assert.equal(request.path, '/oauth/callback/forward');
+    assert.equal(request.method, 'POST');
+    assert.equal(request.body.redirect_url, url);
+    await page.evaluate(() => window.forwardFixture.release());
+    await page.getByRole('status').filter({ hasText: 'Authorization completed' }).waitFor();
+    assert.equal(await input.inputValue(), '');
+    fs.mkdirSync('target/oauth-ui', { recursive: true });
+    await page.screenshot({ path: 'target/oauth-ui/callback-desktop.png', fullPage: true });
+    await page.setViewportSize({ width: 375, height: 800 });
+    await input.fill(url);
+    await page.evaluate(() => { window.forwardFixture.fail = true; });
+    await button.click();
+    await page.waitForFunction(() => window.forwardFixture.calls.length === 2);
+    await page.evaluate(() => window.forwardFixture.release());
+    await page.getByRole('alert').filter({ hasText: 'waiting session' }).waitFor();
+    assert.equal(await input.inputValue(), url);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: 'target/oauth-ui/callback-mobile.png', fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto((process.env.OAUTH_FORWARD_TEST_BASE_URL || 'http://127.0.0.1:1421') + '/tests/fixtures/meta-oauth.html?locale=en');
+    await page.locator('.oauth-card').first().waitFor();
+    assert.equal(await page.locator('.oauth-login-page > .oauth-callback-forward').count(), 1);
+    const forwardBounds = await page.locator('.oauth-callback-forward').boundingBox();
+    const cardsBounds = await page.locator('.oauth-grid').boundingBox();
+    assert.ok(forwardBounds.y + forwardBounds.height <= cardsBounds.y, 'callback form must be above provider cards');
+    await page.screenshot({ path: 'target/oauth-ui/callback-full-page.png', fullPage: true });
+    console.log('OAuth callback forwarding UI passed (success, error, pending, mobile).');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

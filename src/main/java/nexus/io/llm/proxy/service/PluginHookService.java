@@ -22,16 +22,32 @@ import org.slf4j.LoggerFactory;
 
 public class PluginHookService {
   private static final Logger LOG = LoggerFactory.getLogger(PluginHookService.class);
-  public record Prepared(Request request, Response terminated) { }
+  public record Prepared(Request request, Response terminated, boolean bodyChanged) { }
+
+  List<NativePlugin> enabled(String capability) throws Exception { return Aop.get(PluginService.class).enabled(capability); }
+  public boolean has(String capability) throws Exception { return !enabled(capability).isEmpty(); }
+  public record StreamPlugin(NativePlugin plugin, long schema) { }
+  public record StreamHooks(List<StreamPlugin> plugins, boolean history) {
+    public StreamHooks { plugins = List.copyOf(plugins); }
+    public boolean active() { return !plugins.isEmpty(); }
+  }
+
+  public StreamHooks streamHooks() throws Exception {
+    List<StreamPlugin> active = enabled("response_stream_interceptor").stream()
+        .map(plugin -> new StreamPlugin(plugin, ProxyJson.number(plugin.registration, "schema_version", 1))).toList();
+    return new StreamHooks(active, active.stream().anyMatch(plugin -> plugin.schema() < 5));
+  }
   public record Route(Provider executor, String model, String provider) { }
 
   public Route route(HttpRequest request, Kv body, String protocol, String model, boolean stream) throws Exception {
+    List<NativePlugin> routers = enabled("model_router");
+    if (routers.isEmpty()) { return new Route(null, model, null); }
     PluginService plugins = Aop.get(PluginService.class);
     List<Provider> providers = new ArrayList<>(Aop.get(SettingsService.class).snapshot().providers);
     providers.addAll(Aop.get(CredentialProviderService.class).providers());
     Kv headers = Kv.create();
     request.getHeaders().forEach((name, value) -> headers.set(name, List.of(value)));
-    for (NativePlugin plugin : plugins.enabled("model_router")) {
+    for (NativePlugin plugin : routers) {
       Kv result = plugin.call("model.route", Kv.create().set("Plugin", plugin.registration.get("metadata")).set("PluginID", plugin.id)
           .set("SourceFormat", format(protocol)).set("RequestedModel", model).set("Stream", stream).set("Headers", headers)
           .set("Query", Kv.create().set(request.getParams())).set("Body", encode(JsonUtils.toJsonWithLongAsNumber(body))).set("Metadata", Kv.create())
@@ -52,6 +68,8 @@ public class PluginHookService {
   }
 
   public Kv thinking(Kv body, Provider provider, String model) throws Exception {
+    List<NativePlugin> appliers = enabled("thinking_applier");
+    if (appliers.isEmpty()) { return body; }
     Kv config = Kv.create();
     Object effort = body.get("reasoning_effort");
     if (effort == null) { effort = ProxyJson.object(body.get("reasoning")).get("effort"); }
@@ -59,7 +77,7 @@ public class PluginHookService {
     if (effort != null) { config.set("Mode", "none".equals(effort) || "auto".equals(effort) ? effort : "level").set("Level", effort); }
     else if (budget != null) { config.set("Mode", "budget").set("Budget", budget); }
     else { return body; }
-    for (NativePlugin plugin : Aop.get(PluginService.class).enabled("thinking_applier")) {
+    for (NativePlugin plugin : appliers) {
       String identifier = plugin.call("thinking.identifier", Kv.create()).getStr("identifier");
       if (!identifier.equals(provider.upstreamType)) { continue; }
       Kv result = plugin.call("thinking.apply", Kv.create().set("Provider", provider.upstreamType).set("Model", model)
@@ -72,11 +90,14 @@ public class PluginHookService {
   public Kv transformRequest(Kv body, String from, String to, String model, boolean stream) throws Exception {
     boolean nativeRoute = nativeRoute(from, to);
     if (nativeRoute) { body = Aop.get(ProtocolConversionService.class).request(body, from, to, model, stream); }
+    List<NativePlugin> normalizers = enabled("request_normalizer");
+    List<NativePlugin> translators = nativeRoute ? List.of() : enabled("request_translator");
+    if (normalizers.isEmpty() && translators.isEmpty()) { return body; }
     Kv context = Kv.create().set("FromFormat", format(from)).set("ToFormat", format(to)).set("Model", model).set("Stream", stream)
         .set("Body", encode(JsonUtils.toJsonWithLongAsNumber(body)));
     for (String capability : List.of("request_normalizer", "request_translator")) {
       if (nativeRoute && "request_translator".equals(capability)) { continue; }
-      for (NativePlugin plugin : Aop.get(PluginService.class).enabled(capability)) {
+      for (NativePlugin plugin : "request_normalizer".equals(capability) ? normalizers : translators) {
         Kv result = plugin.call("request_normalizer".equals(capability) ? "request.normalize" : "request.translate", context);
         if (result.getStr("Body") != null && !result.getStr("Body").isBlank()) { context.set("Body", result.get("Body")); }
       }
@@ -95,9 +116,11 @@ public class PluginHookService {
   }
 
   public byte[] responsePhase(byte[] body, String from, RequestRecord record, String original, String translated, String capability, String operation) throws Exception {
+    List<NativePlugin> active = enabled(capability);
+    if (active.isEmpty()) { return body; }
     Kv context = Kv.create().set("FromFormat", format(from)).set("ToFormat", format(record.protocol)).set("Model", record.model)
         .set("Stream", record.stream).set("OriginalRequest", encode(original)).set("TranslatedRequest", encode(translated)).set("Body", PluginHostCallbacks.encode(body));
-    for (NativePlugin plugin : Aop.get(PluginService.class).enabled(capability)) {
+    for (NativePlugin plugin : active) {
       Kv result = plugin.call(operation, context);
       if (result.getStr("Body") != null && !result.getStr("Body").isBlank()) { context.set("Body", result.get("Body")); }
     }
@@ -109,15 +132,19 @@ public class PluginHookService {
         && List.of("openai", "responses", "anthropic", "gemini").contains(to);
   }
 
-  public byte[] streamChunk(byte[] bytes, long index, RequestRecord record, Kv headers, String original, String translated, List<byte[]> history) throws Exception {
+  public byte[] streamChunk(StreamHooks streamHooks, byte[] bytes, long index, RequestRecord record, Kv headers, String original, String translated, List<byte[]> history) throws Exception {
+    List<StreamPlugin> active = streamHooks.plugins();
+    if (active.isEmpty()) { return bytes; }
     Kv context = context(record).set("Body", PluginHostCallbacks.encode(bytes)).set("ChunkIndex", index)
         .set("RequestHeaders", record.requestHeaders).set("ResponseHeaders", headers);
-    for (NativePlugin plugin : Aop.get(PluginService.class).enabled("response_stream_interceptor")) {
-      long schema = ProxyJson.number(plugin.registration, "schema_version", 1);
+    for (StreamPlugin snapshot : active) {
+      NativePlugin plugin = snapshot.plugin();
+      long schema = snapshot.schema();
       context.remove("OriginalRequest"); context.remove("RequestBody"); context.remove("HistoryChunks");
       if (index < 0 || schema < 3) { context.set("OriginalRequest", encode(original)).set("RequestBody", encode(translated)); }
       if (index < 0 || schema < 5) { context.set("HistoryChunks", history.stream().map(PluginHostCallbacks::encode).toList()); }
-      Kv result = plugin.call("response.intercept_stream_chunk", context);
+      Kv result = plugin.callIfRunning("response.intercept_stream_chunk", context);
+      if (result == null) { continue; }
       if (result.getStr("Body") != null && !result.getStr("Body").isBlank()) { context.set("Body", result.get("Body")); }
       for (Object name : ProxyJson.list(result.get("ClearHeaders"))) { headers.remove(name); }
       headers.set(ProxyJson.object(result.get("Headers")));
@@ -127,9 +154,11 @@ public class PluginHookService {
   }
 
   public String authenticate(HttpRequest request, String fallback) throws Exception {
+    List<NativePlugin> active = enabled("frontend_auth_provider");
+    if (active.isEmpty()) { return fallback; }
     Kv headers = Kv.create();
     request.getHeaders().forEach((key, value) -> headers.set(key, List.of(value)));
-    for (NativePlugin plugin : Aop.get(PluginService.class).enabled("frontend_auth_provider")) {
+    for (NativePlugin plugin : active) {
       Kv result = plugin.call("frontend_auth.authenticate", Kv.create().set("Method", request.getRequestLine().getMethod().toString())
           .set("Path", request.getRequestURI()).set("Headers", headers).set("Query", Kv.create().set(request.getParams())).set("Body", encode(request.getBodyString())));
       if (Boolean.TRUE.equals(result.getBoolean("Authenticated"))) { return ProxyJson.text(result, "Principal", plugin.id); }
@@ -147,11 +176,13 @@ public class PluginHookService {
   }
 
   private Prepared request(Request request, String body, RequestRecord record, Provider provider, String phase) throws Exception {
+    List<NativePlugin> active = enabled("request_interceptor");
+    if (active.isEmpty()) { return new Prepared(request, null, false); }
+    boolean bodyChanged = false;
     Request current = request;
     Kv context = context(record).set("ToFormat", provider == null ? "" : format(provider.protocol)).set("Headers", Kv.create().set(request.headers().toMultimap()))
         .set("Body", PluginHostCallbacks.encode(body.getBytes(StandardCharsets.UTF_8)));
-    PluginService plugins = Aop.get(PluginService.class);
-      for (NativePlugin plugin : plugins.enabled("request_interceptor")) {
+      for (NativePlugin plugin : active) {
         Kv result = plugin.call(phase, context);
         if (Boolean.TRUE.equals(result.getBoolean("Terminate"))) {
           int status = (int) ProxyJson.number(result, "StatusCode", 403);
@@ -161,7 +192,7 @@ public class PluginHookService {
           ProxyJson.object(result.get("ResponseHeaders")).forEach((key, value) -> {
             for (Object header : ProxyJson.list(value)) { terminated.addHeader(key.toString(), header.toString()); }
           });
-          return new Prepared(current, terminated.build());
+          return new Prepared(current, terminated.build(), bodyChanged);
         }
         Request.Builder builder = current.newBuilder();
         for (Object name : ProxyJson.list(result.get("ClearHeaders"))) { builder.removeHeader(name.toString()); }
@@ -169,7 +200,8 @@ public class PluginHookService {
           builder.removeHeader(key.toString());
           for (Object header : ProxyJson.list(value)) { builder.addHeader(key.toString(), header.toString()); }
         });
-        if (result.getStr("Body") != null && !result.getStr("Body").isBlank()) {
+        if (result.getStr("Body") != null && !result.getStr("Body").isBlank() && !result.get("Body").equals(context.get("Body"))) {
+          bodyChanged = true;
           byte[] modified = PluginHostCallbacks.decode(result.get("Body"));
           builder.post(RequestBody.create(modified, MediaType.get("application/json")));
           context.set("Body", result.get("Body"));
@@ -179,14 +211,16 @@ public class PluginHookService {
         current = builder.build();
         context.set("Headers", Kv.create().set(current.headers().toMultimap()));
       }
-    return new Prepared(current, null);
+    return new Prepared(current, null, bodyChanged);
   }
 
   public byte[] response(byte[] bytes, RequestRecord record, Kv headers) throws Exception {
+    List<NativePlugin> active = enabled("response_interceptor");
+    if (active.isEmpty()) { return bytes; }
     Kv context = context(record).set("Body", PluginHostCallbacks.encode(bytes)).set("StatusCode", record.status)
         .set("ResponseHeaders", headers).set("RequestHeaders", record.requestHeaders)
         .set("OriginalRequest", encode(record.requestBody)).set("RequestBody", encode(record.upstreamRequestBody));
-    for (NativePlugin plugin : Aop.get(PluginService.class).enabled("response_interceptor")) {
+    for (NativePlugin plugin : active) {
       Kv result = plugin.call("response.intercept_after", context);
       if (result.getStr("Body") != null && !result.getStr("Body").isBlank()) { context.set("Body", result.get("Body")); }
       for (Object name : ProxyJson.list(result.get("ClearHeaders"))) { headers.remove(name); }
@@ -197,18 +231,20 @@ public class PluginHookService {
 
   public void completed(RequestRecord record) {
     try {
-      PluginService plugins = Aop.get(PluginService.class);
+      List<NativePlugin> lifecycle = enabled("request_lifecycle_plugin");
+      List<NativePlugin> usagePlugins = enabled("usage_plugin");
+      if (lifecycle.isEmpty() && usagePlugins.isEmpty()) { return; }
       Kv completion = context(record).set("Outcome", record.error == null && record.status < 400 ? "succeeded" : "failed")
           .set("StatusCode", record.status).set("Error", record.error).set("StartedAt", Instant.ofEpochMilli(record.timestamp).toString())
           .set("CompletedAt", Instant.now().toString());
-      for (NativePlugin plugin : plugins.enabled("request_lifecycle_plugin")) { notifyCompletion(plugin, "request.complete", completion, record.id); }
+      for (NativePlugin plugin : lifecycle) { notifyCompletion(plugin, "request.complete", completion, record.id); }
       Kv usage = Kv.create().set("RequestID", record.id).set("Provider", record.provider).set("Model", record.model)
           .set("APIKey", record.apiKeyName).set("RequestedAt", Instant.ofEpochMilli(record.timestamp).toString())
           .set("Failed", record.status >= 400).set("Stream", record.stream).set("Generate", true)
           .set("Latency", record.durationMs * 1000000).set("TTFT", record.firstByteMs * 1000000)
           .set("Detail", Kv.create().set("InputTokens", record.inputTokens).set("OutputTokens", record.outputTokens)
               .set("CachedTokens", record.cachedTokens).set("ReasoningTokens", record.reasoningTokens));
-      for (NativePlugin plugin : plugins.enabled("usage_plugin")) { notifyCompletion(plugin, "usage.handle", usage, record.id); }
+      for (NativePlugin plugin : usagePlugins) { notifyCompletion(plugin, "usage.handle", usage, record.id); }
     } catch (Exception error) { LOG.warn("Plugin completion callback failed for request {}: {}", record.id, error.getClass().getSimpleName()); }
   }
 

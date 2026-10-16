@@ -169,6 +169,11 @@ public final class NativePlugin {
     return new Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK").headers(headers.build()).body(body).build();
   }
 
+  /** Serializes a retained stream callback against shutdown; disabled plugins are skipped. */
+  public synchronized Kv callIfRunning(String method, Kv input) throws Exception {
+    return stopped ? null : call(method, input);
+  }
+
   public Kv call(String method, Kv input) throws Exception {
     BusinessException.require(!stopped, 409, "PLUGIN_STOPPED", "Plugin is stopped");
     byte[] bytes = FastJson2Utils.toJson(input).getBytes(StandardCharsets.UTF_8);

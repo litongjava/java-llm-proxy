@@ -73,7 +73,7 @@ public class ModelCatalogService {
   }
 
   public boolean allowed(Kv credential, String model) {
-    Kv oauth = ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("oauth"));
+    Kv oauth = ProxyJson.object(Aop.get(DesktopConfigService.class).section("oauth"));
     List<Object> exclusions = new ArrayList<>(ProxyJson.list(ProxyJson.object(oauth.get("excluded-models")).get(credential.get("type"))));
     exclusions.addAll(ProxyJson.list(credential.get("excluded_models")));
     exclusions.addAll(ProxyJson.list(credential.get("excluded-models")));

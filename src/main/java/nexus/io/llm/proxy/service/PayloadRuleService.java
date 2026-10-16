@@ -11,7 +11,7 @@ import nexus.io.jfinal.aop.Aop;
 
 public class PayloadRuleService {
   public Kv apply(Kv payload, String model, String target, String source, Kv headers) {
-    Kv requests = ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("requests"));
+    Kv requests = ProxyJson.object(Aop.get(DesktopConfigService.class).section("requests"));
     return applyRules(payload, ProxyJson.object(requests.get("payload")), model, target, source, headers);
   }
 

@@ -1,10 +1,8 @@
 package nexus.io.llm.proxy.service;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Set;
 import java.util.Map;
 import java.util.ArrayList;
@@ -20,6 +18,7 @@ import nexus.io.model.body.RespBodyVo;
 import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.boot.http.TioRequestContext;
 import nexus.io.tio.core.Tio;
+import nexus.io.tio.core.ChannelContext;
 import nexus.io.tio.http.common.HttpRequest;
 import nexus.io.tio.http.common.HttpResponse;
 import nexus.io.tio.http.server.util.SseEmitter;
@@ -70,7 +69,7 @@ public class ProxyService {
     model = ParameterValidator.text(model, "model", 256);
     SettingsService settingsService = Aop.get(SettingsService.class);
     ProxySettings settings = settingsService.snapshot();
-    String body = JsonUtils.toJsonWithLongAsNumber(payload);
+    String body = settings.sensitiveWords.isEmpty() ? request.getBodyString() : JsonUtils.toJsonWithLongAsNumber(payload);
     for (String word : settings.sensitiveWords) {
       ParameterValidator.require(word.isBlank() || !body.contains(word), "Request contains a blocked phrase");
     }
@@ -105,9 +104,11 @@ public class ProxyService {
         return response;
       }
     }
-    Buffer incomingBody = new Buffer();
-    before.request().body().writeTo(incomingBody);
-    payload = ProxyJson.parse(incomingBody.readUtf8());
+    if (before.bodyChanged()) {
+      Buffer incomingBody = new Buffer();
+      before.request().body().writeTo(incomingBody);
+      payload = ProxyJson.parse(incomingBody.readUtf8());
+    }
     String routedModel = ProxyJson.text(payload, "model", model);
     record.stream = Boolean.TRUE.equals(payload.getBoolean("stream")) || endpoint.contains("streamGenerateContent");
     PluginHookService.Route route = hooks.route(request, payload, protocol, routedModel, record.stream);
@@ -132,8 +133,11 @@ public class ProxyService {
     }
     else if (pluginPayload != null) { payload = pluginPayload; }
     int captureLimit = EnvUtils.getInt("proxy.capture.max-bytes", 4194304);
-    record.requestBody = settings.captureBodies ? truncate(request.getBodyString(), captureLimit) : null;
-    record.requestTruncated = settings.captureBodies && request.getBodyString().getBytes(StandardCharsets.UTF_8).length > captureLimit;
+    if (settings.captureBodies) {
+      String originalBody = request.getBodyString();
+      record.requestBody = truncate(originalBody, captureLimit);
+      record.requestTruncated = record.requestBody.length() < originalBody.length();
+    }
     if (!"gemini".equals(upstreamProtocol)) {
       payload.set("model", selection.model());
     }
@@ -154,7 +158,8 @@ public class ProxyService {
     }
     payload = hooks.thinking(payload, provider, selection.model());
     OAuthTransportService oauthTransport = Aop.get(OAuthTransportService.class);
-    String upstreamBody = JsonUtils.toJsonWithLongAsNumber(oauthTransport.payload(provider, payload, selection.model(), endpoint));
+    Kv outboundPayload = oauthTransport.payload(provider, payload, selection.model(), endpoint);
+    String upstreamBody = JsonUtils.toJsonWithLongAsNumber(outboundPayload);
     record.upstreamRequestBody = settings.captureBodies ? truncate(upstreamBody, captureLimit) : null;
     String url = provider.baseUrl + ("gemini".equals(upstreamProtocol) ? "/" + selection.model() : "") + endpoint;
     if (record.stream && "gemini".equals(upstreamProtocol)) {
@@ -201,12 +206,15 @@ public class ProxyService {
     }
     oauthTransport.headers(provider, builder);
     PluginHookService.Prepared prepared = hooks.request(builder.build(), upstreamBody, record, provider);
-    Buffer executedBody = new Buffer();
-    if (prepared.request().body() != null) { prepared.request().body().writeTo(executedBody); }
-    String executedPayload = executedBody.readUtf8();
-    if (!"gemini".equals(upstreamProtocol) && !executedPayload.isBlank()) {
+    String executedPayload;
+    if (prepared.bodyChanged()) {
+      Buffer executedBody = new Buffer();
+      if (prepared.request().body() != null) { prepared.request().body().writeTo(executedBody); }
+      executedPayload = executedBody.readUtf8();
+    } else { executedPayload = upstreamBody; }
+    if (prepared.bodyChanged() && !"gemini".equals(upstreamProtocol) && !executedPayload.isBlank()) {
       record.model = ProxyJson.text(ProxyJson.parse(executedPayload), "model", selection.model());
-    }
+    } else if (!"gemini".equals(upstreamProtocol)) { record.model = ProxyJson.text(outboundPayload, "model", selection.model()); }
     if (settings.captureBodies) { record.upstreamRequestBody = truncate(executedPayload, captureLimit); }
     Request upstreamRequest = "devin".equals(provider.upstreamType)
         ? Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload) : prepared.request();
@@ -276,19 +284,24 @@ public class ProxyService {
       if (normalized.isSuccessful() && normalized.body() != null
           && normalized.header("Content-Type", "").contains("text/event-stream")) {
         int eventLimit = EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216);
+        boolean beforeTranslation = hooks.has("response_before_translator");
+        String originalForResponse = beforeTranslation || hooks.has("response_translator") || hooks.has("response_after_translator") ? request.getBodyString() : null;
+        String translatedForResponse = originalForResponse == null ? null : executedPayload;
         InputStream events = new SseFrameInputStream(normalized.body().byteStream(), eventLimit,
             frame -> {
               Aop.get(ProtocolFormatService.class).usage(record, new String(frame, StandardCharsets.UTF_8));
-              return hooks.responsePhase(frame, upstreamProtocol, record, request.getBodyString(), executedPayload, "response_before_translator", "response.normalize_before");
+              return beforeTranslation ? hooks.responsePhase(frame, upstreamProtocol, record, originalForResponse, translatedForResponse, "response_before_translator", "response.normalize_before") : frame;
             });
         if (hooks.nativeRoute(upstreamProtocol, protocol)) {
           events = new ProtocolEventStream(events, upstreamProtocol, protocol, model);
-        } else {
+        } else if (hooks.has("response_translator")) {
           events = new SseFrameInputStream(events, eventLimit,
-              frame -> hooks.responsePhase(frame, upstreamProtocol, record, request.getBodyString(), executedPayload, "response_translator", "response.translate"));
+              frame -> hooks.responsePhase(frame, upstreamProtocol, record, originalForResponse, translatedForResponse, "response_translator", "response.translate"));
         }
-        events = new SseFrameInputStream(events, eventLimit,
-            frame -> hooks.responsePhase(frame, upstreamProtocol, record, request.getBodyString(), executedPayload, "response_after_translator", "response.normalize_after"));
+        if (hooks.has("response_after_translator")) {
+          events = new SseFrameInputStream(events, eventLimit,
+              frame -> hooks.responsePhase(frame, upstreamProtocol, record, originalForResponse, translatedForResponse, "response_after_translator", "response.normalize_after"));
+        }
         BufferedSource source = Okio.buffer(Okio.source(events));
         ResponseBody translated = new ResponseBody() {
           public MediaType contentType() { return MediaType.get("text/event-stream"); }
@@ -336,7 +349,12 @@ public class ProxyService {
       response.setSend(false);
       response.setSkipGzipped(true);
       response.addHeader("Transfer-Encoding", "chunked");
-      Thread.startVirtualThread(() -> stream(request, response, upstream, record, provider, settings, captureLimit, executedPayload));
+      ChannelContext downstream = request.getChannelContext();
+      PluginHookService.StreamHooks streamHooks = hooks.streamHooks();
+      boolean streamPlugins = streamHooks.active();
+      String originalForStream = streamPlugins ? request.getBodyString() : null;
+      String translatedForStream = streamPlugins ? executedPayload : null;
+      Thread.startVirtualThread(() -> stream(downstream, originalForStream, response, upstream, record, provider, settings, captureLimit, translatedForStream, streamHooks));
       return response;
     }
     try (upstream) {
@@ -360,7 +378,7 @@ public class ProxyService {
       record.responseHeaders = HeaderService.redact(modifiedHeaders);
       response.setBody(bytes);
       if (settings.captureBodies) {
-        record.responseBody = new String(Arrays.copyOf(bytes, Math.min(bytes.length, captureLimit)), StandardCharsets.UTF_8);
+        record.responseBody = Utf8Capture.prefix(bytes, captureLimit);
         record.responseTruncated = bytes.length > captureLimit;
       }
     } catch (Exception error) {
@@ -375,15 +393,16 @@ public class ProxyService {
     return response;
   }
 
-  void stream(HttpRequest request, HttpResponse response, Response upstream, RequestRecord record,
-      Provider provider, ProxySettings settings, int limit, String upstreamBody) {
-    ByteArrayOutputStream capture = new ByteArrayOutputStream();
+  void stream(ChannelContext downstream, String originalBody, HttpResponse response, Response upstream, RequestRecord record,
+      Provider provider, ProxySettings settings, int limit, String upstreamBody, PluginHookService.StreamHooks streamHooks) {
+    Utf8Capture capture = settings.captureBodies ? new Utf8Capture() : null;
     PluginHookService hooks = Aop.get(PluginHookService.class);
     Kv headers = Kv.create().set(upstream.headers().toMultimap());
     List<byte[]> history = new ArrayList<>();
     long index = 0;
+    int historyBytes = 0;
     try (upstream; InputStream input = upstream.body().byteStream()) {
-      hooks.streamChunk(new byte[0], -1, record, headers, request.getBodyString(), upstreamBody, history);
+      hooks.streamChunk(streamHooks, new byte[0], -1, record, headers, originalBody, upstreamBody, history);
       for (String name : upstream.headers().names()) { if (!HeaderService.transport(name)) { response.removeHeaders(name); } }
       headers.forEach((key, values) -> {
         if (!HeaderService.transport(key.toString()) && !HeaderService.secret(key.toString())) {
@@ -391,22 +410,25 @@ public class ProxyService {
         }
       });
       record.responseHeaders = HeaderService.redact(headers);
-      if (!Tio.bSend(request.getChannelContext(), response)) {
+      if (!sendStreamHeaders(downstream, response)) {
         throw new IllegalStateException("Downstream disconnected");
       }
       SseFrameInputStream frames = new SseFrameInputStream(input, EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216), frame -> frame);
       byte[] frame;
       while ((frame = frames.nextFrame()) != null) {
-        byte[] chunk = hooks.streamChunk(frame, index++, record, headers, request.getBodyString(), upstreamBody, history);
+        byte[] chunk = hooks.streamChunk(streamHooks, frame, index++, record, headers, originalBody, upstreamBody, history);
         if (chunk.length == 0) { continue; }
-        history.add(chunk);
-        while (history.size() > 64 || history.stream().mapToInt(item -> item.length).sum() > 1048576) { history.removeFirst(); }
+        if (streamHooks.history()) {
+          history.add(chunk);
+          historyBytes += chunk.length;
+          while (history.size() > 64 || historyBytes > 1048576) { historyBytes -= history.removeFirst().length; }
+        } else if (!history.isEmpty()) { history.clear(); historyBytes = 0; }
         if (settings.captureBodies) {
           int keep = Math.min(chunk.length, Math.max(0, limit - capture.size()));
           capture.write(chunk, 0, keep);
           record.responseTruncated |= keep < chunk.length;
         }
-        if (!SseEmitter.pushChunk(request.getChannelContext(), chunk)) {
+        if (!sendStreamChunk(downstream, chunk)) {
           throw new IllegalStateException("Downstream disconnected");
         }
       }
@@ -414,11 +436,15 @@ public class ProxyService {
       record.error = "Stream interrupted";
       record.status = 502;
     } finally {
-      record.responseBody = settings.captureBodies ? capture.toString(StandardCharsets.UTF_8) : null;
+      record.responseBody = settings.captureBodies ? capture.utf8() : null;
       finish(record, provider, settings);
-      SseEmitter.closeChunkConnection(request.getChannelContext());
+      closeStream(downstream);
     }
   }
+
+  boolean sendStreamHeaders(ChannelContext downstream, HttpResponse response) { return Tio.bSend(downstream, response); }
+  boolean sendStreamChunk(ChannelContext downstream, byte[] chunk) { return SseEmitter.pushChunk(downstream, chunk); }
+  void closeStream(ChannelContext downstream) { SseEmitter.closeChunkConnection(downstream); }
 
   void finish(RequestRecord record, Provider provider, ProxySettings settings) {
     record.durationMs = System.currentTimeMillis() - record.timestamp;
@@ -434,7 +460,6 @@ public class ProxyService {
   }
 
   private String truncate(String value, int limit) {
-    byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-    return new String(bytes, 0, Math.min(bytes.length, limit), StandardCharsets.UTF_8);
+    return Utf8Capture.prefix(value, limit);
   }
 }

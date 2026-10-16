@@ -31,7 +31,7 @@ public class PluginService {
   private final Map<String, String> failedInputs = new ConcurrentHashMap<>();
 
   public Kv configuration() {
-    return ProxyJson.object(ProxyJson.object(Aop.get(DesktopConfigService.class).get("")).get("plugins"));
+    return ProxyJson.object(Aop.get(DesktopConfigService.class).section("plugins"));
   }
   public Path directory() {
     Path config = Path.of(EnvUtils.get("proxy.config", "data/config.yaml")).toAbsolutePath();
