@@ -57,7 +57,7 @@ public class CredentialProviderService {
         };
         String base = switch (info.type) {
           case "codex" -> "https://chatgpt.com/backend-api/codex";
-          case "claude" -> "https://api.anthropic.com/v1";
+          case "claude" -> "https://api.anthropic.com";
           case "kimi" -> "https://api.kimi.com/coding/v1";
           case "kimi-ai" -> "https://api.kimi.ai/coding/v1";
           case "xai" -> "https://cli-chat-proxy.grok.com/v1";

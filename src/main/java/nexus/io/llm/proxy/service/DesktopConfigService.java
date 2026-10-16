@@ -229,7 +229,7 @@ public class DesktopConfigService {
             };
             provider.upstreamType = section;
             provider.baseUrl = string(effective, "base-url", switch (provider.protocol) {
-              case "anthropic" -> "https://api.anthropic.com/v1";
+              case "anthropic" -> "https://api.anthropic.com";
               case "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models";
               default -> "https://api.openai.com/v1";
             }).replaceAll("/+$", "");

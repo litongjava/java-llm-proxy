@@ -20,6 +20,7 @@ public class ProtocolEventStream extends InputStream {
   private final String from;
   private final String to;
   private final String model;
+  private final ResponsesToolMapping responseTools;
   private final String id = "chatcmpl-" + SnowflakeIdUtils.id();
   private final Kv tools = Kv.create();
   private ByteArrayInputStream output = new ByteArrayInputStream(new byte[0]);
@@ -33,6 +34,11 @@ public class ProtocolEventStream extends InputStream {
   private final StringBuilder text = new StringBuilder();
 
   public ProtocolEventStream(InputStream input, String from, String to, String model) {
+    this(input, from, to, model, null);
+  }
+
+  public ProtocolEventStream(InputStream input, String from, String to, String model, ResponsesToolMapping responseTools) {
+    this.responseTools = responseTools;
     reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
     this.from = from; this.to = to; this.model = model;
   }
@@ -240,6 +246,7 @@ public class ProtocolEventStream extends InputStream {
     return event(null, body);
   }
   private String event(String type, Kv value) {
+    if (responseTools != null) { responseTools.restore(value); }
     if (type != null) { value.set("type", type); }
     if ("responses".equals(to)) { value.set("sequence_number", sequence++); }
     return (type == null ? "" : "event: " + type + "\n") + "data: " + JsonUtils.toJsonWithLongAsNumber(value) + "\n\n";

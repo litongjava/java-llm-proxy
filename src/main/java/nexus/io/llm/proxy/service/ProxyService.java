@@ -118,6 +118,8 @@ public class ProxyService {
     record.provider = provider.name;
     record.model = selection.model();
     String upstreamProtocol = provider.protocol;
+    ResponsesToolMapping responseTools = "responses".equals(protocol) && !protocol.equals(upstreamProtocol)
+        ? new ResponsesToolMapping(payload) : null;
     ProtocolConversionService conversion = Aop.get(ProtocolConversionService.class);
     Kv pluginPayload = hooks.transformRequest(payload, protocol, upstreamProtocol, selection.model(), record.stream);
     if (!protocol.equals(upstreamProtocol)) {
@@ -161,7 +163,8 @@ public class ProxyService {
     Kv outboundPayload = oauthTransport.payload(provider, payload, selection.model(), endpoint);
     String upstreamBody = JsonUtils.toJsonWithLongAsNumber(outboundPayload);
     record.upstreamRequestBody = settings.captureBodies ? truncate(Aop.get(RequestImageService.class).externalize(upstreamBody), captureLimit) : null;
-    String url = provider.baseUrl + ("gemini".equals(upstreamProtocol) ? "/" + selection.model() : "") + endpoint;
+    String url = UpstreamUrlService.endpoint(provider.baseUrl, upstreamProtocol,
+        ("gemini".equals(upstreamProtocol) ? "/" + selection.model() : "") + endpoint);
     if (record.stream && "gemini".equals(upstreamProtocol)) {
       url += "?alt=sse";
     }
@@ -293,7 +296,7 @@ public class ProxyService {
               return beforeTranslation ? hooks.responsePhase(frame, upstreamProtocol, record, originalForResponse, translatedForResponse, "response_before_translator", "response.normalize_before") : frame;
             });
         if (hooks.nativeRoute(upstreamProtocol, protocol)) {
-          events = new ProtocolEventStream(events, upstreamProtocol, protocol, model);
+          events = new ProtocolEventStream(events, upstreamProtocol, protocol, model, responseTools);
         } else if (hooks.has("response_translator")) {
           events = new SseFrameInputStream(events, eventLimit,
               frame -> hooks.responsePhase(frame, upstreamProtocol, record, originalForResponse, translatedForResponse, "response_translator", "response.translate"));
@@ -365,7 +368,9 @@ public class ProxyService {
       byte[] pluginResponse = upstream.isSuccessful() && contentType.contains("json") ? hooks.transformResponse(bytes, upstreamProtocol, record, request.getBodyString(), executedPayload) : null;
       if (pluginResponse != null) { bytes = pluginResponse; }
       else if (!protocol.equals(upstreamProtocol) && upstream.isSuccessful() && contentType.contains("json")) {
-        bytes = JsonUtils.toJsonWithLongAsNumber(conversion.response(ProxyJson.parse(new String(bytes, StandardCharsets.UTF_8)), upstreamProtocol, protocol, model)).getBytes(StandardCharsets.UTF_8);
+        Kv convertedResponse = conversion.response(ProxyJson.parse(new String(bytes, StandardCharsets.UTF_8)), upstreamProtocol, protocol, model);
+        if (responseTools != null) { responseTools.restore(convertedResponse); }
+        bytes = JsonUtils.toJsonWithLongAsNumber(convertedResponse).getBytes(StandardCharsets.UTF_8);
       }
       Kv modifiedHeaders = Kv.create().set(upstream.headers().toMultimap());
       if (upstream.isSuccessful()) { bytes = hooks.response(bytes, record, modifiedHeaders); }

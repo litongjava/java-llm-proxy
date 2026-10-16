@@ -155,7 +155,7 @@ public class ProtocolConversionService {
       for (Object value : input) {
         Kv item = ProxyJson.object(value);
         String type = ProxyJson.text(item, "type", "message");
-        if ("function_call".equals(type)) { messages.add(Kv.create().set("role", "assistant").set("tool_calls", List.of(call(item.getStr("call_id"), item.getStr("name"), item.getStr("arguments"))))); }
+        if ("function_call".equals(type)) { messages.add(Kv.create().set("role", "assistant").set("tool_calls", List.of(call(item.getStr("call_id"), ResponsesToolMapping.name(item.getStr("namespace"), item.getStr("name")), item.getStr("arguments"))))); }
         else if ("function_call_output".equals(type)) { messages.add(Kv.create().set("role", "tool").set("tool_call_id", item.get("call_id")).set("content", item.get("output"))); }
         else if ("message".equals(type)) {
           List<Kv> blocks = new ArrayList<>();
@@ -166,7 +166,15 @@ public class ProtocolConversionService {
           messages.add(Kv.create().set("role", item.get("role")).set("content", blocks));
         }
       }
-      for (Object value : ProxyJson.list(body.get("tools"))) { tools.add(Kv.create().set("type", "function").set("function", value)); }
+      tools.addAll(new ResponsesToolMapping(body).tools());
+      Object choice = body.get("tool_choice");
+      if (choice instanceof String) { result.set("tool_choice", choice); }
+      else if ("function".equals(ProxyJson.object(choice).getStr("type"))) {
+        Kv selected = ProxyJson.object(choice);
+        result.set("tool_choice", Kv.create().set("type", "function").set("function", Kv.create().set("name",
+            ResponsesToolMapping.name(selected.getStr("namespace"), selected.getStr("name")))));
+      }
+      if (body.containsKey("parallel_tool_calls")) { result.set("parallel_tool_calls", body.get("parallel_tool_calls")); }
       if (body.get("max_output_tokens") != null) { result.set("max_tokens", body.get("max_output_tokens")); }
     } else if ("gemini".equals(from)) {
       Kv system = ProxyJson.object(body.get("systemInstruction"));

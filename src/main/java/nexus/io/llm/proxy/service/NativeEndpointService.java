@@ -68,7 +68,7 @@ public class NativeEndpointService {
     }
     String base = provider.baseUrl;
     if ("gemini".equals(protocol) && base.endsWith("/models")) { base = base.substring(0, base.length() - 7); }
-    HttpUrl.Builder url = HttpUrl.get(base + endpoint).newBuilder();
+    HttpUrl.Builder url = HttpUrl.get(UpstreamUrlService.endpoint(base, protocol, endpoint)).newBuilder();
     String query = request.getRequestLine().getQueryString();
     if (query != null && !query.isBlank()) { url.encodedQuery(query).removeAllQueryParameters("key"); }
     Request.Builder outbound = new Request.Builder().url(url.build());
