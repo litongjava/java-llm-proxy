@@ -48,10 +48,15 @@ public class StorageService {
         for (String column : List.of("originator", "session_id", "thread_id")) {
           boolean exists = false;
           try (ResultSet columns = statement.executeQuery("PRAGMA table_info(requests)")) {
-            while (columns.next()) { if (column.equals(columns.getString("name"))) exists = true; }
+            while (columns.next()) {
+              if (column.equals(columns.getString("name")))
+                exists = true;
+            }
           }
-          if (!exists) statement.execute("ALTER TABLE requests ADD COLUMN " + column + " TEXT");
-          statement.execute("CREATE INDEX IF NOT EXISTS requests_" + column + " ON requests(" + column + ", timestamp DESC)");
+          if (!exists)
+            statement.execute("ALTER TABLE requests ADD COLUMN " + column + " TEXT");
+          statement.execute(
+              "CREATE INDEX IF NOT EXISTS requests_" + column + " ON requests(" + column + ", timestamp DESC)");
         }
         statement.execute("CREATE INDEX IF NOT EXISTS requests_time ON requests(timestamp DESC)");
         statement.execute("CREATE TABLE IF NOT EXISTS usage_queue (id TEXT PRIMARY KEY)");
@@ -100,10 +105,14 @@ public class StorageService {
   }
 
   public UpstreamTask task(String id, String owner) throws Exception {
-    try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement("SELECT body FROM upstream_tasks WHERE id=? AND owner=?")) {
+    try (Connection connection = connection();
+        PreparedStatement statement = connection
+            .prepareStatement("SELECT body FROM upstream_tasks WHERE id=? AND owner=?")) {
       statement.setString(1, id);
       statement.setString(2, owner);
-      try (ResultSet result = statement.executeQuery()) { return result.next() ? JsonUtils.parse(result.getString(1), UpstreamTask.class) : null; }
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next() ? JsonUtils.parse(result.getString(1), UpstreamTask.class) : null;
+      }
     }
   }
 
@@ -114,7 +123,8 @@ public class StorageService {
     DateTimeFormatter clock = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
     for (long bucket = first; bucket <= current; bucket++) {
       RecentRequestBucket item = new RecentRequestBucket();
-      item.time = clock.format(Instant.ofEpochMilli(bucket * 600000)) + "-" + clock.format(Instant.ofEpochMilli((bucket + 1) * 600000));
+      item.time = clock.format(Instant.ofEpochMilli(bucket * 600000)) + "-"
+          + clock.format(Instant.ofEpochMilli((bucket + 1) * 600000));
       buckets.add(item);
     }
     try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement("""
@@ -135,11 +145,14 @@ public class StorageService {
         }
       }
       return buckets;
-    } catch (Exception error) { throw new IllegalStateException("Cannot read recent request metrics", error); }
+    } catch (Exception error) {
+      throw new IllegalStateException("Cannot read recent request metrics", error);
+    }
   }
 
   public ProxySettings settings() {
-    try (Connection connection = connection(); Statement statement = connection.createStatement();
+    try (Connection connection = connection();
+        Statement statement = connection.createStatement();
         ResultSet result = statement.executeQuery("SELECT body FROM settings WHERE id=1")) {
       return result.next() ? JsonUtils.parse(result.getString(1), ProxySettings.class) : new ProxySettings();
     } catch (Exception e) {
@@ -148,8 +161,9 @@ public class StorageService {
   }
 
   public synchronized void saveSettings(ProxySettings settings) {
-    try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
-        "INSERT INTO settings(id, body) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET body=excluded.body")) {
+    try (Connection connection = connection();
+        PreparedStatement statement = connection.prepareStatement(
+            "INSERT INTO settings(id, body) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET body=excluded.body")) {
       statement.setString(1, JsonUtils.toJson(settings));
       statement.executeUpdate();
     } catch (Exception e) {
@@ -176,9 +190,10 @@ public class StorageService {
           input_tokens,output_tokens,cached_tokens,reasoning_tokens,cost,summary,body,originator,session_id,thread_id)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """)) {
-      Object[] values = {record.id, record.timestamp, record.model, record.provider, record.apiKeyName,
-          record.source, record.status, record.durationMs, record.inputTokens, record.outputTokens,
-          record.cachedTokens, record.reasoningTokens, record.cost, JsonUtils.toJson(summary), body, record.originator, record.session_id, record.thread_id};
+      Object[] values = { record.id, record.timestamp, record.model, record.provider, record.apiKeyName, record.source,
+          record.status, record.durationMs, record.inputTokens, record.outputTokens, record.cachedTokens,
+          record.reasoningTokens, record.cost, JsonUtils.toJson(summary), body, record.originator, record.session_id,
+          record.thread_id };
       bind(statement, Arrays.asList(values));
       statement.executeUpdate();
     } catch (Exception e) {
@@ -187,8 +202,8 @@ public class StorageService {
   }
 
   public RequestRecord detail(String id) {
-    try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
-        "SELECT body FROM requests WHERE id=?")) {
+    try (Connection connection = connection();
+        PreparedStatement statement = connection.prepareStatement("SELECT body FROM requests WHERE id=?")) {
       statement.setString(1, id);
       try (ResultSet result = statement.executeQuery()) {
         return result.next() ? JsonUtils.parse(result.getString(1), RequestRecord.class) : null;
@@ -217,8 +232,8 @@ public class StorageService {
   }
 
   public void acknowledgeUsage(List<String> ids) {
-    try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
-        "DELETE FROM usage_queue WHERE id=?")) {
+    try (Connection connection = connection();
+        PreparedStatement statement = connection.prepareStatement("DELETE FROM usage_queue WHERE id=?")) {
       connection.setAutoCommit(false);
       for (String id : ids) {
         statement.setString(1, id);
@@ -259,10 +274,10 @@ public class StorageService {
         bind(statement, values);
         try (ResultSet result = statement.executeQuery()) {
           result.next();
-          stats.set("total", result.getLong(1)).set("success", result.getLong(2))
-              .set("inputTokens", result.getLong(3)).set("outputTokens", result.getLong(4))
-              .set("cachedTokens", result.getLong(5)).set("reasoningTokens", result.getLong(6))
-              .set("cost", result.getDouble(7)).set("averageDuration", result.getDouble(8));
+          stats.set("total", result.getLong(1)).set("success", result.getLong(2)).set("inputTokens", result.getLong(3))
+              .set("outputTokens", result.getLong(4)).set("cachedTokens", result.getLong(5))
+              .set("reasoningTokens", result.getLong(6)).set("cost", result.getDouble(7))
+              .set("averageDuration", result.getDouble(8));
         }
       }
       List<RequestRecord> records = new ArrayList<>();
@@ -279,25 +294,27 @@ public class StorageService {
         }
       }
       List<Kv> trend = new ArrayList<>();
-      try (PreparedStatement statement = connection.prepareStatement(
-          "SELECT timestamp/3600000*3600000,count(*),sum(input_tokens+output_tokens) FROM requests"
-          + where + " GROUP BY timestamp/3600000 ORDER BY 1 DESC LIMIT 168")) {
+      try (PreparedStatement statement = connection
+          .prepareStatement("SELECT timestamp/3600000*3600000,count(*),sum(input_tokens+output_tokens) FROM requests"
+              + where + " GROUP BY timestamp/3600000 ORDER BY 1 DESC LIMIT 168")) {
         bind(statement, values);
         try (ResultSet result = statement.executeQuery()) {
           while (result.next()) {
-            trend.add(Kv.create().set("time", result.getLong(1)).set("requests", result.getLong(2)).set("tokens", result.getLong(3)));
+            trend.add(Kv.create().set("time", result.getLong(1)).set("requests", result.getLong(2)).set("tokens",
+                result.getLong(3)));
           }
         }
       }
-      return Kv.create().set("stats", stats).set("records", records).set("trend", trend).set("page", query.page).set("pageSize", query.pageSize);
+      return Kv.create().set("stats", stats).set("records", records).set("trend", trend).set("page", query.page)
+          .set("pageSize", query.pageSize);
     } catch (Exception e) {
       throw new IllegalStateException("Cannot query usage", e);
     }
   }
 
   public void prune(int days) {
-    try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
-        "DELETE FROM requests WHERE timestamp<?")) {
+    try (Connection connection = connection();
+        PreparedStatement statement = connection.prepareStatement("DELETE FROM requests WHERE timestamp<?")) {
       statement.setLong(1, System.currentTimeMillis() - days * 86400000L);
       statement.executeUpdate();
     } catch (Exception e) {

@@ -140,6 +140,21 @@ def run():
             assert int(detail['inputTokens']) == (12 if stream else 11), 'Usage must survive disabled body capture'
         api('settings', original)
 
+        # Effort must reach the durable desktop queue even without captured bodies.
+        for capture in [True, False]:
+            api('settings', dict(original, captureBodies=capture))
+            for path, payload in [
+                ('/v1/responses', {'model':'review-responses', 'input':'test', 'reasoning':{'effort':'medium','context':'all_turns'}}),
+                ('/v1/chat/completions', {'model':'review-model', 'messages':[], 'reasoning_effort':'high'}),
+            ]:
+                status, body, headers = call(path, payload, KEY)
+                assert status == 200, body
+                detail_id = headers.get('x-request-id') or headers.get('X-Request-Id')
+                records = json.loads(call(queue_path)[1])['data']
+                item = next(row for row in records if row['request_id'] == detail_id)
+                assert item['reasoning_effort'] == ('medium' if path.endswith('responses') else 'high'), item
+        api('settings', original)
+
         config_path = '/v8/management/config'
         old_config = json.loads(call(config_path)[1])['data']
         group = [{'name':'Desktop test', 'base-url':'http://127.0.0.1:18318/v1',

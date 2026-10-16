@@ -1,7 +1,7 @@
 package nexus.io.llm.proxy.service;
 
-import java.nio.charset.StandardCharsets;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
 import com.jfinal.kit.Kv;
+
 import nexus.io.chat.UniChatClient;
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.exception.OAuthRequestException;
@@ -26,9 +28,14 @@ import okhttp3.HttpUrl;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/** ZCode CLI authorization; platform JWT expiration requires a new interactive login. */
+/**
+ * ZCode CLI authorization; platform JWT expiration requires a new interactive
+ * login.
+ */
 public class ZCodeService {
-  private record Catalog(long expiresAt, List<Kv> models) { }
+  private record Catalog(long expiresAt, List<Kv> models) {
+  }
+
   private final ConcurrentHashMap<String, Catalog> catalogs = new ConcurrentHashMap<>();
 
   private String config(String key, String fallback) {
@@ -49,13 +56,15 @@ public class ZCodeService {
 
   public String apiBaseUrl(Kv credential) {
     return "coding-plan".equals(credential.getStr("zcode_channel"))
-        ? config("coding-api-base-url", "https://api.z.ai/api/anthropic/v1").replaceAll("/+$", "") : apiBaseUrl();
+        ? config("coding-api-base-url", "https://api.z.ai/api/anthropic/v1").replaceAll("/+$", "")
+        : apiBaseUrl();
   }
 
   public String accessToken(Kv credential) {
     if ("coding-plan".equals(credential.getStr("zcode_channel"))) {
       String key = credential.getStr("coding_plan_key");
-      BusinessException.require(nonblank(key), 400, "ZCODE_CODING_KEY_MISSING", "No existing ZCode coding-plan API key is available");
+      BusinessException.require(nonblank(key), 400, "ZCODE_CODING_KEY_MISSING",
+          "No existing ZCode coding-plan API key is available");
       return key;
     }
     return credential.getStr("access_token");
@@ -63,7 +72,11 @@ public class ZCodeService {
 
   public Kv headers(Kv credential) {
     String version = ProxyJson.text(credential, "app_version", config("app-version", "3.14.4"));
-    String platform = switch (PluginService.os()) { case "windows" -> "win32"; case "darwin" -> "darwin"; default -> "linux"; };
+    String platform = switch (PluginService.os()) {
+    case "windows" -> "win32";
+    case "darwin" -> "darwin";
+    default -> "linux";
+    };
     Kv result = Kv.create().set("User-Agent", "ZCode/" + version).set("HTTP-Referer", origin())
         .set("X-ZCode-App-Version", version).set("X-Release-Channel", "stable").set("X-Client-Language", "zh-CN")
         .set("X-Client-Timezone", EnvUtils.get("TZ", "Asia/Shanghai")).set("X-Platform", platform)
@@ -83,13 +96,16 @@ public class ZCodeService {
     new SecureRandom().nextBytes(random);
     session.verifier = HexFormat.of().formatHex(random);
     String provider = config("login-provider", "bigmodel");
-    BusinessException.require(List.of("bigmodel", "zai").contains(provider), 500, "ZCODE_CONFIG", "ZCode login provider must be bigmodel or zai");
+    BusinessException.require(List.of("bigmodel", "zai").contains(provider), 500, "ZCODE_CONFIG",
+        "ZCode login provider must be bigmodel or zai");
     Kv response = Aop.get(OAuthService.class).post(config("init-url", origin() + "/api/v1/oauth/cli/init"),
         Kv.create().set("provider", provider), true, session.verifier, headers(Kv.create()));
     requireSuccess(response);
     ZCodeLoginResponse flow = JsonUtils.parse(JsonUtils.toJson(response.get("data")), ZCodeLoginResponse.class);
-    BusinessException.require(flow != null && nonblank(flow.flow_id) && nonblank(flow.authorize_url)
-        && flow.authorize_url.startsWith("https://"), 502, "ZCODE_LOGIN_RESPONSE", "ZCode authorization response is incomplete");
+    BusinessException.require(
+        flow != null && nonblank(flow.flow_id) && nonblank(flow.authorize_url)
+            && flow.authorize_url.startsWith("https://"),
+        502, "ZCODE_LOGIN_RESPONSE", "ZCode authorization response is incomplete");
     long now = System.currentTimeMillis();
     long expires = flow.expires_at == null ? now + 900000 : flow.expires_at * 1000;
     BusinessException.require(expires > now, 502, "ZCODE_LOGIN_RESPONSE", "ZCode authorization flow already expired");
@@ -116,7 +132,8 @@ public class ZCodeService {
       }
       session.nextPoll = System.currentTimeMillis() + session.interval * 1000L;
       try {
-        String url = HttpUrl.get(config("poll-base-url", session.spec.tokenUrl)).newBuilder().addPathSegment(session.deviceCode).build().toString();
+        String url = HttpUrl.get(config("poll-base-url", session.spec.tokenUrl)).newBuilder()
+            .addPathSegment(session.deviceCode).build().toString();
         Kv response = get(url, session.verifier, Kv.create());
         long status = ProxyJson.number(response, "http_status", 200);
         if (status == 408 || status == 429 || status >= 500) {
@@ -130,7 +147,8 @@ public class ZCodeService {
         if ("pending".equals(data.status)) {
           return null;
         }
-        BusinessException.require("ready".equals(data.status), 502, "ZCODE_LOGIN_FAILED", "ZCode authorization was declined or returned an invalid state");
+        BusinessException.require("ready".equals(data.status), 502, "ZCODE_LOGIN_FAILED",
+            "ZCode authorization was declined or returned an invalid state");
         return credential(data);
       } catch (IOException error) {
         session.interval = Math.min(60, session.interval + 2);
@@ -153,11 +171,13 @@ public class ZCodeService {
     BusinessException.require(nonblank(data.token) && nonblank(id) && (nonblank(zaiToken) || nonblank(bigmodelToken)),
         502, "ZCODE_LOGIN_RESPONSE", "ZCode login returned incomplete credentials");
     Kv credential = Kv.create().set("type", "zcode").set("access_token", data.token).set("account_id", id)
-        .set("nickname", ProxyJson.text(user, "name", ProxyJson.text(user, "email", id))).set("email", user.get("email"))
-        .set("device_mid", UUID.randomUUID().toString()).set("app_version", config("app-version", "3.14.4"))
-        .set("zai_access_token", zaiToken).set("bigmodel_access_token", bigmodelToken).set("zcode_channel", "start-plan")
+        .set("nickname", ProxyJson.text(user, "name", ProxyJson.text(user, "email", id)))
+        .set("email", user.get("email")).set("device_mid", UUID.randomUUID().toString())
+        .set("app_version", config("app-version", "3.14.4")).set("zai_access_token", zaiToken)
+        .set("bigmodel_access_token", bigmodelToken).set("zcode_channel", "start-plan")
         .set("last_refresh", Instant.now().toString());
-    // Third-party refresh tokens cannot refresh the ZCode JWT and are deliberately not promoted.
+    // Third-party refresh tokens cannot refresh the ZCode JWT and are deliberately
+    // not promoted.
     String[] segments = data.token.split("\\.");
     if (segments.length >= 2) {
       try {
@@ -197,7 +217,8 @@ public class ZCodeService {
 
   private void requireSuccess(Kv response) {
     OAuthFailureUtils.requireSuccess(response, "ZCode request");
-    BusinessException.require(ProxyJson.number(response, "code", 0) == 0, 502, "ZCODE_RESPONSE", "ZCode request was rejected");
+    BusinessException.require(ProxyJson.number(response, "code", 0) == 0, 502, "ZCODE_RESPONSE",
+        "ZCode request was rejected");
   }
 
   protected Kv get(String url, String token, Kv credential) throws Exception {
@@ -208,7 +229,8 @@ public class ZCodeService {
     ManagementHttpService transport = Aop.get(ManagementHttpService.class);
     Request.Builder request = new Request.Builder().url(url).header("Authorization", "Bearer " + token);
     headers(credential).forEach((key, value) -> request.header(key.toString(), value.toString()));
-    try (Response response = UniChatClient.execute(transport.client(transport.configuredProxy(), 20), request.build())) {
+    try (
+        Response response = UniChatClient.execute(transport.client(transport.configuredProxy(), 20), request.build())) {
       String body = response.body().string();
       if (body.stripLeading().startsWith("[") && response.isSuccessful()) {
         return JsonUtils.parse(body, List.class);
@@ -263,8 +285,10 @@ public class ZCodeService {
           continue;
         }
         Kv model = Kv.create().set("id", id).set("name", ProxyJson.text(raw, "name", id)).set("object", "model")
-            .set("owned_by", "zcode").set("channel", "start-plan").set("channel_support_source", "source-snapshot-2026-10-03");
-        for (String field : List.of("contextWindow", "maxCompletionTokens", "capabilities", "modalities", "reasoning")) {
+            .set("owned_by", "zcode").set("channel", "start-plan")
+            .set("channel_support_source", "source-snapshot-2026-10-03");
+        for (String field : List.of("contextWindow", "maxCompletionTokens", "capabilities", "modalities",
+            "reasoning")) {
           if (raw.get(field) != null) {
             model.set(field, raw.get(field));
           }
@@ -279,8 +303,10 @@ public class ZCodeService {
     return copy(result);
   }
 
-  /** Conservative routing evidence from the source's verified 2026-10-03 channel map.
-   * A global remote model catalog does not establish a subscription's entitlements.
+  /**
+   * Conservative routing evidence from the source's verified 2026-10-03 channel
+   * map. A global remote model catalog does not establish a subscription's
+   * entitlements.
    */
   public boolean channelSupports(String channel, String model) {
     if (model == null) {
@@ -288,9 +314,9 @@ public class ZCodeService {
     }
     String id = model.trim().toLowerCase(Locale.ROOT);
     return switch (channel) {
-      case "start-plan" -> List.of("glm-5.3-flash", "glm-5.2", "glm-5-turbo").contains(id);
-      case "coding-plan" -> List.of("glm-5.3", "glm-5.3-flash").contains(id);
-      default -> false;
+    case "start-plan" -> List.of("glm-5.3-flash", "glm-5.2", "glm-5-turbo").contains(id);
+    case "coding-plan" -> List.of("glm-5.3", "glm-5.3-flash").contains(id);
+    default -> false;
     };
   }
 
@@ -302,10 +328,14 @@ public class ZCodeService {
     return result;
   }
 
-  /** Reads an existing named API key; never creates a cloud key or buys a subscription. */
+  /**
+   * Reads an existing named API key; never creates a cloud key or buys a
+   * subscription.
+   */
   public Kv resolveCodingPlanKey(Kv credential) throws Exception {
     String token = ProxyJson.text(credential, "zai_access_token", credential.getStr("bigmodel_access_token"));
-    BusinessException.require(nonblank(token), 400, "ZCODE_OAUTH_TOKEN_MISSING", "No third-party OAuth access token is available");
+    BusinessException.require(nonblank(token), 400, "ZCODE_OAUTH_TOKEN_MISSING",
+        "No third-party OAuth access token is available");
     String origin = config("biz-origin", "https://api.z.ai");
     Kv customer = get(origin + "/api/biz/customer/getCustomerInfo", token, credential);
     requireSuccess(customer);
@@ -320,13 +350,14 @@ public class ZCodeService {
           projects.add(project);
         }
       }
-      if (nonblank(org.getStr("organizationId")) && !projects.isEmpty()
-          && (selectedOrg == null || ProxyJson.text(org, "organizationName", "").contains("\u9ed8\u8ba4\u673a\u6784"))) {
+      if (nonblank(org.getStr("organizationId")) && !projects.isEmpty() && (selectedOrg == null
+          || ProxyJson.text(org, "organizationName", "").contains("\u9ed8\u8ba4\u673a\u6784"))) {
         selectedOrg = org;
         selectedProjects = projects;
       }
     }
-    BusinessException.require(selectedOrg != null, 404, "ZCODE_ORGANIZATION_MISSING", "No eligible ZCode coding-plan project was found");
+    BusinessException.require(selectedOrg != null, 404, "ZCODE_ORGANIZATION_MISSING",
+        "No eligible ZCode coding-plan project was found");
     Kv project = selectedProjects.getFirst();
     for (Kv candidate : selectedProjects) {
       if (ProxyJson.text(candidate, "projectName", "").contains("\u9ed8\u8ba4\u9879\u76ee")) {
@@ -335,8 +366,8 @@ public class ZCodeService {
       }
     }
     String listUrl = HttpUrl.get(origin).newBuilder().addPathSegments("api/biz/v1/organization")
-        .addPathSegment(selectedOrg.getStr("organizationId")).addPathSegment("projects").addPathSegment(project.getStr("projectId"))
-        .addPathSegment("api_keys").build().toString();
+        .addPathSegment(selectedOrg.getStr("organizationId")).addPathSegment("projects")
+        .addPathSegment(project.getStr("projectId")).addPathSegment("api_keys").build().toString();
     Object listed = getValue(listUrl, token, credential);
     String apiKey = null;
     for (Object entry : ProxyJson.list(listed)) {
@@ -346,12 +377,14 @@ public class ZCodeService {
         break;
       }
     }
-    BusinessException.require(apiKey != null, 404, "ZCODE_CODING_KEY_MISSING", "No existing zcode-api-key was found; configure the subscription key in the provider console");
+    BusinessException.require(apiKey != null, 404, "ZCODE_CODING_KEY_MISSING",
+        "No existing zcode-api-key was found; configure the subscription key in the provider console");
     String copyUrl = HttpUrl.get(listUrl).newBuilder().addPathSegment("copy").addPathSegment(apiKey).build().toString();
     Kv copied = get(copyUrl, token, credential);
     requireSuccess(copied);
     String secret = copied.getStr("secretKey");
-    BusinessException.require(nonblank(secret), 502, "ZCODE_CODING_KEY_MISSING", "ZCode did not return the existing key secret");
+    BusinessException.require(nonblank(secret), 502, "ZCODE_CODING_KEY_MISSING",
+        "ZCode did not return the existing key secret");
     return Kv.create().set(credential).set("coding_plan_key", apiKey + "." + secret);
   }
 }

@@ -85,6 +85,7 @@ public class ProxyService {
     record.protocol = protocol;
     record.model = model;
     record.requestedModel = model;
+    record.reasoningEffort = ReasoningEffortService.extract(payload);
     record.apiKeyName = String.valueOf(request.getLocalAttribute("proxy.identity"));
     record.source = request.getHeader("user-agent");
     record.requestHeaders = HeaderService.redact(request.getHeaders());
@@ -219,6 +220,8 @@ public class ProxyService {
       record.model = ProxyJson.text(ProxyJson.parse(executedPayload), "model", selection.model());
     } else if (!"gemini".equals(upstreamProtocol)) { record.model = ProxyJson.text(outboundPayload, "model", selection.model()); }
     if (settings.captureBodies) { record.upstreamRequestBody = truncate(Aop.get(RequestImageService.class).externalize(executedPayload), captureLimit); }
+    record.reasoningEffort = ReasoningEffortService.extract(
+        prepared.bodyChanged() ? ProxyJson.parse(executedPayload) : outboundPayload);
     Request upstreamRequest = "devin".equals(provider.upstreamType)
         ? Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload) : prepared.request();
     if ("codearts".equals(provider.upstreamType)) {
@@ -438,6 +441,8 @@ public class ProxyService {
         }
       }
     } catch (Exception error) {
+      LOG.warn("Stream interrupted for request {} (upstreamStatus={}, processedFrames={}, elapsedMs={})",
+          record.id, upstream.code(), index, System.currentTimeMillis() - record.timestamp, error);
       record.error = "Stream interrupted";
       record.status = 502;
     } finally {

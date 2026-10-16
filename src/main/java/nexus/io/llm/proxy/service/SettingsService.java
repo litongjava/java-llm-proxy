@@ -3,12 +3,14 @@ package nexus.io.llm.proxy.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+
 import com.jfinal.kit.Kv;
+
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.ApiKey;
 import nexus.io.llm.proxy.model.ModelAlias;
@@ -141,15 +143,18 @@ public class SettingsService {
     return select(requestedModel, protocol, null, null, null);
   }
 
-  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session) {
+  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId,
+      String session) {
     return select(requestedModel, protocol, forcedProvider, authId, session, Set.of());
   }
 
-  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session, Set<String> excluded) {
+  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session,
+      Set<String> excluded) {
     return select(requestedModel, protocol, forcedProvider, authId, session, excluded, "");
   }
 
-  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session, Set<String> excluded, String tool) {
+  public Selection select(String requestedModel, String protocol, String forcedProvider, String authId, String session,
+      Set<String> excluded, String tool) {
     refreshDesktop();
     String model = requestedModel;
     String providerId = null;
@@ -168,19 +173,28 @@ public class SettingsService {
     allProviders.addAll(Aop.get(CredentialProviderService.class).providers());
     allProviders.addAll(Aop.get(PluginService.class).staticProviders());
     ModelRoutingService models = Aop.get(ModelRoutingService.class);
-    List<Provider> candidates = allProviders.stream().filter(p -> p.enabled && !excluded.contains(p.id)
-        && (selectedId == null || selectedId.isBlank() || p.id.equals(selectedId))
-        && (forcedProvider == null || forcedProvider.isBlank() || forcedProvider.equals(p.upstreamType) || forcedProvider.equals(p.protocol))
-        && (authId == null || authId.isBlank() || authId.equals(p.id) || authId.equals(p.credentialName))
-        && models.resolve(p, resolved, tool) != null).toList();
-    BusinessException.require(!candidates.isEmpty(), 503, "NO_PROVIDER", "No enabled provider for this model and protocol");
-    List<Provider> nativeCandidates = candidates.stream().filter(provider -> provider.protocol.equals(protocol)).toList();
-    if (!nativeCandidates.isEmpty()) { candidates = nativeCandidates; }
+    List<Provider> candidates = allProviders.stream()
+        .filter(p -> p.enabled && !excluded.contains(p.id)
+            && (selectedId == null || selectedId.isBlank() || p.id.equals(selectedId))
+            && (forcedProvider == null || forcedProvider.isBlank() || forcedProvider.equals(p.upstreamType)
+                || forcedProvider.equals(p.protocol))
+            && (authId == null || authId.isBlank() || authId.equals(p.id) || authId.equals(p.credentialName))
+            && models.resolve(p, resolved, tool) != null)
+        .toList();
+    BusinessException.require(!candidates.isEmpty(), 503, "NO_PROVIDER",
+        "No enabled provider for this model and protocol");
+    List<Provider> nativeCandidates = candidates.stream().filter(provider -> provider.protocol.equals(protocol))
+        .toList();
+    if (!nativeCandidates.isEmpty()) {
+      candidates = nativeCandidates;
+    }
     Provider chosen = Aop.get(RoutingService.class).pickSession(candidates, model, current.routing, session);
-    return new Selection(Aop.get(CredentialProviderService.class).authorize(chosen), models.resolve(chosen, model, tool), effort);
+    return new Selection(Aop.get(CredentialProviderService.class).authorize(chosen),
+        models.resolve(chosen, model, tool), effort);
   }
 
-  public record Selection(Provider provider, String model, String reasoningEffort) { }
+  public record Selection(Provider provider, String model, String reasoningEffort) {
+  }
 
   private synchronized void refreshDesktop() {
     current = Aop.get(DesktopConfigService.class).refresh(current);

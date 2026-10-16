@@ -10,7 +10,9 @@ import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.Provider;
 import nexus.io.tio.http.common.HttpRequest;
 
-/** Tool identity scopes aliases only; authentication remains in the interceptor. */
+/**
+ * Tool identity scopes aliases only; authentication remains in the interceptor.
+ */
 public class ToolScopeService {
   public static final List<String> TOOLS = List.of("claude-code", "claude-desktop", "codex", "cx", "dsc", "opencode",
       "openclaw", "hermes", "deepseek-harness", "zcode", "workbuddy", "antigravity-cli", "copilot-cli",
@@ -73,7 +75,8 @@ public class ToolScopeService {
     String value = provider.upstreamType + "\n" + ProxyJson.text(metadata, "base-url", "") + "\n"
         + ProxyJson.text(metadata, "prefix", "") + "\n" + ProxyJson.text(metadata, key, "");
     try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
     } catch (Exception error) {
       throw new IllegalStateException("Cannot identify alias provider", error);
     }

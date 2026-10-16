@@ -14,6 +14,7 @@ public class RequestRecord {
   public String model;
   public String requestedModel;
   public String responseModel;
+  public String reasoningEffort;
   public String provider;
   public String apiKeyName;
   public String source;

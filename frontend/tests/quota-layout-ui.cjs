@@ -19,6 +19,9 @@ const base = process.env.QUOTA_TEST_BASE || 'http://127.0.0.1:1421';
         const issues = [];
         for (const [index, card] of cards.entries()) {
           const outer = rects[index];
+          const header = card.querySelector('.real-quota-card-header').getBoundingClientRect();
+          const identity = card.querySelector('.quota-identity').getBoundingClientRect();
+          if (identity.width < header.width - 41) issues.push(`${index}: status text squeezes credential name`);
           const elements = [...card.querySelectorAll('.quota-identity, .quota-plan, .quota-status, .quota-row-list, .quota-card-actions, .quota-reset-footer, .quota-reset-credit-summary, .quota-card-message, .quota-card-error')];
           for (const el of elements) {
             const r = el.getBoundingClientRect();

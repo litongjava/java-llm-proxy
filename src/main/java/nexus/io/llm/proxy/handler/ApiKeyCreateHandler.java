@@ -15,4 +15,3 @@ public class ApiKeyCreateHandler {
     return TioRequestContext.getResponse().respond(RespBodyVo.ok(data));
   }
 }
-

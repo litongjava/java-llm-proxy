@@ -163,3 +163,4 @@ frontend/src-tauri/resources/java-llm-proxy.jar
 
 # Local OAuth credentials
 secrets.txt
+artifacts/

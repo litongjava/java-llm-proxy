@@ -1,28 +1,30 @@
 package nexus.io.llm.proxy.service;
 
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+
 import com.jfinal.kit.Kv;
+
 import nexus.io.llm.proxy.model.ApiKey;
-import nexus.io.llm.proxy.model.ModelAlias;
 import nexus.io.llm.proxy.model.Provider;
 import nexus.io.llm.proxy.model.ProxySettings;
 import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.environment.EnvUtils;
 import nexus.io.tio.utils.json.JsonUtils;
 import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
-import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.LoaderOptions;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public class DesktopConfigService {
   private String appliedContent;
@@ -49,19 +51,25 @@ public class DesktopConfigService {
     try {
       Path file = path().normalize();
       BasicFileAttributes attributes;
-      try { attributes = Files.readAttributes(file, BasicFileAttributes.class); }
-      catch (NoSuchFileException missing) { attributes = null; }
+      try {
+        attributes = Files.readAttributes(file, BasicFileAttributes.class);
+      } catch (NoSuchFileException missing) {
+        attributes = null;
+      }
       FileTime modified = attributes == null ? null : attributes.lastModifiedTime();
       long size = attributes == null ? -1 : attributes.size();
       Object fileKey = attributes == null ? null : attributes.fileKey();
       long now = System.nanoTime();
-      // Metadata catches normal edits immediately; a periodic content check also catches
+      // Metadata catches normal edits immediately; a periodic content check also
+      // catches
       // replacements which deliberately preserve size and modification time.
       if (cachedText == null || !file.equals(cachedPath) || size != cachedSize
           || !Objects.equals(modified, cachedModified) || !Objects.equals(fileKey, cachedFileKey)
           || now - lastContentCheck >= 1_000_000_000L) {
         String content = attributes == null ? "{}\n" : Files.readString(file);
-        if (!content.equals(cachedText)) { cachedConfig = null; }
+        if (!content.equals(cachedText)) {
+          cachedConfig = null;
+        }
         cachedText = content;
         cachedPath = file;
         cachedModified = modified;
@@ -86,19 +94,26 @@ public class DesktopConfigService {
     return copy(current);
   }
 
-  /** Read only the requested subtree, without copying or parsing unrelated settings. */
+  /**
+   * Read only the requested subtree, without copying or parsing unrelated
+   * settings.
+   */
   public synchronized Object section(String... keys) {
     Object current = configuration();
     for (String key : keys) {
       current = current instanceof Map<?, ?> map ? map.get(key) : null;
-      if (current == null) { return null; }
+      if (current == null) {
+        return null;
+      }
     }
     return copy(current);
   }
 
   private Kv configuration() {
     String content = text();
-    if (cachedConfig == null) { cachedConfig = object(yaml().load(content)); }
+    if (cachedConfig == null) {
+      cachedConfig = object(yaml().load(content));
+    }
     return cachedConfig;
   }
 
@@ -111,16 +126,24 @@ public class DesktopConfigService {
     }
     if (value instanceof List<?> list) {
       List<Object> result = new ArrayList<>(list.size());
-      for (Object item : list) { result.add(copy(item)); }
+      for (Object item : list) {
+        result.add(copy(item));
+      }
       return result;
     }
     if (value instanceof java.util.Set<?> set) {
       java.util.Set<Object> result = new java.util.LinkedHashSet<>();
-      for (Object item : set) { result.add(copy(item)); }
+      for (Object item : set) {
+        result.add(copy(item));
+      }
       return result;
     }
-    if (value instanceof java.util.Date date) { return new java.util.Date(date.getTime()); }
-    if (value instanceof byte[] bytes) { return bytes.clone(); }
+    if (value instanceof java.util.Date date) {
+      return new java.util.Date(date.getTime());
+    }
+    if (value instanceof byte[] bytes) {
+      return bytes.clone();
+    }
     return value;
   }
 
@@ -151,7 +174,8 @@ public class DesktopConfigService {
 
   public synchronized void replaceYaml(String text) {
     Object parsed = yaml().load(text);
-    BusinessException.require(parsed instanceof Map<?, ?>, 400, "INVALID_CONFIG", "Configuration must be a YAML object");
+    BusinessException.require(parsed instanceof Map<?, ?>, 400, "INVALID_CONFIG",
+        "Configuration must be a YAML object");
     write(object(parsed));
   }
 
@@ -222,23 +246,28 @@ public class DesktopConfigService {
             provider.id = String.valueOf(SnowflakeIdUtils.id());
             provider.name = string(effective, "name", section) + " / " + (settings.providers.size() + 1);
             provider.protocol = switch (section) {
-              case "claude" -> "anthropic";
-              case "gemini", "vertex" -> "gemini";
-              case "codex" -> "responses";
-              default -> "openai";
+            case "claude" -> "anthropic";
+            case "gemini", "vertex" -> "gemini";
+            case "codex" -> "responses";
+            default -> "openai";
             };
             provider.upstreamType = section;
             provider.baseUrl = string(effective, "base-url", switch (provider.protocol) {
-              case "anthropic" -> "https://api.anthropic.com";
-              case "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models";
-              default -> "https://api.openai.com/v1";
+            case "anthropic" -> "https://api.anthropic.com";
+            case "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models";
+            default -> "https://api.openai.com/v1";
             }).replaceAll("/+$", "");
             provider.apiKey = effective.getStr("api-key");
             for (Provider existing : previous.providers) {
               if (Objects.equals(provider.name, existing.name) && Objects.equals(provider.baseUrl, existing.baseUrl)
-                  && Objects.equals(provider.apiKey, existing.apiKey) && Objects.equals(provider.protocol, existing.protocol)) { provider.id = existing.id; break; }
+                  && Objects.equals(provider.apiKey, existing.apiKey)
+                  && Objects.equals(provider.protocol, existing.protocol)) {
+                provider.id = existing.id;
+                break;
+              }
             }
-            provider.enabled = !Boolean.TRUE.equals(group.get("disabled")) && !Boolean.TRUE.equals(effective.get("disabled"));
+            provider.enabled = !Boolean.TRUE.equals(group.get("disabled"))
+                && !Boolean.TRUE.equals(effective.get("disabled"));
             provider.headers = object(effective.get("headers"));
             provider.metadata = effective;
             for (Object modelValue : list(effective.get("models"))) {
@@ -271,7 +300,8 @@ public class DesktopConfigService {
   }
 
   private Kv merge(Kv current, Kv patch) {
-    patch.forEach((key, value) -> current.put(key, value instanceof Map<?, ?> ? merge(object(current.get(key)), object(value)) : value));
+    patch.forEach((key, value) -> current.put(key,
+        value instanceof Map<?, ?> ? merge(object(current.get(key)), object(value)) : value));
     return current;
   }
 
