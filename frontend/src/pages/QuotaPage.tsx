@@ -1,4 +1,14 @@
+import qodercnIcon from '../assets/icons/ofm-qodercn.png';
+import zcodeIcon from '../assets/icons/ofm-zcode.png';
+import metaIcon from '../assets/icons/meta.svg';
+import clineIcon from '../assets/icons/ofm-cline.png';
+import qoderIcon from '../assets/icons/ofm-qoder.png';
+import raccoonIcon from '../assets/icons/ofm-raccoon.png';
+import buddyIcon from '../assets/icons/ofm-buddy.png';
+import codeartsIcon from '../assets/icons/ofm-codearts.png';
+import workbuddyIcon from '../assets/icons/ofm-workbuddy.png';
 import { commitFetchedQuota } from '../services/quotaEnrichment';
+import { unsupportedNativeQuota } from '../services/nativeQuota';
 import { ResetCreditExpiries } from '../components/ResetCreditExpiries';
 import { MessageNotice } from '../appNotice';
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
@@ -39,6 +49,20 @@ import { usePrivacyMask } from '../privacy';
 import './QuotaPage.css';
 
 const providerMeta: Record<QuotaProvider, { label: string; icon: string }> = {
+  buddy: { label: 'CodeBuddy', icon: buddyIcon },
+  workbuddy: { label: 'WorkBuddy (International)', icon: workbuddyIcon },
+  workbuddycn: { label: 'WorkBuddy (China)', icon: workbuddyIcon },
+  qoder: { label: 'Qoder', icon: qoderIcon },
+  qodercn: { label: 'Qoder CN', icon: qodercnIcon },
+  zcode: { label: 'ZCode', icon: zcodeIcon },
+  raccoon: { label: 'Raccoon', icon: raccoonIcon },
+  codearts: { label: 'CodeArts', icon: codeartsIcon },
+  cline: { label: 'Cline', icon: clineIcon },
+  meta: { label: 'Muse (Meta)', icon: metaIcon },
+  minimax: { label: 'MiniMax Code', icon: '' },
+  lobsterai: { label: 'LobsterAI', icon: '' },
+  trae: { label: 'TRAE', icon: '' },
+  loomy: { label: 'Loomy', icon: '' },
   claude: { label: 'Claude', icon: claudeIcon },
   codex: { label: 'Codex', icon: codexIcon },
   kimi: { label: 'Kimi', icon: kimiIcon },
@@ -47,7 +71,7 @@ const providerMeta: Record<QuotaProvider, { label: string; icon: string }> = {
   antigravity: { label: 'Antigravity', icon: antigravityIcon },
 };
 
-const providerOrder: QuotaProvider[] = ['claude', 'antigravity', 'codex', 'xai', 'kimi', 'devin'];
+const providerOrder: QuotaProvider[] = ['claude', 'antigravity', 'codex', 'xai', 'kimi', 'devin', 'buddy', 'workbuddy', 'workbuddycn', 'qoder', 'qodercn', 'zcode', 'raccoon', 'codearts', 'cline', 'meta', 'minimax', 'lobsterai', 'trae', 'loomy'];
 const REFRESH_CONCURRENCY = 4;
 
 export function QuotaPage() {
@@ -75,7 +99,7 @@ export function QuotaPage() {
         const next = { ...current };
         nextFiles.forEach((file) => {
           const key = quotaKey(file);
-          if (!next[key]) next[key] = idleQuota();
+          if (!next[key]) next[key] = providerForFile(file) === 'meta' ? unsupportedNativeQuota() : idleQuota();
         });
         return next;
       });
@@ -163,7 +187,7 @@ export function QuotaPage() {
       {error ? <MessageNotice message={error} /> : null}
       <OAuthPageToolbar
         icon={<Gauge size={18} />}
-        summary={t(files.length === 1 ? 'quota.queryableCredentials.one' : 'quota.queryableCredentials.other', { count: files.length })}
+        summary={t(files.length === 1 ? 'quota.credentials.one' : 'quota.credentials.other', { count: files.length })}
       >
         <button type="button" className="secondary-button compact-button" onClick={() => void loadFiles()} disabled={loading || refreshing || querying}>
           {loading ? <RefreshCw size={16} className="spin" /> : <ListRestart size={16} />}{t('quota.readList')}
@@ -186,7 +210,7 @@ export function QuotaPage() {
                 <button key={provider} type="button" role="radio" aria-checked={selected} tabIndex={selected ? 0 : -1}
                   aria-label={`${label}, ${t(count === 1 ? 'quota.credentials.one' : 'quota.credentials.other', { count })}`}
                   onClick={() => setCategory(provider)}>
-                  {provider === 'all' ? null : <img src={providerMeta[provider].icon} alt="" className={provider === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />}
+                  {provider === 'all' || !providerMeta[provider].icon ? null : <img src={providerMeta[provider].icon} alt="" className={provider === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />}
                   <span>{label}</span>
                   <span className="quota-filter-count">{count}</span>
                 </button>
@@ -212,7 +236,7 @@ export function QuotaCard({ file, quota, onRefresh, onReset }: { file: AuthFile;
     <article className="panel real-quota-card">
       <div className="real-quota-card-header">
         <div className="quota-identity">
-          <img src={provider ? providerMeta[provider].icon : ''} alt="" className="quota-account-icon" />
+          {provider && providerMeta[provider].icon ? <img src={providerMeta[provider].icon} alt="" className="quota-account-icon" /> : <Gauge size={24} />}
           <div><strong title={name}>{name}</strong><span>{provider ? providerMeta[provider].label : t('quota.unknownProvider')}</span></div>
         </div>
         <div className="quota-plan"><strong>{quota.plan || '—'}</strong><span>{quota.subscriptionActiveUntil ? t('quota.expiresAt', { time: formatQuotaTimestamp(quota.subscriptionActiveUntil, locale) }) : ''}</span></div>

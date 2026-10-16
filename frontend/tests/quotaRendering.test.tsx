@@ -4,12 +4,25 @@ import { I18nProvider } from '../src/i18n';
 import { QuotaCard } from '../src/pages/QuotaPage';
 import { quotaRowsFor, formatQuotaTimestamp } from '../src/services/quotaService';
 import type { QuotaState } from '../src/services/quotaService';
+import { nativeQuotaProviders, parseNativeQuota } from '../src/services/nativeQuota';
 
 const render = (quota: QuotaState, provider = 'codex') => renderToStaticMarkup(
   <I18nProvider><QuotaCard file={{ name: 'test.json', provider }} quota={quota} onRefresh={() => {}} onReset={() => {}} /></I18nProvider>,
 );
 
 describe('quota card rendering', () => {
+  it('renders every added provider and explains unsupported quota without hiding the account', () => {
+    for (const provider of nativeQuotaProviders) {
+      const html = render({ status: 'idle', rows: [] }, provider);
+      expect(html).toContain('test.json');
+      expect(html).not.toContain('src=""');
+      expect(html).not.toContain('Unknown provider');
+    }
+    const html = render(parseNativeQuota('meta', {}), 'meta');
+    expect(html).toContain('Muse (Meta)');
+    expect(html).toContain('not integrated');
+    expect(html).not.toContain('real-quota-track');
+  });
   it('Kimi unavailable data is neutral, refreshable, and does not invent quota', () => {
     const html = render({ status: 'unavailable', rows: [], message: 'Kimi returned no quota data' }, 'kimi');
     expect(html).toContain('No quota data');

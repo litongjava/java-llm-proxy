@@ -1,3 +1,4 @@
+import { isNativeQuotaProvider, parseNativeQuota, unsupportedNativeQuota, type NativeQuotaProvider } from './nativeQuota';
 import { antigravityWindow, antigravityBucketLabel, antigravityGroupLabel, antigravityDescription } from './antigravityQuotaLabels';
 import { captureQuotaCacheGeneration } from './quotaCache';
 import { readClaudeResetGrants, type AnthropicResetGrantStatus } from './claudeResetGrants';
@@ -23,7 +24,8 @@ const quotaText = (
 ) => translate(getCurrentLocale(), key, variables);
 
 export type AuthFile = Record<string, unknown>;
-export type QuotaProvider = 'claude' | 'codex' | 'kimi' | 'xai' | 'antigravity' | 'devin';
+type LegacyQuotaProvider = 'claude' | 'codex' | 'kimi' | 'xai' | 'antigravity' | 'devin';
+export type QuotaProvider = LegacyQuotaProvider | NativeQuotaProvider;
 export type QuotaStatus = 'idle' | 'loading' | 'success' | 'unavailable' | 'error';
 export type QuotaRow = {
   label: string;
@@ -56,7 +58,7 @@ export type QuotaState = {
 
 export const idleQuota = (): QuotaState => ({ status: 'idle', rows: [] });
 
-const endpointByProvider: Record<QuotaProvider, string> = {
+const endpointByProvider: Record<LegacyQuotaProvider, string> = {
   devin: DEVIN_QUOTA_URL,
   claude: 'https://api.anthropic.com/api/oauth/usage',
   codex: 'https://chatgpt.com/backend-api/wham/usage',
@@ -74,7 +76,7 @@ const CODEX_RESET_CREDITS_CONSUME_URL =
 const ANTIGRAVITY_CODE_ASSIST_URL =
   'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
 
-const headersByProvider: Record<QuotaProvider, Record<string, string>> = {
+const headersByProvider: Record<LegacyQuotaProvider, Record<string, string>> = {
   devin: DEVIN_QUOTA_HEADERS,
   claude: {
     Authorization: 'Bearer $TOKEN$',
@@ -104,6 +106,9 @@ const headersByProvider: Record<QuotaProvider, Record<string, string>> = {
 
 export const providerForFile = (file: AuthFile): QuotaProvider | null => {
   const value = readString(file, 'provider', 'type', 'account_type').toLowerCase().replace(/_/g, '-');
+  if (isNativeQuotaProvider(value)) return value;
+  if (value === 'muse') return 'meta';
+  if (value === 'codebuddy') return 'buddy';
   if (value === 'x-ai' || value === 'grok') return 'xai';
   if (value === 'cognition') return 'devin';
   if (value === 'anthropic') return 'claude';
@@ -866,7 +871,7 @@ const loadAntigravityPlan = async (file: AuthFile): Promise<string | undefined> 
 
 async function callUpstreamQuota(
   file: AuthFile,
-  provider: QuotaProvider,
+  provider: LegacyQuotaProvider,
   resolvedCodexAccountId?: string,
   responseClock?: { serverTimeOffsetMs?: number },
 ): Promise<unknown> {
@@ -953,6 +958,14 @@ async function loadQuotaSnapshot(file: AuthFile): Promise<QuotaState> {
   }
   try {
     if (booleanValue(file.disabled) === true) throw new Error(quotaText('quota.fileDisabled'));
+    if (isNativeQuotaProvider(provider)) {
+      if (provider === 'meta') return unsupportedNativeQuota();
+      const authIndex = normalizeAuthIndex(file.auth_index ?? file.authIndex);
+      if (!authIndex) throw new Error(quotaText('quota.service.error.missingAuthIndex'));
+      const response = await managementApi.post<Record<string, unknown>>('/credentials/quota', { authIndex }, { timeoutMs: 40_000 });
+      if (response.provider !== provider) throw new Error('Quota provider mismatch');
+      return parseNativeQuota(provider, response.payload);
+    }
     const codexMetadata = provider === 'codex' ? codexMetadataFor(file) : undefined;
     const codexAccountId = codexMetadata?.accountId || '';
     const responseClock: { serverTimeOffsetMs?: number } = {};
