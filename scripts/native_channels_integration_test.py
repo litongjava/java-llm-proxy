@@ -34,6 +34,8 @@ class Upstream(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     calls = []
     failures = []
+    qoder_starts = {}
+    qoder_polls = {}
 
     def handle(self):
         try:
@@ -70,12 +72,38 @@ class Upstream(BaseHTTPRequestHandler):
     def route(self):
         path = urllib.parse.urlsplit(self.path).path
         raw = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-        body = (json.loads(raw) if 'application/json' in self.headers.get('Content-Type', '')
+        body = raw.decode() if path.endswith('/agent_chat_generation') else (json.loads(raw) if 'application/json' in self.headers.get('Content-Type', '')
                 else dict(urllib.parse.parse_qsl(raw.decode()))) if raw else {}
         self.calls.append((self.command, path, body))
         provider, endpoint = path.strip('/').split('/', 1)
         endpoint = '/' + endpoint
         model = {'minimax': 'MiniMax-M3.1-test', 'zcode': 'glm-5.2'}.get(provider, provider + '-test')
+        if provider in ('qoder', 'qodercn'):
+            start = self.qoder_starts[provider]
+            if endpoint == '/poll':
+                query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query))
+                assert self.command == 'GET' and query['nonce'] == start['nonce']
+                challenge = base64.urlsafe_b64encode(hashlib.sha256(query['verifier'].encode()).digest()).decode().rstrip('=')
+                assert challenge == start['challenge'] and query['challenge_method'] == 'S256'
+                self.qoder_polls[provider] = self.qoder_polls.get(provider, 0) + 1
+                if self.qoder_polls[provider] == 1:
+                    return self.reply({'message': 'pending'}, 404)
+                return self.reply({'token': provider + '-access', 'user_id': 'local-user',
+                                   'refresh_token': provider + '-refresh', 'expires_at': 4070908800})
+            if endpoint == '/profile':
+                assert self.headers['Authorization'] == 'Bearer ' + provider + '-access'
+                return self.reply({'name': 'Local Qoder'})
+            if endpoint == '/refresh':
+                assert body['machine_id'] == start['machine_id'] and body['refresh_token'] == provider + '-refresh'
+                return self.reply({'device_token': provider + '-rotated', 'expires_at': 4070908800})
+            if endpoint.endswith('/agent_chat_generation'):
+                assert self.headers['Authorization'].startswith('Bearer COSY.'), self.headers['Authorization'][:30]
+                assert 'hello' not in raw.decode() and provider + '-rotated' not in raw.decode()
+                assert body, 'WASM must produce a nonempty encrypted envelope'
+                chunks = [{'id': 'chat-qoder', 'model': 'auto', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': provider + ' works'}}]},
+                          {'id': 'chat-qoder', 'model': 'auto', 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]}]
+                envelopes = [{'headers': {}, 'body': json.dumps(chunk), 'statusCodeValue': 200, 'statusCode': 'OK'} for chunk in chunks]
+                return self.reply(''.join('data: ' + json.dumps(item) + '\n\n' for item in envelopes) + 'data: [DONE]\n\n', content_type='text/event-stream')
         if provider == 'codearts':
             if endpoint == '/token':
                 dpop = self.headers['DPoP'].split('.')
@@ -232,7 +260,11 @@ class Upstream(BaseHTTPRequestHandler):
         assert hmac.compare_digest(expected, fields['Signature']), ('Huawei canonical headers differ from transmitted headers', header_lines)
 
 
-def run():
+def run(providers=('minimax', 'buddy', 'workbuddy', 'lobsterai', 'trae', 'loomy', 'raccoon', 'zcode', 'codearts')):
+    Upstream.calls.clear()
+    Upstream.failures.clear()
+    Upstream.qoder_starts.clear()
+    Upstream.qoder_polls.clear()
     root = Path(__file__).resolve().parents[1]
     jar = root / 'target/java-llm-proxy-1.0.0.jar'
     assert jar.exists(), 'Package the Java application first'
@@ -264,6 +296,14 @@ def run():
         'proxy.oauth.zcode.origin': mock + '/zcode', 'proxy.oauth.zcode.api-base-url': mock + '/zcode',
         'proxy.oauth.zcode.config-url': mock + '/zcode/configs',
     }
+    for provider in ('qoder', 'qodercn'):
+        for key, endpoint in (('authorize-url', 'authorize'), ('poll-url', 'poll'), ('refresh-url', 'refresh'), ('profile-url', 'profile')):
+            config[f'proxy.oauth.{provider}.{key}'] = mock + '/' + provider + '/' + endpoint
+        config[f'proxy.oauth.{provider}.api-base-url'] = mock + '/' + provider
+    if any(provider in ('qoder', 'qodercn') for provider in providers):
+        wasm = os.environ.get('QODER_WASM_PATH')
+        assert wasm and Path(wasm).is_file(), 'Set QODER_WASM_PATH to the independently supplied Qoder WASM binary'
+        config['proxy.oauth.qoder.wasm-path'] = wasm
     java = Path(os.environ.get('JAVA_HOME', 'D:/java/jdk-21.0.6')) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')
     args = [str(java), '-jar', str(jar)] + [f'--{key}={value}' for key, value in config.items()]
 
@@ -306,7 +346,7 @@ def run():
                 time.sleep(.1)
             else:
                 raise AssertionError('Java did not start; inspect ' + str(directory / 'server.log'))
-            for provider in ('minimax', 'buddy', 'workbuddy', 'lobsterai', 'trae', 'loomy', 'raccoon', 'zcode', 'codearts'):
+            for provider in providers:
                 calls_before = len(Upstream.calls)
                 assert request('/v8/management/credentials', token='native-client')[0] == 401
                 assert request('/v8/management/oauth/auth-url?provider=' + provider, token='invalid')[0] == 401
@@ -319,6 +359,11 @@ def run():
                     management('oauth/loomy/login', {'phone': '13800000000', 'msgid': sms['msgid'], 'code': '123456'})
                 else:
                     start = management('oauth/auth-url?provider=' + provider)
+                    if provider in ('qoder', 'qodercn'):
+                        params = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(start['url']).query))
+                        assert params['challenge_method'] == 'S256' and params['machine_id'] and params['nonce']
+                        assert params['client_id'] == ('e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb' if provider == 'qoder' else '732aef47-9cf2-46a2-95fe-4cebb5d0d1fa')
+                        Upstream.qoder_starts[provider] = params
                     if provider == 'codearts':
                         params = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(start['url']).query))
                         assert params['code_challenge_method'] == 'SHA-256' and params['ticket_id']
@@ -346,7 +391,7 @@ def run():
                 if provider not in ('loomy', 'zcode'):
                     refreshed = management('credentials/refresh', {'name': account['name']})
                     assert refreshed['success'] == 1 and refreshed['failed'] == 0, (provider, refreshed, Upstream.failures)
-                model = {'minimax': 'MiniMax-M3.1-test', 'zcode': 'glm-5.2'}.get(provider, provider + '-test')
+                model = {'minimax': 'MiniMax-M3.1-test', 'zcode': 'glm-5.2', 'qoder': 'auto', 'qodercn': 'auto'}.get(provider, provider + '-test')
                 payload = {'model': model, 'messages': [{'role': 'user', 'content': 'hello'}], 'max_tokens': 64}
                 status, answer = request('/v1/chat/completions', payload, 'native-client')
                 assert status == 200 and answer['choices'][0]['message']['content'] == provider + ' works', (provider, status, answer, Upstream.failures)

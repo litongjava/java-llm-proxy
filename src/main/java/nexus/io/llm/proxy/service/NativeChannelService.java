@@ -27,7 +27,7 @@ public class NativeChannelService {
   }
 
   public boolean supports(String provider) {
-    return provider != null && List.of("cline", "minimax", "buddy", "workbuddy", "lobsterai", "trae", "raccoon", "codearts", "loomy", "zcode").contains(provider);
+    return provider != null && List.of("cline", "minimax", "buddy", "workbuddy", "lobsterai", "trae", "raccoon", "codearts", "loomy", "zcode", "qoder", "qodercn").contains(provider);
   }
 
   public String protocol(String provider) {
@@ -36,6 +36,7 @@ public class NativeChannelService {
 
   public String baseUrl(String provider) {
     return switch (provider) {
+      case "qoder", "qodercn" -> Aop.get(QoderService.class).apiBaseUrl(provider);
       case "cline" -> Aop.get(ClineService.class).apiBaseUrl();
       case "minimax" -> Aop.get(MiniMaxService.class).apiBaseUrl();
       case "buddy", "workbuddy" -> Aop.get(BuddyService.class).apiBaseUrl(provider);
@@ -109,6 +110,7 @@ public class NativeChannelService {
 
   protected List<Kv> discoverModels(String provider, Kv credential) throws Exception {
     return switch (provider) {
+      case "qoder", "qodercn" -> Aop.get(QoderModelService.class).models(provider);
       case "cline" -> Aop.get(ClineService.class).models(credential);
       case "minimax" -> Aop.get(MiniMaxService.class).models(credential);
       case "buddy", "workbuddy" -> credential == null ? List.of() : Aop.get(BuddyService.class).models(provider, credential);

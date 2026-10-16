@@ -55,7 +55,7 @@ EAC 使用维护者协付网关、GitHub 授权和宿主访问控制。它不是
 
 上述纯 HTTP 授权、JSON、PKCE、JWT 和 HMAC 都能用 Java 实现。Cline 不需要额外本地端口，适合远程部署；需要 loopback 回调的渠道则必须考虑浏览器与服务端是否位于同一机器。测试服务应使用独立端口，避免占用现有 8318。
 
-Qoder 是主要例外：登录流程容易分离，但完整推理依赖 `qoder-auth-wasm.wasm` 与 wasm-bindgen 桥，直接移植需要适配 WASM 运行时或重新实现协议；仅实现登录不能宣称完成该渠道。还应单独核查随包二进制的来源与分发权利，不能仅依据 TypeScript 包的 MIT 声明推断所有外部资产。
+Qoder 的完整推理依赖 `qoder-auth-wasm.wasm` 与 wasm-bindgen 桥，现已通过 Chicory 在 Java 中运行，并整合双产品登录、刷新、模型快照、加密推理及 SSE 转换。生产运行不依赖 Node。外部二进制不随应用重新分发，使用 `QODER_WASM_PATH` 或 `proxy.oauth.qoder.wasm-path` 指向已有文件；缺失配置只影响 Qoder 推理。详细哈希、隔离和验证范围见 [Qoder WASM 接入分析](qoder-wasm-java-analysis.md)。
 
 本次只读取了源码和说明，没有执行真实账号授权、领取积分、消耗推理额度或读取本地用户 token。源码中的历史实测注释是项目作者记录，不能作为本次独立实时验证。完成集成后，应分别验证设备授权状态机、凭据刷新、管理接口鉴权、非流式/流式代理和错误响应；真实上游可用性还需要有效账号完成验证。
 

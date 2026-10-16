@@ -2,6 +2,7 @@ package nexus.io.llm.proxy.service;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.BindException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -15,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
 import com.jfinal.kit.Kv;
 import com.sun.net.httpserver.HttpServer;
 import nexus.io.chat.UniChatClient;
@@ -52,10 +54,13 @@ public class CodeArtsService {
     session.expiresAt = System.currentTimeMillis() + 180000;
     HttpServer server = null;
     for (int attempt = 0; attempt < 20; attempt++) {
-      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-      if (server.getAddress().getPort() >= 10000) { break; }
-      server.stop(0);
-      server = null;
+      int candidate = ThreadLocalRandom.current().nextInt(10000, 65536);
+      try {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", candidate), 0);
+        break;
+      } catch (BindException occupied) {
+        // The portal requires a five-digit port; retry collisions within that range.
+      }
     }
     if (server == null) { throw new IOException("Unable to allocate CodeArts callback port"); }
     session.server = server;

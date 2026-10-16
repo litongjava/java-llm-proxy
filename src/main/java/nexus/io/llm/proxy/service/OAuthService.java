@@ -49,7 +49,10 @@ public class OAuthService {
   public OAuthService() {
     cleaner.scheduleAtFixedRate(this::expireSessions, 60, 60, TimeUnit.SECONDS);
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-      cleaner.shutdownNow(); callbacks.values().forEach(server -> server.stop(0)); callbackExecutor.close();
+      cleaner.shutdownNow();
+      sessions.values().forEach(session -> { if (session.codearts != null) { session.codearts.close(); } });
+      callbacks.values().forEach(server -> server.stop(0));
+      callbackExecutor.close();
     }, "oauth-shutdown"));
   }
 
@@ -67,7 +70,7 @@ public class OAuthService {
   public OAuthStartResult start(String provider) throws Exception {
     ManagementParameterValidator.identifier(provider);
     long now = System.currentTimeMillis();
-    sessions.entrySet().removeIf(entry -> entry.getValue().expiresAt < now);
+    expireSessions();
     BusinessException.require(sessions.size() < 256, 429, "TOO_MANY_SESSIONS", "Too many OAuth sessions");
     NativePlugin plugin = Aop.get(PluginService.class).provider(provider, false);
     if (plugin != null) {
@@ -101,7 +104,9 @@ public class OAuthService {
     OAuthStartResult result = new OAuthStartResult();
     result.state = session.state;
     result.expires_in = 900;
-    if ("minimax".equals(provider)) {
+    if ("qoder".equals(provider) || "qodercn".equals(provider)) {
+      Aop.get(QoderService.class).start(session, result);
+    } else if ("minimax".equals(provider)) {
       Aop.get(MiniMaxService.class).start(session, result);
     } else if ("codearts".equals(provider)) {
       session.codearts = Aop.get(CodeArtsService.class).start();
@@ -199,6 +204,20 @@ public class OAuthService {
           session.buddy = null;
         }
       }
+      if ("wait".equals(session.status) && session.qoder != null) {
+        Kv token = Aop.get(QoderService.class).poll(session);
+        if (token != null) {
+          try {
+            complete(session, token);
+            session.qoder = null;
+          } catch (Exception error) {
+            session.status = "error";
+            session.error = OAuthFailureUtils.message("Qoder account setup", error);
+            session.qoder = null;
+            session.verifier = null;
+          }
+        }
+      }
       if ("wait".equals(session.status) && session.spec != null && "minimax".equals(session.spec.provider)) {
         Kv token = Aop.get(MiniMaxService.class).poll(session);
         if (token != null) { complete(session, token); }
@@ -290,6 +309,7 @@ public class OAuthService {
       session.error = "cancelled";
       if (session.codearts != null) { session.codearts.close(); session.codearts = null; }
       session.buddy = null;
+      session.qoder = null;
       session.verifier = null;
       session.deviceCode = null;
       return Kv.create().set("status", "ok");
@@ -318,7 +338,8 @@ public class OAuthService {
         return status(session.state);
       }
       BusinessException.require(input.provider == null || input.provider.equals(session.spec.provider), 400, "INVALID_STATE", "OAuth provider mismatch");
-      BusinessException.require("wait".equals(session.status) && session.deviceCode == null, 409, "CONSUMED", "OAuth session cannot accept this callback");
+      BusinessException.require("wait".equals(session.status) && session.deviceCode == null && session.qoder == null,
+          409, "CONSUMED", "OAuth session cannot accept this callback");
       if (input.error != null) {
         session.status = "error";
         session.error = input.error;
@@ -378,6 +399,7 @@ public class OAuthService {
 
   public Kv refreshCredential(Kv credential) throws Exception {
     String provider = credential.getStr("type");
+    if ("qoder".equals(provider) || "qodercn".equals(provider)) { return Aop.get(QoderService.class).refresh(provider, credential); }
     if ("minimax".equals(provider)) { return Aop.get(MiniMaxService.class).refresh(credential); }
     if ("buddy".equals(provider) || "workbuddy".equals(provider)) { return Aop.get(BuddyService.class).refresh(provider, credential); }
     if ("lobsterai".equals(provider)) { return Aop.get(LobsterAiService.class).refresh(credential); }

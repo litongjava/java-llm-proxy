@@ -9,6 +9,7 @@ import nexus.io.tio.utils.environment.EnvUtils;
 public class OAuthProviderService {
   public OAuthProviderSpec get(String provider) throws Exception {
     OAuthProviderSpec spec = switch (provider) {
+    case "qoder", "qodercn" -> Aop.get(QoderService.class).spec(provider);
     case "minimax" -> Aop.get(MiniMaxService.class).spec();
     case "raccoon" -> Aop.get(RaccoonService.class).spec();
     case "zcode" -> Aop.get(ZCodeService.class).spec();

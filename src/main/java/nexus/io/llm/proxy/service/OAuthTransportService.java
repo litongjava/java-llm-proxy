@@ -25,6 +25,7 @@ import okio.Okio;
 public class OAuthTransportService {
   public Kv payload(Provider provider, Kv body, String model, String endpoint) {
     if (!"oauth".equals(provider.authType)) { return body; }
+    if (QoderTransportService.supports(provider.upstreamType)) { return Aop.get(QoderTransportService.class).payload(provider.upstreamType, body, model, endpoint); }
     if ("zcode".equals(provider.upstreamType)) { return Aop.get(ZCodeTransportService.class).payload(body, endpoint); }
     if ("codearts".equals(provider.upstreamType)) { return Aop.get(CodeArtsTransportService.class).payload(body, model, endpoint); }
     if ("loomy".equals(provider.upstreamType)) {
@@ -104,6 +105,7 @@ public class OAuthTransportService {
     }
   }
   public Response response(Provider provider, Response response, boolean clientStream) throws Exception {
+    if (QoderTransportService.supports(provider.upstreamType)) { return Aop.get(QoderTransportService.class).response(response, clientStream); }
     if ("zcode".equals(provider.upstreamType)) { return Aop.get(ZCodeTransportService.class).response(response, clientStream); }
     if ("codearts".equals(provider.upstreamType)) { return Aop.get(CodeArtsTransportService.class).response(response, clientStream); }
     if ("trae".equals(provider.upstreamType)) {

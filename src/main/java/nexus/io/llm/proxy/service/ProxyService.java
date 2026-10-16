@@ -213,6 +213,9 @@ public class ProxyService {
     if ("codearts".equals(provider.upstreamType)) {
       upstreamRequest = Aop.get(CodeArtsTransportService.class).prepare(upstreamRequest, provider.metadata, selection.model());
     }
+    if (QoderTransportService.supports(provider.upstreamType)) {
+      upstreamRequest = Aop.get(QoderTransportService.class).prepare(upstreamRequest, provider.upstreamType, provider.metadata, selection.model());
+    }
     Request signedRequest = upstreamRequest;
     record.upstreamRequestHeaders = HeaderService.redact(upstreamRequest.headers().toMultimap());
     response.removeHeaders("x-request-id");
@@ -237,6 +240,10 @@ public class ProxyService {
         if ("devin".equals(provider.upstreamType)) {
           Request retried = Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload);
           rawResponse = Aop.get(DevinTransportService.class).execute(outbound, retried, selection.model(), record.stream);
+        } else if (QoderTransportService.supports(provider.upstreamType)) {
+          provider.metadata = refreshed;
+          Request retried = Aop.get(QoderTransportService.class).prepare(prepared.request(), provider.upstreamType, refreshed, selection.model());
+          rawResponse = UniChatClient.execute(outbound, retried);
         } else if ("codearts".equals(provider.upstreamType)) {
           provider.metadata = refreshed;
           Request retried = Aop.get(CodeArtsTransportService.class).prepare(prepared.request(), refreshed, selection.model());

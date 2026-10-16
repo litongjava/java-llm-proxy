@@ -19,4 +19,5 @@ public class OAuthSession {
   public Kv pluginMetadata;
   public BuddyLoginSession buddy;
   public CodeArtsLoginSession codearts;
+  public QoderLoginSession qoder;
 }

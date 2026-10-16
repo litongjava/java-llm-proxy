@@ -1230,7 +1230,13 @@ export function createBrowserMockRuntime(
         const provider = readString(payload.provider) || 'codex';
         const session = `mock-oauth-${provider}-${Date.now()}`;
         state.oauthSessions.set(session, provider);
-        return { url: `https://example.com/mock-oauth/${provider}?state=${session}`, state: session, opened: true, openError: null };
+        return {
+          url: `https://example.com/mock-oauth/${provider}?state=${session}`,
+          state: session,
+          flow: provider === 'raccoon' ? 'qr' : undefined,
+          opened: provider !== 'raccoon',
+          openError: null,
+        };
       }
       case 'get_oauth_status': {
         const session = readString(payload.state);

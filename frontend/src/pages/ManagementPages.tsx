@@ -28,6 +28,8 @@ import workbuddyIcon from '../assets/icons/ofm-workbuddy.png';
 import raccoonIcon from '../assets/icons/ofm-raccoon.png';
 import codeartsIcon from '../assets/icons/ofm-codearts.png';
 import zcodeIcon from '../assets/icons/ofm-zcode.png';
+import qoderIcon from '../assets/icons/ofm-qoder.png';
+import qodercnIcon from '../assets/icons/ofm-qodercn.png';
 import { QRCodeSVG } from 'qrcode.react';
 import { useI18n } from '../i18n';
 import { usePrivacyMask } from '../privacy';
@@ -51,7 +53,7 @@ import { VertexLoginCard } from './VertexLoginCard';
 import { LoomyLoginCard } from './LoomyLoginCard';
 
 type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta' | 'cline'
-  | 'minimax' | 'buddy' | 'workbuddy' | 'lobsterai' | 'trae' | 'raccoon' | 'codearts' | 'zcode';
+  | 'minimax' | 'buddy' | 'workbuddy' | 'lobsterai' | 'trae' | 'raccoon' | 'codearts' | 'zcode' | 'qoder' | 'qodercn';
 type OAuthFlowStatus = 'idle' | 'waiting' | 'success' | 'error';
 
 type OAuthProviderState = {
@@ -90,6 +92,8 @@ type OAuthStatusResult = {
 };
 
 const oauthProviders = [
+  { id: 'qoder' as const, name: 'Qoder', icon: qoderIcon },
+  { id: 'qodercn' as const, name: 'Qoder CN', icon: qodercnIcon },
   { id: 'zcode' as const, name: 'ZCode', icon: zcodeIcon },
   { id: 'minimax' as const, name: 'MiniMax Code', icon: '' },
   { id: 'buddy' as const, name: 'CodeBuddy', icon: buddyIcon },
@@ -679,7 +683,9 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                 {state.polling ? (
                   <div className="oauth-flow-status waiting" role="status">
                     <LoaderCircle size={15} className="spin" aria-hidden="true" />
-                    <span>{t('oauth.flow.waiting')}</span>
+                    <span>{state.flow === 'qr'
+                      ? (locale.startsWith('zh') ? '请使用微信扫描二维码并确认授权。' : 'Scan the QR code with WeChat and confirm authorization.')
+                      : t('oauth.flow.waiting')}</span>
                   </div>
                 ) : state.status === 'success' ? (
                   <div className="oauth-flow-status success" role="status">

@@ -1,0 +1,449 @@
+{
+  "qoder": [
+    {
+      "id": "auto",
+      "name": "Auto",
+      "contextWindow": 200000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 0.5
+    },
+    {
+      "id": "ultimate",
+      "name": "Ultimate",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 2,
+      "efforts": [
+        "xhigh",
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "defaultEffort": "high",
+      "supportsDisable": true
+    },
+    {
+      "id": "performance",
+      "name": "Performance",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 1.1,
+      "efforts": [
+        "xhigh",
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "defaultEffort": "medium",
+      "supportsDisable": true
+    },
+    {
+      "id": "efficient",
+      "name": "Efficient",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 0.3
+    },
+    {
+      "id": "smodel",
+      "name": "Sonus",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 8,
+      "efforts": [
+        "xhigh",
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "defaultEffort": "high"
+    },
+    {
+      "id": "cmodel",
+      "name": "Cantus",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 4,
+      "efforts": [
+        "xhigh",
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "defaultEffort": "high"
+    },
+    {
+      "id": "qmodel_38max",
+      "name": "Qwen3.8-Max",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "isFree": true,
+      "priceFactor": 0.2,
+      "efforts": [
+        "xhigh",
+        "low",
+        "medium"
+      ],
+      "defaultEffort": "xhigh",
+      "supportsDisable": true,
+      "promotion": {
+        "active": true,
+        "discountFactor": 0.4,
+        "beforePromotionPriceFactor": 0.5,
+        "windowStart": "22:00",
+        "windowEnd": "08:00",
+        "badgeZh": "错峰 4 折"
+      }
+    },
+    {
+      "id": "qfmodel",
+      "name": "Qwen3.8-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "isFree": true,
+      "priceFactor": 0,
+      "originalPriceFactor": 0.1,
+      "efforts": [
+        "xhigh",
+        "low",
+        "medium"
+      ],
+      "defaultEffort": "medium",
+      "supportsDisable": true
+    },
+    {
+      "id": "qmodel_latest",
+      "name": "Qwen3.7-Max",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 0.1,
+      "originalPriceFactor": 0.5,
+      "supportsDisable": true,
+      "promotion": {
+        "active": true,
+        "discountFactor": 0.2,
+        "beforePromotionPriceFactor": 0.5,
+        "windowStart": "22:00",
+        "windowEnd": "08:00",
+        "badgeZh": "错峰 2 折"
+      }
+    },
+    {
+      "id": "qmodel",
+      "name": "Qwen3.7-Plus",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 0.04,
+      "supportsDisable": true,
+      "promotion": {
+        "active": true,
+        "discountFactor": 0.4,
+        "beforePromotionPriceFactor": 0.1,
+        "windowStart": "22:00",
+        "windowEnd": "08:00",
+        "badgeZh": "错峰 4 折"
+      }
+    },
+    {
+      "id": "kmodel_latest",
+      "name": "Kimi-K3",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 1.4,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "kmodel",
+      "name": "Kimi-K2.8-Preview",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 0.8,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "gmodel",
+      "name": "GLM-5.3",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.8,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "gfmodel",
+      "name": "GLM-5.3-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.1,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "dmodel",
+      "name": "DeepSeek-V4-Pro",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.5,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max",
+      "supportsDisable": true
+    },
+    {
+      "id": "dfmodel",
+      "name": "DeepSeek-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.1,
+      "efforts": [
+        "high",
+        "max",
+        "low"
+      ],
+      "defaultEffort": "max",
+      "supportsDisable": true
+    },
+    {
+      "id": "mmodel",
+      "name": "MiniMax-M3",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": false,
+      "priceFactor": 0.2
+    }
+  ],
+  "qodercn": [
+    {
+      "id": "auto",
+      "name": "Auto",
+      "contextWindow": 200000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.5
+    },
+    {
+      "id": "qmodel_38max",
+      "name": "Qwen3.8-Max",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "isFree": true,
+      "priceFactor": 0.2,
+      "efforts": [
+        "xhigh",
+        "low",
+        "medium"
+      ],
+      "defaultEffort": "medium",
+      "supportsDisable": true,
+      "promotion": {
+        "active": true,
+        "discountFactor": 0.4,
+        "beforePromotionPriceFactor": 0.5,
+        "windowStart": "22:00",
+        "windowEnd": "08:00",
+        "badgeZh": "错峰 4 折"
+      }
+    },
+    {
+      "id": "qfmodel",
+      "name": "Qwen3.8-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "isFree": true,
+      "priceFactor": 0,
+      "originalPriceFactor": 0.1,
+      "efforts": [
+        "xhigh",
+        "low",
+        "medium"
+      ],
+      "defaultEffort": "medium",
+      "supportsDisable": true
+    },
+    {
+      "id": "qmodel_latest",
+      "name": "Qwen3.7-Max",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.1,
+      "supportsDisable": true,
+      "promotion": {
+        "active": true,
+        "discountFactor": 0.2,
+        "beforePromotionPriceFactor": 0.5,
+        "windowStart": "22:00",
+        "windowEnd": "08:00",
+        "badgeZh": "错峰2折"
+      }
+    },
+    {
+      "id": "qmodel",
+      "name": "Qwen3.7-Plus",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.04,
+      "supportsDisable": true,
+      "promotion": {
+        "active": true,
+        "discountFactor": 0.4,
+        "beforePromotionPriceFactor": 0.1,
+        "windowStart": "22:00",
+        "windowEnd": "08:00",
+        "badgeZh": "错峰4折"
+      }
+    },
+    {
+      "id": "q37fmodel",
+      "name": "Qwen3.7-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.1
+    },
+    {
+      "id": "dmodel",
+      "name": "DeepSeek-V4-Pro",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.5,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max",
+      "supportsDisable": true
+    },
+    {
+      "id": "dfmodel",
+      "name": "DeepSeek-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "priceFactor": 0.1,
+      "efforts": [
+        "high",
+        "max",
+        "low"
+      ],
+      "defaultEffort": "max",
+      "supportsDisable": true
+    },
+    {
+      "id": "gmodel",
+      "name": "GLM-5.3",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.8,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "gfmodel",
+      "name": "GLM-5.3-Flash",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.1,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "gm51model",
+      "name": "GLM-5.2",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.6,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max",
+      "supportsDisable": true
+    },
+    {
+      "id": "kmodel_latest",
+      "name": "Kimi-K3",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "priceFactor": 1.4,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "kmodel",
+      "name": "Kimi-K2.8-Preview",
+      "contextWindow": 1000000,
+      "supportsImage": true,
+      "supportsThinking": true,
+      "priceFactor": 0.8,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "max"
+    },
+    {
+      "id": "mmodel",
+      "name": "MiniMax-M2.7",
+      "contextWindow": 200000,
+      "priceFactor": 0.2
+    }
+  ]
+}
