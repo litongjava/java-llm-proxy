@@ -8,6 +8,33 @@ import static org.junit.Assert.*;
 
 public class GeminiSchemaTest {
   @Test
+  public void removesDiscriminatorMetadataButPreservesPropertyNamesAndExamples() {
+    Kv original = ProxyJson.parse("""
+        {"type":"object","discriminator":{"propertyName":"kind"},"properties":{
+          "discriminator":{"type":"string","description":"User field"},
+          "nested":{"oneOf":[{"type":"object","discriminator":{"propertyName":"type"}}]},
+          "rows":{"type":"array","items":{"type":"object","discriminator":{"propertyName":"type"}}},
+          "example":{"default":{"discriminator":"keep"},"examples":[{"discriminator":"keep"}]}
+        },"$defs":{"variant":{"discriminator":{"propertyName":"kind"},"type":"object"}},
+        "additionalProperties":{"type":"object","discriminator":{"propertyName":"type"}}}
+        """);
+    String before = JsonUtils.toJson(original);
+    Kv converted = new GeminiSchemaService().convert(original);
+    assertFalse(converted.containsKey("discriminator"));
+    Kv properties = ProxyJson.object(converted.get("properties"));
+    assertEquals("User field", ProxyJson.object(properties.get("discriminator")).getStr("description"));
+    Kv nested = ProxyJson.object(ProxyJson.list(ProxyJson.object(properties.get("nested")).get("oneOf")).getFirst());
+    assertFalse(nested.containsKey("discriminator"));
+    assertFalse(ProxyJson.object(ProxyJson.object(properties.get("rows")).get("items")).containsKey("discriminator"));
+    assertFalse(ProxyJson.object(ProxyJson.object(converted.get("$defs")).get("variant")).containsKey("discriminator"));
+    assertFalse(ProxyJson.object(converted.get("additionalProperties")).containsKey("discriminator"));
+    Kv example = ProxyJson.object(properties.get("example"));
+    assertEquals("keep", ProxyJson.object(example.get("default")).getStr("discriminator"));
+    assertEquals("keep", ProxyJson.object(ProxyJson.list(example.get("examples")).getFirst()).getStr("discriminator"));
+    assertEquals(before, JsonUtils.toJson(original));
+  }
+
+  @Test
   public void convertsDesktopToolsWithoutMutatingClientPayload() {
     Kv body = ProxyJson.parse("""
         {"model":"claude-opus-4-6","metadata":{"user_id":"test"},"max_tokens":128,

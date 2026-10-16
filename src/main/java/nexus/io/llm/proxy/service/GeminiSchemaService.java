@@ -13,6 +13,7 @@ public class GeminiSchemaService {
     Kv source = ProxyJson.object(value);
     Kv schema = Kv.create().set(source);
     schema.remove("$schema");
+    schema.remove("discriminator");
     // Recurse only through schema locations: property names and default values are user data.
     for (String key : List.of("properties", "$defs", "definitions", "patternProperties")) {
       if (source.get(key) instanceof Map<?, ?> entries) {
