@@ -576,7 +576,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
         {getCurrentLocale().startsWith('zh') ? '工具' : 'Tool'}
         <select aria-label={getCurrentLocale().startsWith('zh') ? '工具' : 'Tool'} value={tool}
           disabled={loading || Boolean(busyAction)} onChange={(event) => { setTool(event.target.value); setEditorOpen(false); }}>
-          {Object.entries({ 'claude-desktop': 'Claude Desktop', 'claude-code': 'Claude Code', codex: 'Codex',
+          {Object.entries({ 'claude-desktop': 'Claude Desktop', 'claude-code': 'Claude Code', codex: 'Codex', cx: 'CX', dsc: 'DSC',
             opencode: 'OpenCode', openclaw: 'OpenClaw', hermes: 'Hermes', 'deepseek-harness': 'DeepSeek Harness',
             zcode: 'ZCode', workbuddy: 'WorkBuddy', 'antigravity-cli': 'Antigravity CLI', 'copilot-cli': 'Copilot CLI',
             'vscode-copilot': 'VS Code Copilot', 'kimi-code': 'Kimi Code', 'grok-build': 'Grok Build', omp: 'OMP', pi: 'Pi' })

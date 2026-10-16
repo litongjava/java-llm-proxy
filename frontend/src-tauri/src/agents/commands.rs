@@ -65,6 +65,7 @@ pub(crate) fn inspect_agent_config_statuses_with_overrides(
         AgentStatusDetectionTarget::Client(AgentClient::ClaudeDesktop),
         AgentStatusDetectionTarget::Client(AgentClient::Codex),
         AgentStatusDetectionTarget::Client(AgentClient::Cx),
+        AgentStatusDetectionTarget::Client(AgentClient::Dsc),
         AgentStatusDetectionTarget::Client(AgentClient::OpenCode),
         AgentStatusDetectionTarget::Client(AgentClient::OpenClaw),
         AgentStatusDetectionTarget::Client(AgentClient::Hermes),
@@ -919,8 +920,8 @@ pub(crate) async fn fetch_prepared_agent_models(
     config: &GuiConfigFile,
 ) -> Result<PreparedAgentModels, String> {
     let api_key = effective_agent_api_key(config);
-    if matches!(client, AgentClient::Codex | AgentClient::Cx) {
-        let runtime_models = if client == AgentClient::Cx {
+    if matches!(client, AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc) {
+        let runtime_models = if matches!(client, AgentClient::Cx | AgentClient::Dsc) {
             let payload = fetch_tool_model_payload(config.port, api_key, client.id()).await?;
             let mut models = codex_catalog::parse_public_models(&payload)?;
             codex_catalog::apply_configured_context_limits(&mut models, &fetch_management_config_yaml(config).await?)?;

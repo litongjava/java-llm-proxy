@@ -695,7 +695,7 @@ pub(crate) fn fresh_agent_contents_with_oauth(
             )?,
             build_claude_desktop_meta(None)?,
         ]),
-        AgentClient::Codex | AgentClient::Cx => Ok(vec![build_codex_agent_config_with_oauth(
+        AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc => Ok(vec![build_codex_agent_config_with_oauth(
             None,
             &openai_base,
             api_key,
@@ -759,7 +759,7 @@ pub(crate) fn fresh_agent_contents_with_oauth(
 #[cfg(test)]
 pub(crate) fn agent_contents_equal(client: AgentClient, actual: &str, expected: &str) -> bool {
     match client {
-        AgentClient::Codex | AgentClient::Cx => {
+        AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc => {
             normalize_codex_config_for_legacy_compare(actual)
                 == normalize_codex_config_for_legacy_compare(expected)
         }
@@ -1582,6 +1582,12 @@ pub(crate) fn build_agent_template_updates(
         validate_codex_catalog(catalog, model)?;
         updates.push(AgentFileUpdate { path: cx_configuration_directory(home).join(CODEX_MODEL_CATALOG_FILE), after: catalog.to_string() });
         updates.push(build_cx_auth_update(home, api_key, oauth_configuration)?);
+    }
+    if client == AgentClient::Dsc {
+        let catalog = codex_catalog.ok_or("Unable to generate DSC model catalog")?;
+        validate_codex_catalog(catalog, model)?;
+        updates.push(AgentFileUpdate { path: dsc_configuration_directory(home).join(CODEX_MODEL_CATALOG_FILE), after: catalog.to_string() });
+        updates.push(build_dsc_auth_update(home, api_key, oauth_configuration)?);
     }
     if client == AgentClient::Codex {
         let catalog = codex_catalog.ok_or_else(|| "Unable to generate Codex model catalog".to_string())?;

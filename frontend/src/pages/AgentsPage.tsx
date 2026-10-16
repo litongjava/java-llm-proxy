@@ -102,6 +102,7 @@ type AgentClientId =
   | 'claude-desktop'
   | 'codex'
   | 'cx'
+  | 'dsc'
   | 'opencode'
   | 'openclaw'
   | 'hermes'
@@ -274,7 +275,7 @@ type AgentDefinition = {
   name: string;
   icon?: string;
   Icon?: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>;
-  descriptionKey: 'agents.description.copilotCli' | 'agents.description.vscodeCopilot' | 'agents.description.claudeCode' | 'agents.description.claudeDesktop' | 'agents.description.codex' | 'agents.description.cx' | 'agents.description.opencode' | 'agents.description.openclaw' | 'agents.description.hermes' | 'agents.description.deepseekHarness' | 'agents.description.zcode' | 'agents.description.workbuddy' | 'agents.description.antigravityCli' | 'agents.description.kimiCode' | 'agents.description.grokBuild' | 'agents.description.omp' | 'agents.description.pi';
+  descriptionKey: 'agents.description.copilotCli' | 'agents.description.vscodeCopilot' | 'agents.description.claudeCode' | 'agents.description.claudeDesktop' | 'agents.description.codex' | 'agents.description.cx' | 'agents.description.dsc' | 'agents.description.opencode' | 'agents.description.openclaw' | 'agents.description.hermes' | 'agents.description.deepseekHarness' | 'agents.description.zcode' | 'agents.description.workbuddy' | 'agents.description.antigravityCli' | 'agents.description.kimiCode' | 'agents.description.grokBuild' | 'agents.description.omp' | 'agents.description.pi';
 };
 
 type AgentSubpageId = 'core' | 'management' | 'sessions';
@@ -299,6 +300,7 @@ const agentDefinitions: AgentDefinition[] = [
     descriptionKey: 'agents.description.claudeDesktop',
   },
   { id: 'cx', name: 'CX', icon: codexIcon, descriptionKey: 'agents.description.cx' },
+  { id: 'dsc', name: 'DSC', icon: deepseekIcon, descriptionKey: 'agents.description.dsc' },
   {
     id: 'codex',
     name: 'Codex',
@@ -383,6 +385,7 @@ const agentSubpages: AgentSubpageDefinition[] = [
       'claude-desktop',
       'codex',
       'cx',
+      'dsc',
       'opencode',
       'openclaw',
       'hermes',

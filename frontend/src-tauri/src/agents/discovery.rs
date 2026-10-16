@@ -38,6 +38,7 @@ pub(crate) fn agent_config_paths(client: AgentClient, home: &Path) -> Vec<PathBu
         AgentClient::ClaudeDesktop => claude_desktop_config_paths(home),
         AgentClient::Codex => vec![codex_configuration_directory(home).join("config.toml")],
         AgentClient::Cx => vec![cx_configuration_directory(home).join("config.toml")],
+        AgentClient::Dsc => vec![dsc_configuration_directory(home).join("config.toml")],
         AgentClient::OpenCode => vec![opencode_config_path(home)],
         AgentClient::OpenClaw => vec![openclaw_agent_config_path(home)],
         AgentClient::Hermes => vec![hermes_agent_config_path(home)],
@@ -824,6 +825,10 @@ pub(crate) fn remove_pi_package(executable: &Path, home: &Path) -> Result<(), St
     ))
 }
 
+pub(crate) fn dsc_configuration_directory(home: &Path) -> PathBuf {
+    agent_configuration_environment("DSC_HOME").unwrap_or_else(|| home.join(".dsc"))
+}
+
 pub(crate) fn cx_configuration_directory(home: &Path) -> PathBuf {
     agent_configuration_environment("CX_HOME").unwrap_or_else(|| home.join(".cx"))
 }
@@ -920,7 +925,7 @@ pub(crate) fn codex_model_catalog_path(home: &Path) -> PathBuf {
 }
 
 pub(crate) fn expected_agent_record_paths(client: AgentClient, paths: &[PathBuf]) -> Vec<PathBuf> {
-    if matches!(client, AgentClient::Codex | AgentClient::Cx) && paths.len() == 1 {
+    if matches!(client, AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc) && paths.len() == 1 {
         let mut expected = paths.to_vec();
         expected.push(paths[0].with_file_name(CODEX_MODEL_CATALOG_FILE));
         expected.push(paths[0].with_file_name("auth.json"));
@@ -1081,7 +1086,7 @@ pub(crate) fn inspect_agent_config_with_executables(
         .and_then(|images| validate_config_images(&images))
         .and_then(|_| inspect_agent_managed_config(client, &paths, port, api_key))
         .and_then(|(configured, model, oauth_configuration)| {
-            if matches!(client, AgentClient::Codex | AgentClient::Cx) && configured {
+            if matches!(client, AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc) && configured {
                 let model = model
                     .as_deref()
                     .ok_or_else(|| "Codex configuration is missing a default model".to_string())?;
@@ -1434,6 +1439,7 @@ pub(crate) fn inspect_agent_managed_config(
         AgentClient::ClaudeDesktop => Ok((false, None, false)),
         AgentClient::Codex => inspect_codex_agent_config(&paths[0], port, api_key),
         AgentClient::Cx => inspect_codex_agent_config_for_tool(&paths[0], port, api_key, "cx"),
+        AgentClient::Dsc => inspect_codex_agent_config_for_tool(&paths[0], port, api_key, "dsc"),
         AgentClient::OpenCode => inspect_opencode_agent_config(&paths[0], port, api_key)
             .map(|(configured, model)| (configured, model, false)),
         AgentClient::OpenClaw => inspect_openclaw_agent_config(&paths[0], port, api_key)
@@ -1523,7 +1529,7 @@ pub(crate) fn agent_has_connection_evidence(
             model == MANAGED_AGENT_PROVIDER_ID
                 || model.starts_with(&format!("{MANAGED_AGENT_PROVIDER_ID}/"))
         });
-        let catalog = matches!(client, AgentClient::Codex | AgentClient::Cx)
+        let catalog = matches!(client, AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc)
             && value
                 .get("model_catalog_json")
                 .and_then(serde_json::Value::as_str)
@@ -1583,7 +1589,7 @@ pub(crate) fn agent_has_managed_marker(
                     .and_then(serde_json::Value::as_str)
                     .is_some_and(is_managed_agent_base_url))
         }
-        AgentClient::Codex | AgentClient::Cx => {
+        AgentClient::Codex | AgentClient::Cx | AgentClient::Dsc => {
             if !paths[0].is_file() {
                 return Ok(false);
             }
@@ -2567,6 +2573,11 @@ pub(crate) fn find_agent_executable(client: AgentClient, home: &Path) -> Option<
         return [cx_configuration_directory(home).join("bin/cx.cmd"), cx_configuration_directory(home).join("bin/cx")]
             .into_iter().find(|path| path.is_file())
             .or_else(|| find_named_agent_executable(home, &["cx"]));
+    }
+    if client == AgentClient::Dsc {
+        return [dsc_configuration_directory(home).join("bin/dsc.cmd"), dsc_configuration_directory(home).join("bin/dsc")]
+            .into_iter().find(|path| path.is_file())
+            .or_else(|| find_named_agent_executable(home, &["dsc"]));
     }
     if client == AgentClient::CopilotCli { return detect_copilot_cli(home, None).map(|(path, _)| path); }
     if client == AgentClient::AntigravityCli { return find_antigravity_cli(home); }

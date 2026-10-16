@@ -37,6 +37,43 @@ fn cx_oauth_does_not_fall_back_to_codex_login() {
     assert_eq!(AgentClient::Cx.executable_names(), &["cx"]);
 }
 
+#[test]
+fn dsc_configuration_round_trip_never_changes_codex() {
+    let home = Home::new();
+    let original_config = home.0.join(".codex/config.toml");
+    let original_auth = home.0.join(".codex/auth.json");
+    save(&original_config, "model = \"original\"\n");
+    save(&original_auth, r#"{"tokens":{"access_token":"original-only"}}"#);
+    let original = config_images(&[original_config, original_auth]).unwrap();
+    let dsc_config = home.0.join(".dsc/config.toml");
+    save(&dsc_config, "cli_auth_credentials_store = \"file\"\n# user setting\nmodel_reasoning_effort = \"high\"\n");
+    let before = config_images(&config_paths("dsc", &home.0).unwrap()).unwrap();
+    apply(&home.0, AgentClient::Dsc, "deepseek-first").unwrap();
+    let status = inspect_agent_config_with_executables(AgentClient::Dsc, &home.0, 8317, "test-secret", None, None);
+    assert!(status.configured, "{:?}", status.error);
+    let config = fs::read_to_string(&dsc_config).unwrap();
+    assert!(config.contains("/tools/dsc/v1"));
+    assert!(config.contains("model_reasoning_effort = \"high\""));
+    assert_eq!(config_images(&original.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()).unwrap(), original);
+    apply(&home.0, AgentClient::Dsc, "deepseek-second").unwrap();
+    assert_eq!(inspect_agent_managed_config(AgentClient::Dsc, &[dsc_config.clone()], 8317, "test-secret").unwrap().1.as_deref(), Some("deepseek-second"));
+    clear_agent_managed_configuration(AgentClient::Dsc, &home.0, 8317).unwrap();
+    assert_eq!(config_images(&config_paths("dsc", &home.0).unwrap()).unwrap(), before);
+    template(&home.0, AgentClient::Dsc).unwrap();
+    assert!(inspect_agent_managed_config(AgentClient::Dsc, &[dsc_config], 8317, "test-secret").unwrap().0);
+    assert_eq!(config_images(&original.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()).unwrap(), original);
+}
+
+#[test]
+fn dsc_oauth_does_not_fall_back_to_codex_login() {
+    let home = Home::new();
+    save(&home.0.join(".codex/auth.json"), r#"{"tokens":{"access_token":"original-only"}}"#);
+    assert!(build_dsc_auth_update(&home.0, "test-secret", true).is_err());
+    assert_eq!(agent_config_paths(AgentClient::Dsc, &home.0), vec![home.0.join(".dsc/config.toml")]);
+    assert_eq!(AgentClient::parse("dsc").unwrap(), AgentClient::Dsc);
+    assert_eq!(AgentClient::Dsc.executable_names(), &["dsc"]);
+}
+
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {
