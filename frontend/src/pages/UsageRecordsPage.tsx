@@ -551,19 +551,20 @@ export function UsageRecordsPage() {
               ]}
             />
           </div>
+          {activeTab === 'events' && <>
+            {(['originator', 'session_id', 'thread_id'] as const).map(field => <label key={field} className="usage-filter-item usage-context-filter">
+              <input value={clientContext[field]}
+                aria-label={field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}
+                placeholder={field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}
+                onChange={event => { setClientContext(current => ({ ...current, [field]: event.target.value })); setPage(1); }} />
+            </label>)}
+            <button type="button" className="secondary-button usage-context-clear" disabled={!Object.values(clientContext).some(Boolean)}
+              aria-label={getCurrentLocale().startsWith('zh') ? '清除会话筛选' : 'Clear session filters'}
+              onClick={() => { setClientContext({ originator: '', session_id: '', thread_id: '' }); setPage(1); }}><X size={16} /></button>
+          </>}
         </div>
       </div>
 
-      {activeTab === 'events' && <div className="usage-client-filters">
-        {(['originator', 'session_id', 'thread_id'] as const).map(field => <label key={field}>
-          <span>{field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}</span>
-          <input value={clientContext[field]} placeholder={field === 'originator' ? 'codex-tui' : '01a142df-…'}
-            onChange={event => { setClientContext(current => ({ ...current, [field]: event.target.value })); setPage(1); }} />
-        </label>)}
-        <button type="button" className="secondary-button" disabled={!Object.values(clientContext).some(Boolean)}
-          aria-label={getCurrentLocale().startsWith('zh') ? '清除会话筛选' : 'Clear session filters'}
-          onClick={() => { setClientContext({ originator: '', session_id: '', thread_id: '' }); setPage(1); }}><X size={16} /></button>
-      </div>}
       {range === 'custom' ? (
         <div className="usage-custom-range">
           <input

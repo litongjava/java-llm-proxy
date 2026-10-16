@@ -8,9 +8,16 @@ const fs = require('node:fs');
   page.on('pageerror', e => errors.push(String(e)));
   fs.mkdirSync('artifacts/client-context', { recursive: true });
   try {
+    await page.addInitScript(() => localStorage.setItem('cpa-gui.usage-events-visible-cols.v7', JSON.stringify(['time', 'model', 'provider', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost'])));
     for (const width of [1280, 640]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('http://127.0.0.1:1421/tests/fixtures/usage-layout.html?tab=events&locale=en');
+      for (const key of ['originator', 'session_id', 'thread_id']) {
+        assert.equal(await page.locator(`.usage-th-${key}`).count(), 1);
+        assert(await page.locator(`.usage-td-${key}`).first().innerText());
+      }
+      for (const key of ['source', 'key', 'provider', 'cost']) assert.equal(await page.locator(`.usage-th-${key}`).count(), 0);
+      assert.equal(await page.locator('.usage-filter-group .usage-context-filter').count(), 3);
       await page.getByLabel('Originator', { exact: true }).fill('codex-tui');
       await page.getByLabel('Session ID', { exact: true }).fill('session-1');
       await page.getByLabel('Thread ID', { exact: true }).fill('thread-1');
@@ -19,7 +26,7 @@ const fs = require('node:fs');
       assert.equal(query.originator, 'codex-tui');
       assert.equal(query.session_id, 'session-1');
       assert.equal(query.page, 1);
-      assert(await page.locator('.usage-client-filters').evaluate(el => el.scrollWidth <= el.clientWidth));
+      assert(await page.locator('.usage-filter-group').evaluate(el => el.scrollWidth <= el.clientWidth));
       await page.screenshot({ path: `artifacts/client-context/filters-${width}.png` });
       await page.getByRole('button', { name: 'Clear session filters' }).click();
       await page.waitForFunction(() => !window.__clientContextQuery?.thread_id);

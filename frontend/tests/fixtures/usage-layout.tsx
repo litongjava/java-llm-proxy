@@ -45,6 +45,9 @@ const timeline = Array.from({ length: 4 }, (_, index) => ({
 const records = Array.from({ length: 400 }, (_, index) => ({
   id: `record-${index + 1}`,
   row_id: String(index + 1),
+  originator: 'codex-tui',
+  session_id: '01a142df-fc0f-7ac2-9df4-bb63d9d92383',
+  thread_id: '01a142df-fc0f-7ac2-9df4-bb63d9d92383',
   timestamp: new Date(now.getTime() - index * 1000).toISOString(),
   latency_ms: 2000,
   ttft_ms: 200,

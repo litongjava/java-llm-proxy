@@ -92,6 +92,9 @@ type EventColumnKey =
   | 'result'
   | 'latency'
   | 'speed'
+  | 'originator'
+  | 'session_id'
+  | 'thread_id'
   | 'request';
 
 type EventColumnDef = {
@@ -105,6 +108,9 @@ type EventColumnDef = {
 const EVENT_COLUMNS: readonly EventColumnDef[] = [
   { key: 'time', labelKey: 'usage.column.time', defaultWidth: 82, minWidth: 76, align: 'left' },
   { key: 'model', labelKey: 'usage.column.model', defaultWidth: 150, minWidth: 112, align: 'left' },
+  { key: 'originator', labelKey: 'usage.column.originator', defaultWidth: 120, minWidth: 100, align: 'left' },
+  { key: 'session_id', labelKey: 'usage.column.session_id', defaultWidth: 170, minWidth: 100, align: 'left' },
+  { key: 'thread_id', labelKey: 'usage.column.thread_id', defaultWidth: 170, minWidth: 100, align: 'left' },
   { key: 'source', labelKey: 'usage.column.source', defaultWidth: 128, minWidth: 104, align: 'left' },
   { key: 'key', labelKey: 'usage.column.key', defaultWidth: 112, minWidth: 96, align: 'left' },
   { key: 'provider', labelKey: 'usage.column.provider', defaultWidth: 92, minWidth: 84, align: 'left' },
@@ -118,13 +124,13 @@ const EVENT_COLUMNS: readonly EventColumnDef[] = [
 ] as const;
 
 const DEFAULT_EVENT_VISIBLE_COLUMNS: readonly EventColumnKey[] = [
-  'time', 'model', 'provider', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
+  'time', 'model', 'originator', 'session_id', 'thread_id', 'result', 'total', 'cache', 'latency', 'speed',
 ];
 
 const EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v4';
 const LEGACY_EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v3';
-const EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v7';
-const LEGACY_EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v6';
+const EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v8';
+const LEGACY_EVENT_VISIBLE_COLS_STORAGE_KEY = 'cpa-gui.usage-events-visible-cols.v7';
 const EVENT_COLLAPSE_ERRORS_KEY = 'cpa-gui.usage-events-collapse-errors.v1';
 const getAllEventColumnKeys = () => EVENT_COLUMNS.map((column) => column.key);
 
@@ -133,6 +139,7 @@ export const getInitialVisibleColumns = (): EventColumnKey[] => {
     const currentRaw = usagePreferences.getItem(EVENT_VISIBLE_COLS_STORAGE_KEY);
     const previousRaw = usagePreferences.getItem(LEGACY_EVENT_VISIBLE_COLS_STORAGE_KEY);
     const raw = currentRaw ?? previousRaw
+      ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v6')
       ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v5')
       ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v4')
       ?? usagePreferences.getItem('cpa-gui.usage-events-visible-cols.v3')
@@ -153,7 +160,8 @@ export const getInitialVisibleColumns = (): EventColumnKey[] => {
           const oldDefault = ['time', 'model', 'provider', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
           const previousDefault = ['time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
           const lastDefault = ['time', 'model', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
-          if ([oldDefault, previousDefault, lastDefault].some(defaults => savedKeys.length === defaults.length && savedKeys.every((key, index) => key === defaults[index]))) {
+          const v7Default = ['time', 'model', 'provider', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
+          if (!currentRaw && [oldDefault, previousDefault, lastDefault, v7Default].some(defaults => savedKeys.length === defaults.length && savedKeys.every((key, index) => key === defaults[index]))) {
             return [...DEFAULT_EVENT_VISIBLE_COLUMNS];
           }
           return savedKeys;
@@ -420,6 +428,14 @@ function UsageEventCell({
       return <td className="usage-td-cost usage-stacked-cell align-left" title={cost ? t('usage.cost.hint', { model: cost.pricing_model }) : t('usage.cost.unpriced')}>
         <strong>{amount}</strong>
         {!cost ? <small>{t('usage.cost.unpriced')}</small> : null}
+      </td>;
+    }
+    case 'originator':
+    case 'session_id':
+    case 'thread_id': {
+      const value = record[columnKey] || '—';
+      return <td className={`usage-td-context usage-td-${columnKey} align-left`} title={value}>
+        <span>{value}</span>
       </td>;
     }
     case 'request': {

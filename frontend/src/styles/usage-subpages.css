@@ -354,3 +354,13 @@ body.table-col-resizing .usage-records-page .usage-request-log .usage-events-tab
 }
 
 
+
+.usage-records-page .usage-context-filter input {
+  height: 100%;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.usage-records-page .usage-context-filter input::placeholder { color: var(--text-secondary); opacity: 1; }
+.usage-records-page .usage-context-clear { width: 36px; height: 36px; padding: 0; justify-self: start; }
+.usage-records-page .usage-td-context span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 12px; }
