@@ -1,5 +1,6 @@
 import { useConfirmation } from '../components/ConfirmationDialog';
 import { AdvancedSettingsGroup } from '../components/api-access/AdvancedSettingsGroup';
+import { FreeApiProviders } from '../components/api-access/FreeApiProviders';
 import { normalizeProviderModels } from '../services/providerModels';
 import { ModelSelectionPanel } from '../components/ModelSelectionPanel';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
@@ -1730,6 +1731,8 @@ export function ApiAccessPage() {
           )}
         </section>
       </div>
+
+      <FreeApiProviders />
 
       {dialogOpen ? (
         <ApiProviderDialog

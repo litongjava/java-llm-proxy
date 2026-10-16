@@ -1,0 +1,52 @@
+.free-api-providers {
+  padding: 20px;
+}
+
+.free-api-providers h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.free-api-providers p {
+  margin: 0;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.free-api-providers-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  list-style: none;
+  margin: 20px 0 16px;
+  padding: 0;
+}
+
+.free-api-providers-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.free-api-providers a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow-wrap: anywhere;
+}
+
+.free-api-providers-list a {
+  margin-top: auto;
+}
+
+.free-api-providers-policy {
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .free-api-providers-list {
+    grid-template-columns: 1fr;
+  }
+}
