@@ -599,7 +599,7 @@ pub(crate) fn setup_windows_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Res
                 .cloned()
                 .expect("application icon is required for the tray"),
         )
-        .tooltip("EasyCLIProxyAPI")
+        .tooltip("LLM Poroxy UI")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app_handle, event| match event.id().as_ref() {
