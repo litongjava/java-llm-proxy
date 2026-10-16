@@ -19,6 +19,8 @@ public class LLMProxyAppConfig {
     server.getWebSocketRouter().add("/v1/responses", new ResponsesWebSocketHandler());
     server.getWebSocketRouter().add("/backend-api/codex/responses", new ResponsesWebSocketHandler());
     server.getWebSocketRouter().add("/v1/realtime", new RealtimeWebSocketHandler());
+    server.getWebSocketRouter().add("/v1/live/*", new LiveSidebandWebSocketHandler());
+    server.getWebSocketRouter().add("/v1/realtime/calls/*", new RealtimeCallsWebSocketHandler());
     HttpInteceptorConfigure interceptors = new HttpInteceptorConfigure();
     HttpInterceptorModel token = new HttpInterceptorModel();
     token.setName("proxy-token");
@@ -27,6 +29,9 @@ public class LLMProxyAppConfig {
     interceptors.add(token);
     server.setHttpInteceptorConfigure(interceptors);
     HttpRequestRouter router = server.getRequestRouter();
+    router.post("/v1/live", new LiveCreateHandler()::handle);
+    router.post("/v1/realtime", new RealtimeCreateHandler()::handle);
+    router.post("/v1/realtime/calls", new RealtimeCallsCreateHandler()::handle);
     router.get("/api/status", new StatusHandler()::handle);
     router.get("/v8/management/observability/logs", new LogsGetHandler()::handle);
     router.post("/v8/management/observability/logs/delete", new LogsClearHandler()::handle);
@@ -80,6 +85,11 @@ public class LLMProxyAppConfig {
       String prefix = "/tools/" + tool;
       server.getWebSocketRouter().add(prefix + "/v1/responses", new ResponsesWebSocketHandler());
       server.getWebSocketRouter().add(prefix + "/v1/realtime", new RealtimeWebSocketHandler());
+      server.getWebSocketRouter().add(prefix + "/v1/live/*", new LiveSidebandWebSocketHandler());
+      server.getWebSocketRouter().add(prefix + "/v1/realtime/calls/*", new RealtimeCallsWebSocketHandler());
+      router.post(prefix + "/v1/live", new LiveCreateHandler()::handle);
+      router.post(prefix + "/v1/realtime", new RealtimeCreateHandler()::handle);
+      router.post(prefix + "/v1/realtime/calls", new RealtimeCallsCreateHandler()::handle);
       router.get(prefix + "/v1/models", new ModelsHandler()::handle);
       router.get(prefix + "/models", new ModelsHandler()::handle);
       router.post(prefix + "/v1/chat/completions", new ChatCompletionsHandler()::handle);

@@ -1,6 +1,13 @@
 import { expect, test } from 'bun:test';
 import { maskEmail, maskIdentifier, maskSensitiveText } from '../src/services/privacyMask';
-import { authFileIdentities } from '../src/services/authFiles';
+import { authFileDisplayName, authFileIdentities } from '../src/services/authFiles';
+
+test('masks emails appended to legacy credential filenames', () => {
+  const file = { name: 'codex-700057367249616896.json', email: 'alice@example.com' };
+  const masked = maskSensitiveText(authFileDisplayName(file), authFileIdentities(file));
+  expect(masked).not.toContain(file.email);
+  expect(masked).toContain('codex-700057367249616896-');
+});
 
 test('masks emails while keeping enough shape to tell accounts apart', () => {
   expect(maskEmail('alice.smith@example.com')).toBe('al***@e***.com');

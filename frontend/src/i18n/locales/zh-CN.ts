@@ -1196,6 +1196,7 @@ export const zhCN = {
   'authFiles.models.save': '保存（{count} 条规则）',
   'agents.description.claudeCode': '使用 CPA 的 Anthropic 兼容接口',
   'agents.description.claudeDesktop': '使用 CPA 3P 推理网关，支持 Windows、macOS 和 Linux Beta',
+  'agents.description.cx': '独立配置和登录凭据，与 Codex 共用会话记录',
   'agents.description.codex': '使用 CPA Responses 接口',
   'agents.description.opencode': '使用 CPA 的 OpenAI 兼容提供方',
   'agents.description.openclaw': '使用 CPA 模型供应商和默认模型',

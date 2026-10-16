@@ -32,6 +32,10 @@
 
 多媒体测试使用支持对应原生接口的本地提供方。它不代表 xAI OAuth 私有媒体工作流、OpenAI 与 xAI 视频协议互转、Gemini agent/深度研究模式已经实现。视频任务按客户端密钥隔离，并在重启后保留凭据绑定；删除原凭据后无法继续查询该任务。
 
+## Codex CLI 语音
+
+已增加 `/v1/live` 会话创建及三种后续 WebSocket 连接形式，支持账号绑定、访问密钥隔离和工具前缀。路径、配置与测试范围见 [Codex CLI 语音会话](codex-live.md)。
+
 ## Responses 的 HTTP、SSE 与 WebSocket
 
 Responses API 支持 HTTP 调用，也有 WebSocket 模式。SSE 是 HTTP 流式响应，不需要 WebSocket 握手；WebSocket 模式允许客户端在同一连接上发送多轮 `response.create` 事件。它与 `/v1/realtime` 的实时会话接口分别注册。

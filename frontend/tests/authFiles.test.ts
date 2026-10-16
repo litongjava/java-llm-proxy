@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  authFileDisplayName,
   authFileCooldownResetIndex,
   changedOAuthAuthFileNames,
   dedupeAuthFiles,
@@ -13,6 +14,20 @@ import {
   sortAuthFilesByPriority,
   snapshotAuthFiles,
 } from '../src/services/authFiles';
+
+describe('credential display names', () => {
+  it('adds email without changing the filename used for operations', () => {
+    const file = { name: 'codex-700057367249616896.json', email: 'account@example.com' };
+    expect(authFileDisplayName(file)).toBe('codex-700057367249616896-account@example.com.json');
+    expect(file.name).toBe('codex-700057367249616896.json');
+  });
+  it('handles imported names, missing email and email-only metadata', () => {
+    expect(authFileDisplayName({ name: 'codex-account@example.com.json', email: 'account@example.com' })).toBe('codex-account@example.com.json');
+    expect(authFileDisplayName({ name: 'account.json' })).toBe('account.json');
+    expect(authFileDisplayName({ email: 'account@example.com' })).toBe('account@example.com');
+    expect(authFileDisplayName({ name: 'custom', email: 'account@example.com' })).toBe('custom-account@example.com');
+  });
+});
 
 describe('认证文件列表规范化', () => {
   it('合并同名的磁盘和运行时记录并优先保留磁盘状态', () => {

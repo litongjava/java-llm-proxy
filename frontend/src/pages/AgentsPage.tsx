@@ -101,6 +101,7 @@ type AgentClientId =
   | 'claude-code'
   | 'claude-desktop'
   | 'codex'
+  | 'cx'
   | 'opencode'
   | 'openclaw'
   | 'hermes'
@@ -273,7 +274,7 @@ type AgentDefinition = {
   name: string;
   icon?: string;
   Icon?: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>;
-  descriptionKey: 'agents.description.copilotCli' | 'agents.description.vscodeCopilot' | 'agents.description.claudeCode' | 'agents.description.claudeDesktop' | 'agents.description.codex' | 'agents.description.opencode' | 'agents.description.openclaw' | 'agents.description.hermes' | 'agents.description.deepseekHarness' | 'agents.description.zcode' | 'agents.description.workbuddy' | 'agents.description.antigravityCli' | 'agents.description.kimiCode' | 'agents.description.grokBuild' | 'agents.description.omp' | 'agents.description.pi';
+  descriptionKey: 'agents.description.copilotCli' | 'agents.description.vscodeCopilot' | 'agents.description.claudeCode' | 'agents.description.claudeDesktop' | 'agents.description.codex' | 'agents.description.cx' | 'agents.description.opencode' | 'agents.description.openclaw' | 'agents.description.hermes' | 'agents.description.deepseekHarness' | 'agents.description.zcode' | 'agents.description.workbuddy' | 'agents.description.antigravityCli' | 'agents.description.kimiCode' | 'agents.description.grokBuild' | 'agents.description.omp' | 'agents.description.pi';
 };
 
 type AgentSubpageId = 'core' | 'management' | 'sessions';
@@ -297,6 +298,7 @@ const agentDefinitions: AgentDefinition[] = [
     icon: claudeIcon,
     descriptionKey: 'agents.description.claudeDesktop',
   },
+  { id: 'cx', name: 'CX', icon: codexIcon, descriptionKey: 'agents.description.cx' },
   {
     id: 'codex',
     name: 'Codex',
@@ -380,6 +382,7 @@ const agentSubpages: AgentSubpageDefinition[] = [
       'claude-code',
       'claude-desktop',
       'codex',
+      'cx',
       'opencode',
       'openclaw',
       'hermes',
@@ -871,9 +874,9 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     ?? agentDefinitions[0];
   const activeStatus = statuses.find((status) => status.id === selected) ?? null;
   const nativeOauth = selected === 'codex' && Boolean(activeStatus?.codexNativeOauth);
-  const oauthConfiguration = oauthConfigurationDraft
+  const oauthConfiguration = selected === 'codex' && (oauthConfigurationDraft
     ?? activeStatus?.oauthConfiguration
-    ?? false;
+    ?? false);
   const savedSelectedModel = modelByClient[selected] ?? '';
   const selectedModelOption = findAgentModel(models, savedSelectedModel);
   const selectedModel = selectedModelOption?.name ?? '';
@@ -1736,7 +1739,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     setDefaultError(''); setConfigurationError(''); setTemplatePreview(null); setBusyAction('default');
     try {
       const preview = await invoke<{ revision: string; files: string[] }>('preview_agent_config_template', {
-        client: selected, model, oauthConfiguration,
+        client: selected, model, oauthConfiguration: selected === 'codex' && oauthConfiguration,
         claudeCodeModelMappings: selected === 'claude-code' ? mappings : null,
         claudeDesktopModelMappings: selected === 'claude-desktop' ? mappings : null,
       });

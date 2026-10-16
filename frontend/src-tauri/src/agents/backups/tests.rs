@@ -1,5 +1,42 @@
 use super::*;
 
+#[test]
+fn cx_configuration_round_trip_never_changes_codex() {
+    let home = Home::new();
+    let original_config = home.0.join(".codex/config.toml");
+    let original_auth = home.0.join(".codex/auth.json");
+    save(&original_config, "model = \"original\"\n");
+    save(&original_auth, r#"{"tokens":{"access_token":"original-only"}}"#);
+    let original = config_images(&[original_config, original_auth]).unwrap();
+    let cx_config = home.0.join(".cx/config.toml");
+    save(&cx_config, "cli_auth_credentials_store = \"file\"\n# user setting\nmodel_reasoning_effort = \"high\"\n");
+    let before = config_images(&config_paths("cx", &home.0).unwrap()).unwrap();
+    apply(&home.0, AgentClient::Cx, "gpt-one").unwrap();
+    let status = inspect_agent_config_with_executables(AgentClient::Cx, &home.0, 8317, "test-secret", None, None);
+    assert!(status.configured, "{:?}", status.error);
+    let config = fs::read_to_string(&cx_config).unwrap();
+    assert!(config.contains("/tools/cx/v1"));
+    assert!(config.contains("model_reasoning_effort = \"high\""));
+    assert_eq!(config_images(&original.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()).unwrap(), original);
+    apply(&home.0, AgentClient::Cx, "gpt-two").unwrap();
+    assert_eq!(inspect_agent_managed_config(AgentClient::Cx, &[cx_config.clone()], 8317, "test-secret").unwrap().1.as_deref(), Some("gpt-two"));
+    clear_agent_managed_configuration(AgentClient::Cx, &home.0, 8317).unwrap();
+    assert_eq!(config_images(&config_paths("cx", &home.0).unwrap()).unwrap(), before);
+    template(&home.0, AgentClient::Cx).unwrap();
+    assert!(inspect_agent_managed_config(AgentClient::Cx, &[cx_config], 8317, "test-secret").unwrap().0);
+    assert_eq!(config_images(&original.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()).unwrap(), original);
+}
+
+#[test]
+fn cx_oauth_does_not_fall_back_to_codex_login() {
+    let home = Home::new();
+    save(&home.0.join(".codex/auth.json"), r#"{"tokens":{"access_token":"original-only"}}"#);
+    assert!(build_cx_auth_update(&home.0, "test-secret", true).is_err());
+    assert_eq!(agent_config_paths(AgentClient::Cx, &home.0), vec![home.0.join(".cx/config.toml")]);
+    assert_eq!(AgentClient::parse("cx").unwrap(), AgentClient::Cx);
+    assert_eq!(AgentClient::Cx.executable_names(), &["cx"]);
+}
+
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {

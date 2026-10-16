@@ -36,6 +36,7 @@ public class ModelCatalogService {
           if (model.getStr("id") != null) { models.putIfAbsent(model.getStr("id"), model); }
         }
       }
+      models.putIfAbsent("gpt-live-1-codex", Kv.create().set("id", "gpt-live-1-codex").set("object", "model").set("owned_by", "openai"));
       return new ArrayList<>(models.values());
     }
     return ProxyJson.list(catalog.get(channel));

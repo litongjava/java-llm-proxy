@@ -1197,6 +1197,7 @@ export const jaOverrides = {
   'authFiles.models.save': '保存（{count} ルール）',
   'agents.description.claudeCode': 'CPA の Anthropic 互換 API を使用',
   'agents.description.claudeDesktop': 'CPA 3P 推論ゲートウェイを使用（Windows、macOS、Linux Beta 対応）',
+  'agents.description.cx': '設定とログインは独立し、セッション履歴は Codex と共有',
   'agents.description.codex': 'CPA Responses API を使用',
   'agents.description.opencode': 'CPA OpenAI Compatible プロバイダーを使用',
   'agents.description.openclaw': 'CPA モデルプロバイダーと既定モデルを使用',

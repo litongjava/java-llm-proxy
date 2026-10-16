@@ -12,7 +12,7 @@ import nexus.io.tio.http.common.HttpRequest;
 
 /** Tool identity scopes aliases only; authentication remains in the interceptor. */
 public class ToolScopeService {
-  public static final List<String> TOOLS = List.of("claude-code", "claude-desktop", "codex", "opencode",
+  public static final List<String> TOOLS = List.of("claude-code", "claude-desktop", "codex", "cx", "opencode",
       "openclaw", "hermes", "deepseek-harness", "zcode", "workbuddy", "antigravity-cli", "copilot-cli",
       "vscode-copilot", "kimi-code", "grok-build", "omp", "pi");
 

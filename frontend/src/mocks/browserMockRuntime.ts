@@ -201,6 +201,7 @@ function createAgentStatuses() {
     ['claude-code', 'Claude Code'],
     ['claude-desktop', 'Claude Desktop'],
     ['codex', 'Codex'],
+    ['cx', 'CX'],
     ['opencode', 'OpenCode'],
     ['openclaw', 'OpenClaw'],
     ['hermes', 'Hermes Agent'],

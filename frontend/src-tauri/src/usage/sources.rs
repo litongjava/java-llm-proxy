@@ -5,6 +5,8 @@ use super::*;
 pub(super) struct Source {
     label: String,
     provider: String,
+    #[serde(default)]
+    filename: String,
 }
 
 pub(super) struct Snapshot {
@@ -30,12 +32,22 @@ fn credentials(value: &Value) -> Option<HashMap<String, Source>> {
         if id.is_empty() {
             continue;
         }
-        let label = field(file, &["note", "name", "email"]);
+        let name = field(file, &["name"]);
+        let email = field(file, &["email"]);
+        let note = field(file, &["note"]);
+        let label = if !email.is_empty() {
+            email.to_string()
+        } else if !note.is_empty() {
+            note.to_string()
+        } else {
+            name.to_string()
+        };
         result.insert(
             id.to_string(),
             Source {
-                label: label.to_string(),
+                label,
                 provider: field(file, &["provider", "type"]).to_string(),
+                filename: name.to_string(),
             },
         );
     }
@@ -93,6 +105,7 @@ fn providers(value: &Value) -> Option<HashMap<String, Source>> {
                     Source {
                         label: provider_label(kind, group, key),
                         provider: kind.to_string(),
+                        filename: String::new(),
                     },
                 );
             }
@@ -249,7 +262,17 @@ pub(super) fn apply_events(
     config: &GuiConfigFile,
 ) {
     for record in &mut page.items {
-        record.source_display = if let Some(source) = sources.get(record.auth_index.trim()) {
+        // Older Java usage records store the credential filename in provider,
+        // without auth_index. Resolve their labels without rewriting history.
+        let source = sources.get(record.auth_index.trim()).or_else(|| {
+            if !record.auth_index.trim().is_empty() {
+                return None;
+            }
+            sources.values().find(|source| {
+                !source.filename.is_empty() && source.filename == record.provider.trim()
+            })
+        });
+        record.source_display = if let Some(source) = source {
             source.label.clone()
         } else if record.auth_type == "oauth" {
             usage_source_display(config, &record.provider, &record.source)
@@ -262,6 +285,47 @@ pub(super) fn apply_events(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn email_labels_resolve_indexed_and_legacy_java_requests() {
+        let filename = "codex-700057367249616896.json";
+        let sources = credentials(&serde_json::json!({"files":[
+            {"auth_index":"current", "name":filename, "email":"account@example.com", "provider":"codex"},
+            {"auth_index":"named", "name":"codex-account@example.com.json", "email":"account@example.com"},
+            {"auth_index":"no-email", "name":"other.json"}
+        ]})).unwrap();
+        assert_eq!(sources["named"].label, "account@example.com");
+        assert_eq!(sources["no-email"].label, "other.json");
+        let mut db = Connection::open_in_memory().unwrap();
+        initialize_usage_schema(&db).unwrap();
+        let config = GuiConfigFile::default();
+        let mut records = Vec::new();
+        for (id, index, provider) in [
+            ("legacy", "", filename),
+            ("indexed", "current", "codex"),
+            ("unrelated", "", "another.json"),
+            ("deleted", "deleted-index", filename),
+        ] {
+            let mut record = super::super::tests::sample_record(id, "2026-10-14T00:00:00Z", "model");
+            record.auth_index = index.into();
+            record.provider = provider.into();
+            record.auth_type = "api-key".into();
+            records.push(record);
+        }
+        insert_usage_records(&mut db, &records).unwrap();
+        let mut page = load_usage_events_with_notes(&db, &UsageQuery::default(), &config, &HashMap::new()).unwrap();
+        apply_events(&mut page, &sources, &config);
+        for record in &page.items {
+            if record.id == "legacy" || record.id == "indexed" {
+                assert_eq!(record.source_display, "account@example.com");
+            } else {
+                assert_eq!(record.source_display, record.provider);
+            }
+        }
+        assert_eq!(page.total, 4);
+        let old: Source = serde_json::from_str(r#"{"label":"old","provider":"codex"}"#).unwrap();
+        assert!(old.filename.is_empty());
+    }
 
     #[test]
     fn sources_follow_current_metadata_not_historical_labels() {
@@ -394,7 +458,7 @@ mod tests {
                 .find(|r| r.auth_index == "active")
                 .unwrap()
                 .source_display,
-            "Account note"
+            "account@example.com"
         );
         assert_eq!(
             page.items
@@ -440,8 +504,8 @@ mod tests {
             {"auth_index":"c", "email":"same@example.com", "provider":"devin"},
             {"auth_index":"d", "email":"same@example.com", "provider":"codex"}
         ]})).unwrap();
-        assert_eq!(sources["a"].label, "Work");
-        assert_eq!(sources["b"].label, "account.json");
+        assert_eq!(sources["a"].label, "a@example.com");
+        assert_eq!(sources["b"].label, "same@example.com");
         assert_eq!(sources["c"].label, "same@example.com");
         assert_eq!(sources["d"].label, "same@example.com");
         let group = serde_json::json!({"name":"ignored", "prefix":"ignored", "note":"API note", "base-url":"https://api.example.com/v1"});
@@ -489,6 +553,7 @@ mod tests {
                 Source {
                     label: label.into(),
                     provider: provider.into(),
+                    filename: String::new(),
                 },
             );
         }

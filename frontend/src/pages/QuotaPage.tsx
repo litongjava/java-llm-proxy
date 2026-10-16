@@ -33,7 +33,7 @@ import {
   updateQuotaCache,
   useQuotaCache,
 } from '../services/quotaCache';
-import { dedupeAuthFiles, parseAuthFilePriority, sortAuthFilesByPriority } from '../services/authFiles';
+import { authFileDisplayName, authFileIdentities, dedupeAuthFiles, parseAuthFilePriority, sortAuthFilesByPriority } from '../services/authFiles';
 import { useI18n } from '../i18n';
 import { usePrivacyMask } from '../privacy';
 import './QuotaPage.css';
@@ -205,7 +205,7 @@ export function QuotaCard({ file, quota, onRefresh, onReset }: { file: AuthFile;
   const now = useQuotaClock() + (quota.serverTimeOffsetMs ?? 0);
   const provider = providerForFile(file);
   const privacy = usePrivacyMask();
-  const name = privacy.credentialName(file);
+  const name = privacy.text(authFileDisplayName(file), authFileIdentities(file));
   const disabled = readBoolean(file, 'disabled');
   const priority = parseAuthFilePriority(file.priority) ?? 0;
   return (

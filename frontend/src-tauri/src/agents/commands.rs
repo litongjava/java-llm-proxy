@@ -64,6 +64,7 @@ pub(crate) fn inspect_agent_config_statuses_with_overrides(
         AgentStatusDetectionTarget::Client(AgentClient::ClaudeCode),
         AgentStatusDetectionTarget::Client(AgentClient::ClaudeDesktop),
         AgentStatusDetectionTarget::Client(AgentClient::Codex),
+        AgentStatusDetectionTarget::Client(AgentClient::Cx),
         AgentStatusDetectionTarget::Client(AgentClient::OpenCode),
         AgentStatusDetectionTarget::Client(AgentClient::OpenClaw),
         AgentStatusDetectionTarget::Client(AgentClient::Hermes),
@@ -918,8 +919,13 @@ pub(crate) async fn fetch_prepared_agent_models(
     config: &GuiConfigFile,
 ) -> Result<PreparedAgentModels, String> {
     let api_key = effective_agent_api_key(config);
-    if client == AgentClient::Codex {
-        let runtime_models = fetch_codex_catalog_runtime_models(config).await?;
+    if matches!(client, AgentClient::Codex | AgentClient::Cx) {
+        let runtime_models = if client == AgentClient::Cx {
+            let payload = fetch_tool_model_payload(config.port, api_key, client.id()).await?;
+            let mut models = codex_catalog::parse_public_models(&payload)?;
+            codex_catalog::apply_configured_context_limits(&mut models, &fetch_management_config_yaml(config).await?)?;
+            models
+        } else { fetch_codex_catalog_runtime_models(config).await? };
         prepare_codex_agent_models(&runtime_models)
     } else {
         let mut models = if client == AgentClient::DeepSeekHarness {

@@ -2,6 +2,7 @@ export type AgentConfigurationClientId =
   | 'claude-code'
   | 'claude-desktop'
   | 'codex'
+  | 'cx'
   | 'opencode'
   | 'openclaw'
   | 'hermes'

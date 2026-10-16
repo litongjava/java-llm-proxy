@@ -11,6 +11,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.stream.Stream;
@@ -175,6 +176,10 @@ public class CredentialService {
               info.metadata.set(key, value.get(key));
             }
           }
+          if ("codex".equals(info.type)) {
+            String expiry = codexSubscriptionExpiry(value);
+            if (expiry != null) { info.metadata.set("chatgpt_subscription_active_until", expiry); }
+          }
         } catch (Exception error) {
           info.status = "error";
           info.status_message = "Invalid credential file";
@@ -184,6 +189,39 @@ public class CredentialService {
       }
     }
     return files;
+  }
+
+  private String codexSubscriptionExpiry(Kv credential) {
+    for (Kv record : List.of(credential, ProxyJson.object(credential.get("metadata")),
+        ProxyJson.object(credential.get("attributes")))) {
+      String expiry = subscriptionExpiry(record);
+      if (expiry != null) { return expiry; }
+    }
+    // Claims are display metadata only. Never expose the ID/access/refresh token
+    // through the credentials list or use these unverified claims for authorization.
+    Object rawToken = credential.get("id_token");
+    if (!(rawToken instanceof String token) || token.isBlank()) { return null; }
+    try {
+      String[] segments = token.split("\\.", -1);
+      if (segments.length != 3) { return null; }
+      Kv claims = ProxyJson.parse(new String(Base64.getUrlDecoder().decode(segments[1]), StandardCharsets.UTF_8));
+      return subscriptionExpiry(ProxyJson.object(claims.get("https://api.openai.com/auth")));
+    } catch (RuntimeException ignored) {
+      // Optional display metadata must not make an otherwise usable credential unavailable.
+      return null;
+    }
+  }
+
+  private String subscriptionExpiry(Kv record) {
+    for (String key : List.of("chatgpt_subscription_active_until", "chatgptSubscriptionActiveUntil",
+        "subscription_active_until", "subscriptionActiveUntil")) {
+      Object value = record.get(key);
+      if ((value instanceof String || value instanceof Number) && !value.toString().isBlank()) {
+        return value.toString().trim();
+      }
+    }
+    Kv subscription = ProxyJson.object(record.get("subscription"));
+    return ProxyJson.text(subscription, "active_until", ProxyJson.text(subscription, "activeUntil", null));
   }
 
   public String resolve(String index) throws Exception {

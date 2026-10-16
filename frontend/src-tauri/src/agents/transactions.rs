@@ -348,6 +348,7 @@ fn configuration_root_candidates(home: &Path) -> Vec<PathBuf> {
         home.join(".claude"),
         home.join(".copilot"),
         home.join(".codex"),
+        cx_configuration_directory(home),
         home.join(".config").join("opencode"),
         home.join(".openclaw"),
         home.join(".hermes"),
@@ -764,7 +765,7 @@ pub(crate) fn prepare_config_updates(
         let mut generated = parse(&update.path, Some(&rendered))?;
         if !template {
             let original = parse(&update.path, text(entry.1.as_deref())?)?;
-            if client == "codex"
+            if matches!(client, "codex" | "cx")
                 && update.path.file_name().and_then(|v| v.to_str())
                     == Some(CODEX_MODEL_CATALOG_FILE)
             {
@@ -836,7 +837,7 @@ fn preserve_model_extensions(client: &str, path: &Path, before: &Value, after: &
             _ => &[],
         };
         if let Some(object) = extensions.as_object_mut() {
-            if client == "codex" {
+            if matches!(client, "codex" | "cx") {
                 object.retain(|key, _| !codex_catalog::is_managed_model_field(key));
             }
             for key in owned {
@@ -868,7 +869,7 @@ fn preserve_model_extensions(client: &str, path: &Path, before: &Value, after: &
         }
     }
     let pointers: &[&str] = match client {
-        "codex" if path.file_name().and_then(|v| v.to_str()) == Some(CODEX_MODEL_CATALOG_FILE) => {
+        "codex" | "cx" if path.file_name().and_then(|v| v.to_str()) == Some(CODEX_MODEL_CATALOG_FILE) => {
             &["/models"]
         }
         "claude-desktop" => &["/inferenceModels"],
@@ -1125,8 +1126,8 @@ fn special_keys(client: &str, path: &Path) -> Option<&'static [&'static str]> {
         .and_then(|v| v.to_str())
         .unwrap_or_default();
     match (client, name) {
-        ("codex", "auth.json") => Some(&["auth_mode", "OPENAI_API_KEY", "tokens", "last_refresh"]),
-        ("codex", CODEX_MODEL_CATALOG_FILE) => Some(&["models"]),
+        ("codex" | "cx", "auth.json") => Some(&["auth_mode", "OPENAI_API_KEY", "tokens", "last_refresh"]),
+        ("codex" | "cx", CODEX_MODEL_CATALOG_FILE) => Some(&["models"]),
         ("pi", PI_AGENT_CONFIG_FILE) => Some(&["baseUrl", "apiKey"]),
         ("pi", PI_AGENT_SETTINGS_FILE) => Some(&["defaultProvider", "defaultModel"]),
         _ => None,
@@ -1194,12 +1195,12 @@ fn restore_text(
         return render(path, &root).map(Some);
     }
     let parsed = AgentClient::parse(client)?;
-    let base_paths = if parsed == AgentClient::Codex {
+    let base_paths = if matches!(parsed, AgentClient::Codex | AgentClient::Cx) {
         &paths[..1]
     } else {
         paths
     };
-    if parsed == AgentClient::Codex && base_paths.first().is_some_and(|config| config == path) {
+    if matches!(parsed, AgentClient::Codex | AgentClient::Cx) && base_paths.first().is_some_and(|config| config == path) {
         return build_restored_codex_agent_config_with_policy(Some(current), target, false);
     }
     build_agent_session_restored_bytes(

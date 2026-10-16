@@ -5,6 +5,12 @@ import { providerForFile } from '../src/services/quotaService';
 const jwt = (payload: unknown) => `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
 
 describe('quota credential metadata', () => {
+  it('reads the sanitized subscription expiry returned by the Java credentials list', () => {
+    const file = { name: 'codex-test.json', type: 'codex', metadata: {
+      account_id: 'account-test', chatgpt_subscription_active_until: '2026-10-15T02:09:15+00:00',
+    } };
+    expect(codexMetadataFor(file).subscriptionActiveUntil).toBe('2026-10-15T02:09:15+00:00');
+  });
   it('识别 xAI 别名，保留原有供应商别名', () => {
     for (const provider of ['x_ai', 'x-ai', 'grok', 'xai', 'XAI']) {
       expect(providerForFile({ provider })).toBe('xai');

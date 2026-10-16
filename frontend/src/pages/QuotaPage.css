@@ -87,6 +87,7 @@
 }
 .quota-page .real-quota-card-header .quota-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .quota-page .quota-identity > div { display: grid; gap: 3px; min-width: 0; }
+.quota-page .quota-identity strong { white-space: normal; overflow-wrap: anywhere; }
 .quota-page .quota-account-icon { width: 26px; height: 26px; flex: 0 0 auto; }
 .quota-page .real-quota-card-header strong { color: var(--theme-2d2a26); font-size: var(--font-size-body); }
 .quota-page .real-quota-card-header span { font-size: var(--font-size-meta); }

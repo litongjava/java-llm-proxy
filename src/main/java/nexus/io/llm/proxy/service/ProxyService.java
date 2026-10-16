@@ -247,7 +247,8 @@ public class ProxyService {
       if (settings.captureBodies && rawResponse.body() != null) {
         rawResponse = rawResponse.newBuilder().body(new CapturedResponseBody(rawResponse.body(), record, captureLimit)).build();
       }
-      Response normalized = oauthTransport.response(provider, rawResponse, record.stream);
+      Response normalized = oauthTransport.response(provider,
+          UpstreamResponseService.normalizeContentType(rawResponse), record.stream);
       if (normalized.isSuccessful() && normalized.body() != null
           && normalized.header("Content-Type", "").contains("text/event-stream")) {
         int eventLimit = EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216);
@@ -331,6 +332,7 @@ public class ProxyService {
         record.responseTruncated = bytes.length > captureLimit;
       }
     } catch (Exception error) {
+      LOG.warn("Upstream response processing failed for request {}", record.id, error);
       record.error = "Upstream response read failed";
       record.status = 502;
       response.setStatus(502);

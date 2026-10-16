@@ -37,6 +37,17 @@ export const resetAuthFileCooldown = async (
 export const authFileName = (file: AuthFileRecord) =>
   readString(file, 'name') || translate(getCurrentLocale(), 'authFiles.unnamed');
 
+/** Display metadata only: retain the original filename for all credential operations. */
+export const authFileDisplayName = (file: AuthFileRecord): string => {
+  const name = readString(file, 'name');
+  const email = readString(file, 'email');
+  if (!name) return email || authFileName(file);
+  if (!email || name.toLowerCase().includes(email.toLowerCase())) return name;
+  return name.toLowerCase().endsWith('.json')
+    ? `${name.slice(0, -5)}-${email}${name.slice(-5)}`
+    : `${name}-${email}`;
+};
+
 /** Account identifiers that privacy mode masks wherever this credential is shown. */
 export const authFileIdentities = (file: AuthFileRecord): string[] =>
   [...new Set(['email', 'account', 'account_id', 'project_id', 'projectId']

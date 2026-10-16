@@ -99,7 +99,7 @@ pub(crate) fn build_agent_updates_with_oauth(
                 },
             ])
         }
-        AgentClient::Codex => {
+        AgentClient::Codex | AgentClient::Cx => {
             let before = read_optional_text(&paths[0])?;
             let after = build_codex_agent_config_with_oauth(
                 before.as_deref(),
@@ -116,10 +116,12 @@ pub(crate) fn build_agent_updates_with_oauth(
             let catalog = codex_catalog.ok_or_else(|| "Unable to generate Codex model catalog".to_string())?;
             validate_codex_catalog(catalog, model)?;
             updates.push(AgentFileUpdate {
-                path: codex_model_catalog_path(home),
+                path: paths[0].with_file_name(CODEX_MODEL_CATALOG_FILE),
                 after: catalog.to_string(),
             });
-            updates.push(build_codex_auth_update(home, api_key, oauth_configuration)?);
+            updates.push(if client == AgentClient::Cx {
+                build_cx_auth_update(home, api_key, oauth_configuration)?
+            } else { build_codex_auth_update(home, api_key, oauth_configuration)? });
             Ok(updates)
         }
         AgentClient::OpenCode => {
@@ -546,7 +548,7 @@ pub(crate) fn write_agent_configuration_file(
     path: &Path,
     content: &[u8],
 ) -> Result<(), String> {
-    if client == AgentClient::Codex
+    if matches!(client, AgentClient::Codex | AgentClient::Cx)
         && matches!(path.file_name().and_then(|name| name.to_str()), Some(CODEX_NATIVE_OAUTH_STATE_FILE | "auth.json"))
     {
         return write_codex_private_file(path, content);
@@ -1755,7 +1757,7 @@ pub(crate) fn prepare_agent_managed_removal(
             prepare_claude_code_managed_removal(paths, &managed_core_loopback_origin(port))
         }
         AgentClient::ClaudeDesktop => prepare_claude_desktop_managed_removal(paths),
-        AgentClient::Codex => prepare_codex_managed_removal(paths),
+        AgentClient::Codex | AgentClient::Cx => prepare_codex_managed_removal(paths),
         AgentClient::OpenCode => prepare_opencode_managed_removal(paths),
         AgentClient::OpenClaw => prepare_openclaw_managed_removal(paths),
         AgentClient::Hermes => prepare_hermes_managed_removal(paths),
@@ -2783,7 +2785,7 @@ pub(crate) fn agent_config_semantically_equal(
     expected: &str,
 ) -> bool {
     match client {
-        AgentClient::Codex | AgentClient::KimiCode | AgentClient::GrokBuild => {
+        AgentClient::Codex | AgentClient::Cx | AgentClient::KimiCode | AgentClient::GrokBuild => {
             toml::from_str::<toml::Value>(actual).ok()
                 == toml::from_str::<toml::Value>(expected).ok()
         }
@@ -2829,7 +2831,7 @@ pub(crate) fn build_agent_session_restored_bytes_with_preference(
     let Some(current) = current else {
         return Ok(original.map(ToOwned::to_owned));
     };
-    if client == AgentClient::Codex && paths.first().is_none_or(|config| config != path) {
+    if matches!(client, AgentClient::Codex | AgentClient::Cx) && paths.first().is_none_or(|config| config != path) {
         return Ok(original.map(ToOwned::to_owned));
     }
     let current = std::str::from_utf8(current)
@@ -2851,6 +2853,7 @@ pub(crate) fn build_agent_session_restored_bytes_with_preference(
             build_restored_claude_desktop_config(index, current, original)?
         }
         AgentClient::Codex => build_restored_codex_agent_config(Some(current), original)?,
+        AgentClient::Cx => build_restored_codex_agent_config_with_policy(Some(current), original, false)?,
         AgentClient::OpenCode => build_restored_opencode_config(current, original)?,
         AgentClient::OpenClaw => build_restored_openclaw_config(current, original)?,
         AgentClient::Hermes => build_restored_hermes_config(current, original)?,
@@ -2975,6 +2978,15 @@ pub(crate) fn build_codex_api_auth(api_key: &str) -> Result<String, String> {
     .map_err(|error| format!("Failed to generate Codex auth.json: {error}"))?;
     rendered.push('\n');
     Ok(rendered)
+}
+
+pub(crate) fn build_cx_auth_update(home: &Path, api_key: &str, oauth: bool) -> Result<AgentFileUpdate, String> {
+    let path = cx_configuration_directory(home).join("auth.json");
+    let after = if oauth {
+        validate_codex_oauth_login_at(&path)?;
+        read_optional_text(&path)?.ok_or("CX login credentials are missing; run cx login")?
+    } else { build_codex_api_auth(api_key)? };
+    Ok(AgentFileUpdate { path, after })
 }
 
 pub(crate) fn build_codex_auth_update(
