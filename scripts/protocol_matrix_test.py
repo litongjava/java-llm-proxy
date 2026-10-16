@@ -83,10 +83,13 @@ def run():
     threading.Thread(target=mock.serve_forever, daemon=True).start()
     data = Path(tempfile.mkdtemp(prefix='matrix-', dir=root/'target'))
     port = free_port()
-    def call(path, body=None, client=False):
+    def call(path, body=None, client=False, tool=None):
+        headers = {'Authorization': 'Bearer '+('matrix-client' if client else 'matrix-admin'), 'Content-Type': 'application/json'}
+        if tool:
+            headers['x-llm-proxy-tool'] = tool
         request = urllib.request.Request(f'http://127.0.0.1:{port}'+path,
             data=None if body is None else json.dumps(body).encode(),
-            headers={'Authorization': 'Bearer '+('matrix-client' if client else 'matrix-admin'), 'Content-Type': 'application/json'})
+            headers=headers)
         with urllib.request.urlopen(request, timeout=20) as response:
             return response.read().decode(), response.headers
     with (data/'server.log').open('wb') as log:
@@ -127,28 +130,32 @@ def run():
             call('/v8/management/config/api-keys/openai-compatibility', {'operation':'PUT', 'value':[
                 {'name':'Pool','prefix':'tenant','base-url':f'http://127.0.0.1:{mock.server_port}/v1',
                  'models':[{'name':'matrix-model','alias':'alias-model'}], 'keys':[{'api-key':'key-one'}, {'api-key':'key-two'}]}]})
+            try:
+                call('/v1/chat/completions', {'model':'tenant/alias-model','messages':[]}, True)
+                raise AssertionError('Legacy aliases must not be exposed to unidentified clients')
+            except urllib.error.HTTPError as error: assert error.code == 503
             for _ in range(2):
                 request = request_body('openai', False)
                 request.update(model='tenant/alias-model', metadata={'session_id':'matrix-session'})
-                call('/v1/chat/completions', request, True)
+                call('/v1/chat/completions', request, True, tool='claude-desktop')
                 assert captured[-1]['model']=='matrix-model'
             assert authorizations[-1] == authorizations[-2], authorizations[-2:]
-            names = [model['id'] for model in json.loads(call('/v1/models', client=True)[0])['data']]
+            names = [model['id'] for model in json.loads(call('/v1/models', client=True, tool='claude-desktop')[0])['data']]
             assert 'tenant/alias-model' in names, names
             try:
-                call('/v1/chat/completions', {'model':'alias-model','messages':[]}, True)
+                call('/v1/chat/completions', {'model':'alias-model','messages':[]}, True, tool='claude-desktop')
                 raise AssertionError('Unprefixed model must be rejected when force-model-prefix is enabled')
             except urllib.error.HTTPError as error: assert error.code==503
             rejected_key[0] = authorizations[-1]
             before = len(authorizations)
-            call('/v1/chat/completions', request, True)
+            call('/v1/chat/completions', request, True, tool='claude-desktop')
             assert len(authorizations) == before + 2, authorizations[before:]
             assert authorizations[-1] != rejected_key[0]
             call('/v8/management/config/routing/retry/max-retry-credentials', {'operation':'PUT', 'value':1})
             rejected_key[0] = authorizations[-1]
             before = len(authorizations)
             try:
-                call('/v1/chat/completions', request, True)
+                call('/v1/chat/completions', request, True, tool='claude-desktop')
                 raise AssertionError('Credential retry limit must preserve last upstream failure')
             except urllib.error.HTTPError as error: assert error.code==429
             assert len(authorizations) == before + 1

@@ -55,8 +55,11 @@ class Upstream(BaseHTTPRequestHandler):
         else:
             self.send_json({'id': 'chat_review', 'object': 'chat.completion', 'model': 'review-model', 'choices': [{'message': {'role': 'assistant', 'content': '你好，proxy response'}}], 'usage': {'prompt_tokens': 11, 'completion_tokens': 6}})
 
-def call(path, data=None, token=ADMIN):
-    request = urllib.request.Request(BASE + path, data=None if data is None else json.dumps(data).encode(), headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+def call(path, data=None, token=ADMIN, tool=None):
+    headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+    if tool:
+        headers['x-llm-proxy-tool'] = tool
+    request = urllib.request.Request(BASE + path, data=None if data is None else json.dumps(data).encode(), headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             return response.status, response.read().decode(), dict(response.headers)
@@ -147,7 +150,9 @@ def run():
             path = config_path + '/api-keys/openai-compatibility'
             assert call(path, {'operation':'PUT','value':group})[0] == 200
             assert json.loads(call(path)[1])['data'] == group
-            status, body, headers = call('/v1/chat/completions', {'model':'desktop-alias','messages':[]}, KEY)
+            # Legacy aliases belong to Claude Desktop, not unidentified clients.
+            assert call('/v1/chat/completions', {'model':'desktop-alias','messages':[]}, KEY)[0] == 503
+            status, body, headers = call('/v1/chat/completions', {'model':'desktop-alias','messages':[]}, KEY, tool='claude-desktop')
             assert status == 200, body
             assert seen[-1]['authorization'] == 'Bearer desktop-upstream'
             assert seen[-1]['body']['model'] == 'review-model'
