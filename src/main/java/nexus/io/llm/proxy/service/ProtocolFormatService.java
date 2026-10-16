@@ -137,8 +137,12 @@ public class ProtocolFormatService {
       if ("tool_use".equals(block.get("type"))) {
         appendSection(out, "TOOL " + block.get("name"), block.get("input"));
       } else {
-        appendText(out, block.get("text"));
+        appendText(out, block);
       }
+    }
+    if (stream && "response.output_item.done".equals(type)
+        && "image_generation_call".equals(asObject(event.get("item")).get("type"))) {
+      appendText(out, event.get("item"));
     }
     if (!stream) {
       appendText(out, event.get("output"));
@@ -165,7 +169,10 @@ public class ProtocolFormatService {
         appendText(out, item);
       }
     } else if (value instanceof Map<?, ?> map) {
-      if (map.containsKey("text")) {
+      String image = imageUrl(map);
+      if (image != null) {
+        out.append("\n\n![Image](<").append(image).append(">)\n\n");
+      } else if (map.containsKey("text")) {
         appendText(out, map.get("text"));
       } else if (map.containsKey("content")) {
         appendText(out, map.get("content"));
@@ -177,6 +184,41 @@ public class ProtocolFormatService {
     } else {
       out.append(value);
     }
+  }
+
+  private String imageUrl(Map<?, ?> map) {
+    Object url = map.get("image_url");
+    if (url instanceof Map<?, ?> image) {
+      url = image.get("url");
+    }
+    Object sourceValue = map.get("source");
+    if ("image".equals(map.get("type")) && sourceValue instanceof Map<?, ?> source) {
+      url = source.get("url");
+      if ("base64".equals(source.get("type"))) {
+        url = dataImage(source.get("media_type"), source.get("data"));
+      }
+    }
+    Object inlineValue = map.containsKey("inlineData") ? map.get("inlineData") : map.get("inline_data");
+    if (inlineValue instanceof Map<?, ?> inline) {
+      url = dataImage(inline.containsKey("mimeType") ? inline.get("mimeType") : inline.get("mime_type"), inline.get("data"));
+    }
+    if ("image_generation_call".equals(map.get("type")) && map.get("result") instanceof String) {
+      url = dataImage("image/" + map.get("output_format"), map.get("result"));
+      if (url == null) {
+        url = dataImage("image/png", map.get("result"));
+      }
+    }
+    if (!(url instanceof String text) || text.contains("<") || text.contains(">") || text.contains("\n") || text.contains("\r")) {
+      return null;
+    }
+    return text.matches("(?is)^(https?://.+|data:image/(png|jpeg|jpg|gif|webp|avif);base64,[a-z0-9+/=\\s]+)$") ? text : null;
+  }
+
+  private String dataImage(Object mime, Object data) {
+    if (!(mime instanceof String type) || !type.matches("image/(png|jpeg|jpg|gif|webp|avif)") || !(data instanceof String text)) {
+      return null;
+    }
+    return "data:" + type + ";base64," + text.replaceAll("\\s", "");
   }
 
   public List<Kv> events(String body) {
