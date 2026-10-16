@@ -22,7 +22,7 @@ import {
   Sun,
   X,
 } from "lucide-react";
-import appLogo from "../assets/logo.jpg";
+import appLogo from "../assets/logo-teal-v2.png";
 import { useI18n, languageOptions, type AppLocale } from "../i18n";
 import type { MessageKey } from "../i18n/resources";
 import { MessageNotice, FloatingNotice, useAppNotice, type NoticeMessage } from "../appNotice";

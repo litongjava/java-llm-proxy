@@ -8,6 +8,8 @@ CX uses the generic transactional configuration workflow. It does not use Codex'
 
 Session sharing is implemented by the separate launcher; the GUI does not copy, migrate or delete session data. See its README for installation and hard-link replacement limitations.
 
+The launcher now shares skills, plugins, cache, sandbox directories, user instructions and other persistent user data too. General TOML settings synchronize at CX startup/exit; connection fields (provider, endpoint, credentials and provider-specific catalog) remain independent. GUI changes to general CX settings propagate on its next launch. Per-process temporary files and daemon control state stay separate to preserve authentication isolation. Migration backups live in `%USERPROFILE%/.cx-sharing-backups`. New source installations need `npm ci` for the launcher's TOML parser.
+
 Validation: `cargo test --manifest-path frontend/src-tauri/Cargo.toml cx_`, agent transaction/backups regression tests, frontend TypeScript/build, `frontend/tests/cx-configuration-ui.cjs` (Vite at 1421), and launcher unit/integration checks.
 
 Rebuild/restart the desktop application and Java backend to use the new client and tool scope in an installed application.

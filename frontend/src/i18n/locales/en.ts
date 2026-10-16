@@ -1197,7 +1197,7 @@ export const en: Record<MessageKey, string> = {
   'authFiles.models.save': 'Save ({count} rules)',
   'agents.description.claudeCode': 'Uses the CPA Anthropic-compatible API',
   'agents.description.claudeDesktop': 'Uses the CPA third-party inference gateway on Windows, macOS, and Linux Beta',
-  'agents.description.cx': 'Independent configuration and login, with shared Codex sessions.',
+  'agents.description.cx': 'Independent connection and login; shared Codex settings, skills, plugins and sessions.',
   'agents.description.codex': 'Uses the CPA Responses API',
   'agents.description.opencode': 'Uses the CPA OpenAI-compatible provider',
   'agents.description.openclaw': 'Uses the CPA model provider and default model',

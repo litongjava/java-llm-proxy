@@ -28,7 +28,7 @@ import {
   Sun,
   X,
 } from 'lucide-react';
-import appLogo from './assets/logo.jpg';
+import appLogo from './assets/logo-teal-v2.png';
 import { CoreRuntimeProvider, useCoreRuntime } from './coreRuntime';
 import { CoreUpdateProvider, useCoreUpdate } from './coreUpdate';
 import { ConfigPanelPage } from './pages/ConfigPanel';
