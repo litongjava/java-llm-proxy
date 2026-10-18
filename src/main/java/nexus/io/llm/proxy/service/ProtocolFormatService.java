@@ -96,7 +96,14 @@ public class ProtocolFormatService {
           usage = Aop.get(GeminiUsageService.class).openAi(metadata);
         }
       }
-      record.inputTokens = Math.max(record.inputTokens, number(usage, "prompt_tokens", "input_tokens", "promptTokenCount"));
+      long input = number(usage, "prompt_tokens", "input_tokens", "promptTokenCount");
+      // Anthropic reports uncached input separately; our input total includes all input categories.
+      if (usage.containsKey("input_tokens") && !usage.containsKey("prompt_tokens")
+          && (usage.containsKey("cache_read_input_tokens") || usage.containsKey("cache_creation_input_tokens"))) {
+        input += number(usage, "cache_read_input_tokens") + number(usage, "cache_creation_input_tokens");
+      }
+      record.inputTokens = Math.max(record.inputTokens, input);
+      record.cacheCreationTokens = Math.max(record.cacheCreationTokens, number(usage, "cache_creation_input_tokens"));
       record.outputTokens = Math.max(record.outputTokens, number(usage, "completion_tokens", "output_tokens", "candidatesTokenCount"));
       record.cachedTokens = Math.max(record.cachedTokens, number(usage, "cache_read_input_tokens", "cachedContentTokenCount"));
       record.cachedTokens = Math.max(record.cachedTokens, number(usage, "prompt_cache_hit_tokens"));

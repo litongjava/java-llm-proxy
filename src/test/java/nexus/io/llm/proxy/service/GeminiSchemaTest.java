@@ -8,6 +8,50 @@ import static org.junit.Assert.*;
 
 public class GeminiSchemaTest {
   @Test
+  public void adaptsNonStringEnumsWithoutChangingValueTypesOrExamples() {
+    Kv original = ProxyJson.parse("""
+        {"type":"object","properties":{
+          "allowAsync":{"type":"boolean","enum":[true],"description":"Run asynchronously"},
+          "count":{"type":"integer","enum":[1,2]},
+          "mixed":{"enum":["auto",null,false]},
+          "rows":{"type":"array","items":{"type":"boolean","enum":[false]}},
+          "mode":{"type":"string","enum":["fast","slow"]},
+          "example":{"default":{"enum":[true]}}
+        }}
+        """);
+    String before = JsonUtils.toJson(original);
+    Kv properties = ProxyJson.object(new GeminiSchemaService().convert(original).get("properties"));
+    Kv async = ProxyJson.object(properties.get("allowAsync"));
+    assertEquals("boolean", async.getStr("type"));
+    assertFalse(async.containsKey("enum"));
+    assertEquals("Run asynchronously\nValue must be one of these JSON values: [true]", async.getStr("description"));
+    assertFalse(ProxyJson.object(properties.get("count")).containsKey("enum"));
+    assertTrue(ProxyJson.object(properties.get("mixed")).getStr("description").contains("null,false"));
+    assertFalse(ProxyJson.object(ProxyJson.object(properties.get("rows")).get("items")).containsKey("enum"));
+    assertEquals(List.of("fast", "slow"), ProxyJson.object(properties.get("mode")).get("enum"));
+    assertEquals(List.of(true), ProxyJson.object(ProxyJson.object(properties.get("example")).get("default")).get("enum"));
+    assertEquals(before, JsonUtils.toJson(original));
+  }
+
+  @Test
+  public void convertsResponsesNamespaceBooleanEnumForGemini() {
+    Kv body = ProxyJson.parse("""
+        {"input":"hello","tools":[{"type":"namespace","name":"worktrees","tools":[
+          {"type":"function","name":"create_worktree","parameters":{"type":"object",
+           "properties":{"allowAsync":{"type":"boolean","enum":[true]}},"required":["allowAsync"]}}
+        ]}]}
+        """);
+    Kv converted = new ProtocolConversionService().request(body, "responses", "gemini", "test", true);
+    Kv declaration = ProxyJson.object(ProxyJson.list(ProxyJson.object(ProxyJson.list(converted.get("tools")).getFirst()).get("functionDeclarations")).getFirst());
+    Kv parameters = ProxyJson.object(declaration.get("parametersJsonSchema"));
+    Kv async = ProxyJson.object(ProxyJson.object(parameters.get("properties")).get("allowAsync"));
+    assertFalse(async.containsKey("enum"));
+    assertEquals("boolean", async.getStr("type"));
+    assertEquals(List.of("allowAsync"), parameters.get("required"));
+    assertSame(body, new ProtocolConversionService().request(body, "responses", "responses", "test", true));
+  }
+
+  @Test
   public void removesDiscriminatorMetadataButPreservesPropertyNamesAndExamples() {
     Kv original = ProxyJson.parse("""
         {"type":"object","discriminator":{"propertyName":"kind"},"properties":{
@@ -55,7 +99,7 @@ public class GeminiSchemaTest {
     Kv converted = converter.request(body, "anthropic", "gemini", "claude-sonnet-4-6", true);
     assertFalse(converted.containsKey("metadata"));
     Kv declaration = ProxyJson.object(ProxyJson.list(ProxyJson.object(ProxyJson.list(converted.get("tools")).getFirst()).get("functionDeclarations")).getFirst());
-    Kv schema = ProxyJson.object(declaration.get("parameters"));
+    Kv schema = ProxyJson.object(declaration.get("parametersJsonSchema"));
     assertFalse(schema.containsKey("$schema"));
     assertEquals(List.of("limit", "status"), schema.get("required"));
     Kv properties = ProxyJson.object(schema.get("properties"));

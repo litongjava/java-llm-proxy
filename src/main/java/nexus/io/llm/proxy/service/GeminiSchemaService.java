@@ -40,6 +40,11 @@ public class GeminiSchemaService {
       if (constant instanceof String) { schema.set("enum", List.of(constant)); }
       else { describe(schema, "Value must equal: " + json(constant)); }
     }
+    if (schema.get("enum") instanceof List<?> values && values.stream().anyMatch(item -> !(item instanceof String))) {
+      // Gemini's typed enum is repeated string; stringifying would change JSON value types.
+      schema.remove("enum");
+      describe(schema, "Value must be one of these JSON values: " + json(values));
+    }
     exclusiveBound(schema, "exclusiveMinimum", "minimum", true);
     exclusiveBound(schema, "exclusiveMaximum", "maximum", false);
     return schema;

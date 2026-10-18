@@ -7,6 +7,33 @@ import static org.junit.Assert.*;
 
 public class ClientContextTest {
   @Test
+  public void recognizesClaudeCliAcrossVersions() {
+    RequestRecord record = new RequestRecord();
+    for (String agent : new String[] {"claude-cli/2.1.292 (external, cli)", "claude-cli/3.0.0 (cli)"}) {
+      record.requestHeaders = Kv.create().set("User-Agent", agent);
+      HeaderService.captureClientContext(record);
+      assertEquals("claude-code-cli", record.originator);
+    }
+    record.requestHeaders = Kv.create().set("user-agent", "other-client/1.0").set("originator", "codex-tui");
+    HeaderService.captureClientContext(record);
+    assertEquals("codex-tui", record.originator);
+  }
+  @Test
+  public void capturesClaudeCodeSessionWhenStandardHeadersAreBlank() {
+    RequestRecord record = new RequestRecord();
+    record.requestHeaders = Kv.create().set("session-id", " ").set("session_id", "")
+        .set("X-Claude-Code-Session-ID", " 2adf332b-17bb-432b-b077-4264c8984053 ");
+    HeaderService.captureClientContext(record);
+    assertEquals("2adf332b-17bb-432b-b077-4264c8984053", record.session_id);
+    record.requestHeaders.set("session_id", "standard-session");
+    HeaderService.captureClientContext(record);
+    assertEquals("standard-session", record.session_id);
+    record.requestHeaders.set("session-id", "preferred-session");
+    HeaderService.captureClientContext(record);
+    assertEquals("preferred-session", record.session_id);
+  }
+
+  @Test
   public void capturesCaseInsensitiveHeadersAndUnderscoreAliases() {
     RequestRecord record = new RequestRecord();
     record.requestHeaders = Kv.create().set("Originator", " codex-tui ")
@@ -33,7 +60,7 @@ public class ClientContextTest {
       record.timestamp = 1000;
       record.status = 200;
       record.requestHeaders = Kv.create().set("originator", "codex-tui")
-          .set("session-id", "session-1").set("thread-id", "thread-1");
+          .set("x-claude-code-session-id", "session-1").set("thread-id", "thread-1");
       storage.record(record);
       storage = new StorageService();
       assertEquals("session-1", storage.detail(record.id).session_id);

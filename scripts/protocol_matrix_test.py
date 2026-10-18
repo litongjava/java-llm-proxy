@@ -111,7 +111,7 @@ def run():
                         assert 'matrix prompt' in json.dumps(captured[-1]), captured[-1]
                         tool = captured[-1]['tools'][0]
                         schema = (tool['input_schema'] if target == 'anthropic' else
-                                  tool['functionDeclarations'][0]['parameters'] if target == 'gemini' else
+                                  tool['functionDeclarations'][0].get('parametersJsonSchema', tool['functionDeclarations'][0].get('parameters')) if target == 'gemini' else
                                   tool['parameters'] if target == 'responses' else tool['function']['parameters'])
                         count = schema['properties']['count']
                         assert type(count['maximum']) is int and count['maximum'] == 9007199254740991, count

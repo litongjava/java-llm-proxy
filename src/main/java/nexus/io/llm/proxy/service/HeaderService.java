@@ -13,7 +13,14 @@ public final class HeaderService {
   public static void captureClientContext(nexus.io.llm.proxy.model.RequestRecord record) {
     if (record.requestHeaders == null) return;
     record.originator = contextHeader(record.requestHeaders, "originator");
+    String userAgent = contextHeader(record.requestHeaders, "user-agent");
+    if (userAgent != null && userAgent.toLowerCase(Locale.ROOT).startsWith("claude-cli/")) {
+      record.originator = "claude-code-cli";
+    }
     record.session_id = contextHeader(record.requestHeaders, "session-id");
+    if (record.session_id == null) {
+      record.session_id = contextHeader(record.requestHeaders, "x-claude-code-session-id");
+    }
     record.thread_id = contextHeader(record.requestHeaders, "thread-id");
   }
 

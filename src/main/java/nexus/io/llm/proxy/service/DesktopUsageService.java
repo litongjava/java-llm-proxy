@@ -15,6 +15,7 @@ public class DesktopUsageService {
       Kv tokens = Kv.create().set("input_tokens", number(record.inputTokens))
           .set("output_tokens", number(record.outputTokens)).set("reasoning_tokens", number(record.reasoningTokens))
           .set("cache_read_tokens", number(record.cachedTokens)).set("cached_tokens", number(record.cachedTokens))
+          .set("cache_creation_tokens", number(record.cacheCreationTokens))
           .set("total_tokens", number(record.inputTokens + record.outputTokens));
       Kv item = Kv.create().set("request_id", record.id).set("timestamp", Instant.ofEpochMilli(record.timestamp).toString())
           .set("model", record.model).set("provider", record.provider).set("source", record.source)

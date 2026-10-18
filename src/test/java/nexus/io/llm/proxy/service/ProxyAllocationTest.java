@@ -118,4 +118,20 @@ public class ProxyAllocationTest extends TestCase {
       assertTrue(completed[1]);
     }
   }
+  public void testClientDisconnectIsNotUpstreamFailure() throws Exception {
+    RequestRecord record = new RequestRecord();
+    record.status = 200;
+    ProxyService proxy = new ProxyService() {
+      @Override boolean sendStreamHeaders(ChannelContext downstream, HttpResponse response) { return true; }
+      @Override boolean sendStreamChunk(ChannelContext downstream, byte[] chunk) { return false; }
+      @Override void closeStream(ChannelContext downstream) { }
+      @Override void finish(RequestRecord saved, Provider provider, ProxySettings settings) { }
+    };
+    Response upstream = new Response.Builder().request(new Request.Builder().url("http://localhost/test").build())
+        .protocol(Protocol.HTTP_1_1).code(200).message("OK")
+        .body(ResponseBody.create("data: {}\n\n", MediaType.get("text/event-stream"))).build();
+    proxy.stream(null, null, new HttpResponse(), upstream, record, new Provider(), new ProxySettings(), 4096, null, hooks.streamHooks());
+    assertEquals(499, record.status);
+    assertEquals("Client disconnected", record.error);
+  }
 }

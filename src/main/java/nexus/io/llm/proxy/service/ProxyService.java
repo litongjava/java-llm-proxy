@@ -421,7 +421,7 @@ public class ProxyService {
       });
       record.responseHeaders = HeaderService.redact(headers);
       if (!sendStreamHeaders(downstream, response)) {
-        throw new IllegalStateException("Downstream disconnected");
+        throw new DownstreamDisconnectedException();
       }
       SseFrameInputStream frames = new SseFrameInputStream(input, EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216), frame -> frame);
       byte[] frame;
@@ -442,9 +442,13 @@ public class ProxyService {
           record.responseTruncated |= keep < chunk.length;
         }
         if (!sendStreamChunk(downstream, chunk)) {
-          throw new IllegalStateException("Downstream disconnected");
+          throw new DownstreamDisconnectedException();
         }
       }
+    } catch (DownstreamDisconnectedException cancelled) {
+      record.error = "Client disconnected";
+      record.status = 499;
+      LOG.info("Client disconnected from stream for request {}", record.id);
     } catch (Exception error) {
       LOG.warn("Stream interrupted for request {} (upstreamStatus={}, processedFrames={}, elapsedMs={})",
           record.id, upstream.code(), index, System.currentTimeMillis() - record.timestamp, error);
@@ -456,6 +460,8 @@ public class ProxyService {
       closeStream(downstream);
     }
   }
+
+  private static class DownstreamDisconnectedException extends IOException { }
 
   boolean sendStreamHeaders(ChannelContext downstream, HttpResponse response) { return Tio.bSend(downstream, response); }
   boolean sendStreamChunk(ChannelContext downstream, byte[] chunk) { return SseEmitter.pushChunk(downstream, chunk); }

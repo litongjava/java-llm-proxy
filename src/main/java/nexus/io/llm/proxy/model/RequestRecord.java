@@ -28,6 +28,7 @@ public class RequestRecord {
   public long inputTokens;
   public long outputTokens;
   public long cachedTokens;
+  public long cacheCreationTokens;
   public long reasoningTokens;
   public double cost;
   public Kv requestHeaders = Kv.create();

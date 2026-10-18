@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import com.jfinal.kit.Kv;
 import nexus.io.jfinal.aop.Aop;
+import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.json.JsonUtils;
 import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
 
@@ -17,18 +18,32 @@ public class ProtocolConversionService {
     String effort = ReasoningEffortService.extract(body);
     if (effort != null) { canonical.set("reasoning_effort", effort); }
     if ("openai".equals(to)) { return canonical; }
+    java.util.Map<String, String> callNames = new java.util.HashMap<>();
+    for (Object value : ProxyJson.list(canonical.get("messages"))) {
+      for (Object callValue : ProxyJson.list(ProxyJson.object(value).get("tool_calls"))) {
+        Kv call = ProxyJson.object(callValue);
+        callNames.put(call.getStr("id"), ProxyJson.object(call.get("function")).getStr("name"));
+      }
+    }
     List<Kv> messages = new ArrayList<>();
     List<Kv> system = new ArrayList<>();
     List<Kv> inputs = new ArrayList<>();
     for (Object value : ProxyJson.list(canonical.get("messages"))) {
       Kv message = ProxyJson.object(value);
       String role = message.getStr("role");
-      List<Kv> parts = parts(message.get("content"));
+      // Empty assistant text often accompanies a tool call in Responses history.
+      // Vertex/Claude rejects these blocks, even when a valid call follows them.
+      List<Kv> parts = parts(message.get("content")).stream()
+          .filter(part -> !(part.get("text") instanceof String text && text.isBlank())).toList();
       if ("system".equals(role) || "developer".equals(role)) { system.addAll(parts); continue; }
       if ("anthropic".equals(to)) {
         List<Kv> blocks = new ArrayList<>();
         if ("tool".equals(role)) {
-          blocks.add(Kv.create().set("type", "tool_result").set("tool_use_id", message.get("tool_call_id")).set("content", message.get("content")));
+          Object result = message.get("content");
+          if (result instanceof List<?>) {
+            result = parts.stream().map(this::anthropicPart).toList();
+          }
+          blocks.add(Kv.create().set("type", "tool_result").set("tool_use_id", message.get("tool_call_id")).set("content", result));
           role = "user";
         } else {
           for (Kv part : parts) { blocks.add(anthropicPart(part)); }
@@ -39,7 +54,7 @@ public class ProtocolConversionService {
                 .set("input", arguments(function.get("arguments"))));
           }
         }
-        messages.add(Kv.create().set("role", role).set("content", blocks));
+        if (!blocks.isEmpty()) { messages.add(Kv.create().set("role", role).set("content", blocks)); }
       } else if ("gemini".equals(to)) {
         List<Kv> blocks = new ArrayList<>();
         for (Kv part : parts) {
@@ -47,8 +62,29 @@ public class ProtocolConversionService {
           else if (part.get("image_url") != null) { blocks.add(geminiImage(part)); }
         }
         if ("tool".equals(role)) {
-          blocks = new ArrayList<>(List.of(Kv.create().set("functionResponse", Kv.create().set("id", message.get("tool_call_id"))
-              .set("name", ProxyJson.text(message, "name", message.getStr("tool_call_id"))).set("response", arguments(message.get("content"))))));
+          String id = message.getStr("tool_call_id");
+          String name = callNames.getOrDefault(id, message.getStr("name"));
+          Object result = message.get("content");
+          blocks = new ArrayList<>();
+          if (name == null) {
+            blocks.add(Kv.create().set("text", "Tool result: " + JsonUtils.toJsonWithLongAsNumber(result)));
+          } else {
+            Kv functionResponse = Kv.create().set("id", id).set("name", name);
+            List<Kv> media = new ArrayList<>();
+            if (result instanceof List<?>) {
+              List<Object> textResults = new ArrayList<>();
+              for (Object item : ProxyJson.list(result)) {
+                Kv block = ProxyJson.object(item);
+                if ("input_image".equals(block.getStr("type")) || "image_url".equals(block.getStr("type"))) { media.add(geminiImage(block)); }
+                else if (block.get("text") != null) { textResults.add(block.get("text")); }
+                else { textResults.add(item); }
+              }
+              result = textResults;
+            }
+            functionResponse.set("response", Kv.create().set("result", result == null ? "" : result));
+            if (!media.isEmpty()) { functionResponse.set("parts", media); }
+            blocks.add(Kv.create().set("functionResponse", functionResponse));
+          }
           role = "user";
         }
         for (Object toolValue : ProxyJson.list(message.get("tool_calls"))) {
@@ -56,7 +92,7 @@ public class ProtocolConversionService {
           Kv function = ProxyJson.object(tool.get("function"));
           blocks.add(Kv.create().set("functionCall", Kv.create().set("id", tool.get("id")).set("name", function.get("name")).set("args", arguments(function.get("arguments")))));
         }
-        messages.add(Kv.create().set("role", "assistant".equals(role) ? "model" : role).set("parts", blocks));
+        if (!blocks.isEmpty()) { messages.add(Kv.create().set("role", "assistant".equals(role) ? "model" : role).set("parts", blocks)); }
       } else if ("responses".equals(to)) {
         if ("tool".equals(role)) {
           inputs.add(Kv.create().set("type", "function_call_output").set("call_id", message.get("tool_call_id")).set("output", message.get("content")));
@@ -65,7 +101,7 @@ public class ProtocolConversionService {
         List<Kv> blocks = new ArrayList<>();
         for (Kv part : parts) {
           if (part.get("text") != null) { blocks.add(Kv.create().set("type", "assistant".equals(role) ? "output_text" : "input_text").set("text", part.get("text"))); }
-          else if (part.get("image_url") != null) { blocks.add(Kv.create().set("type", "input_image").set("image_url", ProxyJson.object(part.get("image_url")).get("url"))); }
+          else if (part.get("image_url") != null) { blocks.add(Kv.create().set("type", "input_image").set("image_url", imageUrl(part))); }
         }
         if (!blocks.isEmpty()) { inputs.add(Kv.create().set("type", "message").set("role", role).set("content", blocks)); }
         for (Object toolValue : ProxyJson.list(message.get("tool_calls"))) {
@@ -88,7 +124,7 @@ public class ProtocolConversionService {
       else if ("gemini".equals(to)) {
         Kv declaration = Kv.create().set("name", function.get("name"));
         if (function.get("description") != null) { declaration.set("description", function.get("description")); }
-        if (function.get("parameters") != null) { declaration.set("parameters", new GeminiSchemaService().convert(function.get("parameters"))); }
+        if (function.get("parameters") != null) { declaration.set("parametersJsonSchema", new GeminiSchemaService().convert(function.get("parameters"))); }
         tools.add(declaration);
       }
       else { tools.add(Kv.create().set(function).set("type", "responses".equals(to) ? "function" : null)); }
@@ -100,7 +136,7 @@ public class ProtocolConversionService {
       if (canonical.get("stop") != null) { output.set("stop_sequences", canonical.get("stop") instanceof String ? List.of(canonical.get("stop")) : canonical.get("stop")); }
     } else if ("gemini".equals(to)) {
       output.remove("model"); output.remove("stream"); output.remove("temperature"); output.remove("top_p"); output.remove("metadata");
-      output.set("contents", messages);
+      output.set("contents", new GeminiHistoryService().normalize(messages));
       if (!system.isEmpty()) { output.set("systemInstruction", Kv.create().set("parts", system.stream().map(part -> Kv.create().set("text", part.get("text"))).toList())); }
       Kv generation = Kv.create();
       if (max != null) { generation.set("maxOutputTokens", max); }
@@ -165,7 +201,7 @@ public class ProtocolConversionService {
         else if ("message".equals(type)) {
           List<Kv> blocks = new ArrayList<>();
           for (Kv part : parts(item.get("content"))) {
-            if ("input_image".equals(part.getStr("type"))) { blocks.add(Kv.create().set("type", "image_url").set("image_url", Kv.create().set("url", part.get("image_url")))); }
+            if ("input_image".equals(part.getStr("type"))) { blocks.add(Kv.create().set("type", "image_url").set("image_url", Kv.create().set("url", imageUrl(part)))); }
             else if (part.get("text") != null) { blocks.add(Kv.create().set("type", "text").set("text", part.get("text"))); }
           }
           messages.add(Kv.create().set("role", item.get("role")).set("content", blocks));
@@ -211,7 +247,11 @@ public class ProtocolConversionService {
         }
       }
       for (Object value : ProxyJson.list(body.get("tools"))) {
-        for (Object declaration : ProxyJson.list(ProxyJson.object(value).get("functionDeclarations"))) { tools.add(Kv.create().set("type", "function").set("function", declaration)); }
+        for (Object declaration : ProxyJson.list(ProxyJson.object(value).get("functionDeclarations"))) {
+          Kv function = ProxyJson.object(declaration);
+          if (function.get("parametersJsonSchema") != null) { function.set("parameters", function.remove("parametersJsonSchema")); }
+          tools.add(Kv.create().set("type", "function").set("function", function));
+        }
       }
       Kv generation = ProxyJson.object(body.get("generationConfig"));
       if (generation.get("maxOutputTokens") != null) { result.set("max_tokens", generation.get("maxOutputTokens")); }
@@ -287,9 +327,35 @@ public class ProtocolConversionService {
     }
     return ProxyJson.object(value);
   }
+  private String imageUrl(Kv part) {
+    Object image = part.get("image_url");
+    Object raw = image instanceof String ? image : ProxyJson.object(image).get("url");
+    BusinessException.require(raw instanceof String && !((String) raw).isBlank(), 400, "INVALID_IMAGE",
+        part.get("file_id") != null ? "Image file_id cannot be converted to this upstream protocol; provide image_url"
+            : "Image requires a non-empty image_url string or image_url.url");
+    String url = ((String) raw).trim();
+    if (url.startsWith("data:")) {
+      int separator = url.indexOf(";base64,");
+      BusinessException.require(url.startsWith("data:image/") && separator > 11 && separator + 8 < url.length(),
+          400, "INVALID_IMAGE", "Image data URL must contain an image MIME type and base64 data");
+    } else {
+      boolean valid = false;
+      try {
+        java.net.URI uri = java.net.URI.create(url);
+        valid = ("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()) || "gs".equals(uri.getScheme()))
+            && uri.getHost() != null;
+      } catch (IllegalArgumentException ignored) { }
+      BusinessException.require(valid, 400, "INVALID_IMAGE", "Unsupported image URL; provide an HTTP(S), gs, or base64 image URL");
+    }
+    return url;
+  }
   private Kv anthropicPart(Kv part) {
+    if ("input_text".equals(part.getStr("type")) || "output_text".equals(part.getStr("type"))) {
+      return Kv.create().set("type", "text").set("text", part.get("text"));
+    }
+    if ("input_image".equals(part.getStr("type"))) { imageUrl(part); }
     if (part.get("image_url") == null) { return part; }
-    String url = ProxyJson.object(part.get("image_url")).getStr("url");
+    String url = imageUrl(part);
     Kv source = Kv.create().set("type", "url").set("url", url);
     if (url.startsWith("data:") && url.contains(";base64,")) {
       String[] segments = url.substring(5).split(";base64,", 2);
@@ -298,7 +364,7 @@ public class ProtocolConversionService {
     return Kv.create().set("type", "image").set("source", source);
   }
   private Kv geminiImage(Kv part) {
-    String url = ProxyJson.object(part.get("image_url")).getStr("url");
+    String url = imageUrl(part);
     if (url.startsWith("data:") && url.contains(";base64,")) {
       String[] segments = url.substring(5).split(";base64,", 2);
       return Kv.create().set("inlineData", Kv.create().set("mimeType", segments[0]).set("data", segments[1]));
