@@ -16,4 +16,18 @@ public class ReasoningEffortServiceTest {
   private String extract(String body) {
     return ReasoningEffortService.extract(ProxyJson.parse(body));
   }
+
+  @Test public void retainsRequestedEffortWhenAnthropicConversionHasNoEffortField() {
+    var request = ProxyJson.parse("{\"input\":\"hi\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"auto\"}}");
+    var upstream = new ProtocolConversionService().request(request, "responses", "anthropic", "deepseek-v4.1-flash", false);
+    assertNull(ReasoningEffortService.extract(upstream));
+    assertEquals("medium", ReasoningEffortService.forRecord(upstream, ReasoningEffortService.extract(request)));
+  }
+
+  @Test public void explicitUpstreamEffortWinsAndSummaryIsNeverAnEffort() {
+    assertEquals("high", ReasoningEffortService.forRecord(ProxyJson.parse("{\"reasoning_effort\":\"high\"}"), "medium"));
+    assertEquals("none", ReasoningEffortService.forRecord(ProxyJson.parse("{\"reasoning\":{\"effort\":\"none\"}}"), "medium"));
+    assertEquals("auto", ReasoningEffortService.forRecord(ProxyJson.parse("{\"reasoning_effort\":\"auto\"}"), "medium"));
+    assertNull(ReasoningEffortService.forRecord(ProxyJson.parse("{\"reasoning\":{\"summary\":\"auto\"}}"), null));
+  }
 }

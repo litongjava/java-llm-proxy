@@ -31,6 +31,7 @@ def request_body(protocol, stream):
         payload['contents'] = [{'role': 'user', 'parts': [{'text': 'matrix prompt'}]}]
     else:
         payload['input'] = 'matrix prompt'
+        payload['reasoning'] = {'effort': 'medium', 'summary': 'auto'}
     return payload
 
 def endpoint(protocol, stream):
@@ -125,6 +126,11 @@ def run():
                         assert int(detail['inputTokens']) == 9 and int(detail['outputTokens']) == 4, (source, target, stream, detail)
                         assert detail['upstreamResponseBody'] == upstream_body(target, stream).decode(), (source, target, stream)
                         assert detail['responseBody'] == response, (source, target, stream)
+                        if source == 'responses':
+                            assert detail['reasoningEffort'] == 'medium', (target, stream, detail['reasoningEffort'])
+                            queue = json.loads(call('/v8/management/observability/usage/queue?count=10000')[0])['data']
+                            record = next(row for row in queue if row['request_id'] == request_id)
+                            assert record['reasoning_effort'] == 'medium', (target, stream, record)
             selected[0] = 'openai'
             call('/v8/management/config/routing', {'operation':'PUT', 'value':{'strategy':'round-robin','force-model-prefix':True,'session-affinity':True}})
             call('/v8/management/config/api-keys/openai-compatibility', {'operation':'PUT', 'value':[

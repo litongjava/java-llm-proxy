@@ -220,8 +220,8 @@ public class ProxyService {
       record.model = ProxyJson.text(ProxyJson.parse(executedPayload), "model", selection.model());
     } else if (!"gemini".equals(upstreamProtocol)) { record.model = ProxyJson.text(outboundPayload, "model", selection.model()); }
     if (settings.captureBodies) { record.upstreamRequestBody = truncate(Aop.get(RequestImageService.class).externalize(executedPayload), captureLimit); }
-    record.reasoningEffort = ReasoningEffortService.extract(
-        prepared.bodyChanged() ? ProxyJson.parse(executedPayload) : outboundPayload);
+    record.reasoningEffort = ReasoningEffortService.forRecord(
+        prepared.bodyChanged() ? ProxyJson.parse(executedPayload) : outboundPayload, record.reasoningEffort);
     Request upstreamRequest = "devin".equals(provider.upstreamType)
         ? Aop.get(DevinTransportService.class).prepare(prepared.request(), provider, executedPayload) : prepared.request();
     if ("codearts".equals(provider.upstreamType)) {
