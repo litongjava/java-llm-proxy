@@ -236,3 +236,10 @@ describe('API 接入健康检测', () => {
   });
 
 });
+
+ it('Claude checks leave room for reasoning before a short visible reply', () => {
+    const probe = buildProviderHealthProbe('claude', 'https://ai.gitee.com/anthropic', 'deepseek-v4.1-flash', 'test-key');
+    expect(probe.url).toBe('https://ai.gitee.com/anthropic/v1/messages');
+    expect(JSON.parse(probe.data)).toEqual({ model: 'deepseek-v4.1-flash', max_tokens: 256, stream: true,
+      messages: [{ role: 'user', content: 'Reply with OK.' }] });
+ });

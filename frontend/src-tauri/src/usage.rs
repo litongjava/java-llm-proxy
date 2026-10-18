@@ -2209,7 +2209,16 @@ pub(crate) fn persist_local_usage_event(
     }
     let config = app.state::<GuiConfigState>().snapshot()?;
     let root = usage_root_dir()?;
+    let detail = value.as_object_mut().and_then(|object| object.remove("request_detail"));
+    let request_id = value["request_id"].as_str().unwrap_or_default().to_string();
     let outcome = persist_queue_items_from_source(&root, collector_source, vec![value], &config)?;
+    if let Some(detail) = detail {
+        let connection = open_usage_database_at(&root)?;
+        initialize_health_details(&connection)?;
+        connection.execute("INSERT OR REPLACE INTO health_request_details (request_id, detail) VALUES (?1, ?2)",
+            params![request_id, detail.to_string()])
+            .map_err(|error| format!("Failed to save health check request detail: {error}"))?;
+    }
     publish_collected_records(app, outcome, "Saved desktop health check usage record");
     Ok(outcome.inserted)
 }
@@ -2218,8 +2227,17 @@ pub(crate) fn local_health_request_detail(request_id: &str) -> Result<Value, Str
     local_health_request_detail_from(&open_usage_database()?, request_id)
 }
 
+fn initialize_health_details(connection: &Connection) -> Result<(), String> {
+    connection.execute_batch("CREATE TABLE IF NOT EXISTS health_request_details (
+        request_id TEXT PRIMARY KEY NOT NULL, detail TEXT NOT NULL);
+        CREATE TRIGGER IF NOT EXISTS delete_health_request_detail AFTER DELETE ON usage_events BEGIN
+            DELETE FROM health_request_details WHERE request_id = OLD.request_id;
+        END;").map_err(|error| format!("Failed to initialize health check details: {error}"))
+}
+
 fn local_health_request_detail_from(connection: &Connection, request_id: &str) -> Result<Value, String> {
-    connection.query_row(
+    initialize_health_details(connection)?;
+    let mut detail = connection.query_row(
         "SELECT timestamp, model, provider, endpoint, failed, failure_status, latency_ms, ttft_ms,
                 input_tokens, output_tokens, reasoning_tokens, failure_body
          FROM usage_events WHERE request_id = ?1 AND executor_type = 'DesktopProviderHealthCheck' LIMIT 1",
@@ -2245,7 +2263,17 @@ fn local_health_request_detail_from(connection: &Connection, request_id: &str) -
             }))
         },
     ).optional().map_err(|error| format!("Failed to read local health check: {error}"))?
-        .ok_or_else(|| "Local health check record was not found or has expired".to_string())
+        .ok_or_else(|| "Local health check record was not found or has expired".to_string())?;
+    let saved: Option<String> = connection.query_row(
+        "SELECT detail FROM health_request_details WHERE request_id = ?1", params![request_id], |row| row.get(0))
+        .optional().map_err(|error| format!("Failed to read health check request detail: {error}"))?;
+    if let Some(saved) = saved {
+        let saved: Value = serde_json::from_str(&saved).map_err(|error| error.to_string())?;
+        if let (Some(target), Some(saved)) = (detail.as_object_mut(), saved.as_object()) {
+            target.extend(saved.clone());
+        }
+    }
+    Ok(detail)
 }
 
 #[cfg(test)]
@@ -2266,6 +2294,18 @@ mod local_health_detail_tests {
         assert_eq!(detail["path"], "/v1/chat/completions");
         assert!(detail["responseBody"].is_null());
         assert!(local_health_request_detail_from(&db, "desktop_health_check-missing").is_err());
+        let saved = serde_json::json!({ "requestBody": "{\"messages\":[{\"content\":\"hi\"}]}",
+            "responseBody": "data: {\"type\":\"message_stop\"}", "status": 200 });
+        db.execute("INSERT INTO health_request_details VALUES (?1, ?2)",
+            params!["desktop_health_check-test", saved.to_string()]).unwrap();
+        let detail = local_health_request_detail_from(&db, "desktop_health_check-test").unwrap();
+        assert_eq!(detail["requestBody"], saved["requestBody"]);
+        assert_eq!(detail["responseBody"], saved["responseBody"]);
+        assert_eq!(detail["status"], 200);
+        assert_eq!(detail["localUsage"]["success"], true);
+        db.execute("DELETE FROM usage_events", []).unwrap();
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM health_request_details", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
+
     }
 }
 

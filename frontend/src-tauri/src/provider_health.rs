@@ -224,6 +224,18 @@ pub(crate) fn provider_health_stream_has_terminal_success(protocol: &str, bytes:
 
 fn provider_health_usage_tokens(protocol: &str, bytes: &[u8]) -> ProviderHealthUsageTokens {
     let mut tokens = ProviderHealthUsageTokens::default();
+    if protocol == "claude" {
+        for line in String::from_utf8_lossy(bytes).lines() {
+            let Some(data) = line.trim().strip_prefix("data:") else { continue; };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(data.trim()) else { continue; };
+            let Some(usage) = value.get("usage").or_else(|| value.pointer("/message/usage")) else { continue; };
+            tokens.input_tokens = tokens.input_tokens.max(usage["input_tokens"].as_u64().unwrap_or_default());
+            tokens.output_tokens = tokens.output_tokens.max(usage["output_tokens"].as_u64().unwrap_or_default());
+            tokens.cache_read_tokens = tokens.cache_read_tokens.max(usage["cache_read_input_tokens"].as_u64().unwrap_or_default());
+        }
+        tokens.total_tokens = tokens.input_tokens + tokens.output_tokens + tokens.cache_read_tokens;
+        return tokens;
+    }
     if protocol != "gemini" {
         return tokens;
     }
@@ -282,22 +294,35 @@ fn provider_health_usage_provider(protocol: &str) -> &str {
     }
 }
 
-fn persist_provider_health_success(
-    app: &tauri::AppHandle,
+fn provider_health_usage_event(
     request: &ProviderHealthProbeRequest,
     endpoint: &str,
     latency_ms: u64,
     ttft_ms: Option<u64>,
     received: &[u8],
-) {
+    status: Option<u16>,
+    error: Option<&str>,
+    response_headers: &serde_json::Value,
+) -> serde_json::Value {
     let tokens = provider_health_usage_tokens(&request.protocol, received);
-    let event = serde_json::json!({
+    serde_json::json!({
         "timestamp": Local::now().to_rfc3339(),
         "latency_ms": latency_ms,
         "ttft_ms": ttft_ms,
         "source": request.source.as_str(),
         "auth_index": request.auth_index.as_str(),
-        "failed": false,
+        "failed": error.is_some(),
+        "failure_status": if error.is_some() { status.unwrap_or(0) } else { 0 },
+        "failure_body": error.unwrap_or(""),
+        "request_detail": {
+            "protocol": request.protocol, "status": status,
+            "requestBody": request.data, "upstreamRequestBody": request.data,
+            "requestHeaders": health_safe_headers(&request.header),
+            "upstreamRequestHeaders": health_safe_headers(&request.header),
+            "responseHeaders": response_headers, "upstreamResponseHeaders": response_headers,
+            "responseBody": String::from_utf8_lossy(received),
+            "upstreamResponseBody": String::from_utf8_lossy(received),
+        },
         "provider": request.source_provider.as_deref()
             .filter(|provider| matches!(*provider, "interactions" | "vertex" | "xai" | "meta"))
             .unwrap_or_else(|| provider_health_usage_provider(&request.protocol)),
@@ -312,10 +337,15 @@ fn persist_provider_health_success(
             "cache_read_tokens": tokens.cache_read_tokens,
             "total_tokens": tokens.total_tokens,
         },
-    });
-    if let Err(error) = usage::persist_local_usage_event(app, "desktop_health_check", event) {
-        eprintln!("Failed to save desktop health check usage record: {error}");
-    }
+    })
+}
+
+fn health_safe_headers(headers: &HashMap<String, String>) -> serde_json::Value {
+    // Persist only protocol metadata, never credentials or custom auth headers.
+    serde_json::to_value(headers.iter().filter(|(name, _)| matches!(
+        name.to_ascii_lowercase().as_str(),
+        "content-type" | "accept" | "user-agent" | "anthropic-version" | "anthropic-beta"
+    )).collect::<HashMap<_, _>>()).unwrap_or_default()
 }
 
 pub(crate) fn provider_health_content_type_is_streaming(content_type: &str) -> bool {
@@ -512,6 +542,11 @@ async fn execute_health_probe(
     }
 
     let started_at = Instant::now();
+    let mut received = Vec::new();
+    let mut first_token_latency_ms = None;
+    let mut response_status = None;
+    let mut response_headers = serde_json::json!({});
+    let result = async {
     let response = client
         .post(url)
         .headers(headers)
@@ -520,8 +555,13 @@ async fn execute_health_probe(
         .await
         .map_err(|error| format!("Health check request failed: {error}"))?;
     let status = response.status();
+    response_status = Some(status.as_u16());
+    response_headers = health_safe_headers(&response.headers().iter()
+        .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.to_string(), value.to_string())))
+        .collect());
     if !status.is_success() {
         let detail = response.text().await.unwrap_or_default();
+        received.extend_from_slice(&detail.as_bytes()[..detail.len().min(MAX_PROVIDER_HEALTH_STREAM_BYTES)]);
         let detail = detail.trim();
         return Err(if detail.is_empty() {
             format!("Upstream returned HTTP {}", status.as_u16())
@@ -536,43 +576,76 @@ async fn execute_health_probe(
         .unwrap_or("")
         .to_ascii_lowercase();
     if !provider_health_content_type_is_streaming(&content_type) {
+        let bytes = response.bytes().await.unwrap_or_default();
+        received.extend_from_slice(&bytes[..bytes.len().min(MAX_PROVIDER_HEALTH_STREAM_BYTES)]);
         return Err("Upstream did not return a streaming response; time to first token cannot be measured".to_string());
     }
 
     let mut stream = response.bytes_stream();
-    let mut received = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|error| format!("Failed to read health check stream: {error}"))?;
         if received.len().saturating_add(chunk.len()) > MAX_PROVIDER_HEALTH_STREAM_BYTES {
-            return Err("Health check did not receive the model's first token within the limit".to_string());
+            return Err("Health check stream exceeded the size limit".to_string());
         }
         received.extend_from_slice(&chunk);
-        let elapsed_ms = started_at.elapsed().as_millis().max(1) as u64;
-        if provider_health_stream_has_text(&request.protocol, &received) {
-            if let Some(app) = usage_app {
-                persist_provider_health_success(
-                    app,
-                    &request,
-                    &endpoint,
-                    elapsed_ms,
-                    Some(elapsed_ms),
-                    &received,
-                );
-            }
-            return Ok(ProviderHealthProbeResponse {
-                first_token_latency_ms: Some(elapsed_ms),
-                response_latency_ms: elapsed_ms,
-            });
-        }
-        if provider_health_stream_has_terminal_success(&request.protocol, &received) {
-            if let Some(app) = usage_app {
-                persist_provider_health_success(app, &request, &endpoint, elapsed_ms, None, &received);
-            }
-            return Ok(ProviderHealthProbeResponse {
-                first_token_latency_ms: None,
-                response_latency_ms: elapsed_ms,
-            });
+        if first_token_latency_ms.is_none() && provider_health_stream_has_text(&request.protocol, &received) {
+            first_token_latency_ms = Some(started_at.elapsed().as_millis().max(1) as u64);
         }
     }
-    Err("Health check did not receive the model's first token".to_string())
+    if !provider_health_stream_completed(&request.protocol, &received)
+        || (first_token_latency_ms.is_none() && !provider_health_stream_has_terminal_success(&request.protocol, &received)) {
+        let reason = health_stream_failure_reason(&request.protocol, &received);
+        return Err(reason);
+    }
+    let elapsed_ms = started_at.elapsed().as_millis().max(1) as u64;
+    Ok(ProviderHealthProbeResponse { first_token_latency_ms, response_latency_ms: elapsed_ms })
+    }.await;
+    if let Some(app) = usage_app {
+        let event = provider_health_usage_event(&request, &endpoint,
+            started_at.elapsed().as_millis().max(1) as u64, first_token_latency_ms,
+            &received, response_status, result.as_ref().err().map(String::as_str), &response_headers);
+        if let Err(error) = usage::persist_local_usage_event(app, "desktop_health_check", event) {
+            eprintln!("Failed to save desktop health check usage record: {error}");
+        }
+    }
+    result
+}
+
+fn provider_health_stream_completed(protocol: &str, bytes: &[u8]) -> bool {
+    let mut complete = false;
+    for line in String::from_utf8_lossy(bytes).lines() {
+        let Some(data) = line.trim().strip_prefix("data:") else { continue; };
+        let data = data.trim();
+        if data == "[DONE]" && protocol == "openai-chat" { complete = true; continue; }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else { continue; };
+        let event = value.get("type").or_else(|| value.get("event_type")).and_then(serde_json::Value::as_str).unwrap_or("");
+        if value.get("error").is_some() || matches!(event, "error" | "response.failed" | "response.incomplete") {
+            return false;
+        }
+        complete |= match protocol {
+            "openai-chat" => value.get("choices").and_then(serde_json::Value::as_array).is_some_and(|choices|
+                choices.iter().any(|choice| matches!(choice.get("finish_reason").and_then(serde_json::Value::as_str), Some("stop" | "length" | "tool_calls" | "function_call")))),
+            "openai-responses" => event == "response.completed",
+            "claude" => event == "message_stop",
+            "gemini" => value.get("candidates").and_then(serde_json::Value::as_array).is_some_and(|items|
+                items.iter().any(|item| matches!(item.get("finishReason").and_then(serde_json::Value::as_str), Some("STOP" | "MAX_TOKENS")))),
+            "interactions" => provider_health_json_has_terminal_success(protocol, &value),
+            _ => false,
+        };
+    }
+    complete
+}
+
+fn health_stream_failure_reason(protocol: &str, received: &[u8]) -> String {
+    for line in String::from_utf8_lossy(received).lines() {
+        let Some(data) = line.trim().strip_prefix("data:") else { continue; };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(data.trim()) else { continue; };
+        if let Some(error) = value.get("error") {
+            return format!("Upstream stream error: {}", error);
+        }
+        if protocol == "claude" && value.pointer("/delta/stop_reason").and_then(serde_json::Value::as_str) == Some("max_tokens") {
+            return "Health check exhausted max_tokens before returning text; increase the output token budget".to_string();
+        }
+    }
+    "Health check stream ended without a successful completion event".to_string()
 }

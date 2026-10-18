@@ -171,7 +171,7 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
   }
 
   const sections = useMemo<DetailSection[]>(() => {
-    if (detail?.localUsage) return [{ id: 'local-summary', title: label('Health check summary', '健康检查摘要'), text: pretty(detail.localUsage) }];
+
     const body = (value: string | null) => prettyJson ? pretty(value) : value ?? '';
     const sections: DetailSection[] = detail ? [
       { id: 'request-headers', title: label('Request headers', '请求头'), text: pretty(detail.requestHeaders) },
@@ -183,6 +183,7 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
       { id: 'response-headers', title: label('Response headers', '响应头'), text: pretty(detail.responseHeaders) },
       { id: 'response-body', title: label('Response body', '响应体'), text: body(detail.responseBody) },
     ] : [];
+    if (detail?.localUsage) sections.unshift({ id: 'local-summary', title: label('Health check summary', '健康检查摘要'), text: pretty(detail.localUsage) });
     if (formatted) {
       sections.unshift(
         { id: 'formatted-prompt', formatted: true, title: label('Formatted prompt', '格式化提示词'), text: formatted.prompt },
@@ -202,7 +203,7 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
         <button type="button" className="secondary-button" aria-label={label('Close', '关闭')} onClick={onClose}><X size={18} /></button>
       </header>
       {detail && <p>{detail.method} {detail.path} · {detail.status ?? '—'} · {formatted?.protocol ?? detail.protocol}</p>}
-      {detail?.localUsage && <p>{label('This check ran directly from the desktop. Only its summary was saved; request and response bodies are unavailable.', '此检查由桌面端直接发起，仅保存了检查摘要，未保存请求和响应正文。')}</p>}
+      {detail?.localUsage && detail.requestBody == null && <p>{label('This check ran directly from the desktop. Only its summary was saved; request and response bodies are unavailable.', '此检查由桌面端直接发起，仅保存了检查摘要，未保存请求和响应正文。')}</p>}
       {detail && <div className="proxy-client-context">
         {(['originator', 'session_id', 'thread_id'] as const).map(field => <div key={field}>
           <span>{field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}</span>

@@ -16,7 +16,7 @@ fn provider_proxy_override_preserves_direct_and_global_inheritance() {
 
 #[tokio::test]
 async fn provider_health_uses_request_proxy_instead_of_global_proxy() {
-    let (port, server) = mock_core_response("200 OK", "text/event-stream", "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"OK\"}]}}]}\n\n", "").await;
+    let (port, server) = mock_core_response("200 OK", "text/event-stream", "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"OK\"}]},\"finishReason\":\"STOP\"}]}\n\n", "").await;
     let request: ProviderHealthProbeRequest = serde_json::from_value(serde_json::json!({
         "url": "http://provider.invalid/v1beta/models/test:streamGenerateContent?alt=sse",
         "header": {}, "data": "{}", "protocol": "gemini",
@@ -93,12 +93,12 @@ fn probe_config(port: u16) -> GuiConfigFile {
 #[tokio::test]
 async fn core_health_probe_uses_local_inference_key_and_waits_for_model_text() {
     let metadata = "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n";
-    let text = "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"}}]}\n\n";
+    let text = "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
     let (port, server) = mock_core_response("200 OK", "text/event-stream", metadata, text).await;
     let result = probe_core_model(&probe_config(port), "  custom/model-alias  ", Some(2_000))
         .await.unwrap();
     assert!(result.first_token_latency_ms.unwrap() >= 50);
-    assert_eq!(result.first_token_latency_ms, Some(result.response_latency_ms));
+    assert!(result.first_token_latency_ms.unwrap() <= result.response_latency_ms);
     let request = server.await.unwrap();
     assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
     assert!(request.to_ascii_lowercase().contains("authorization: bearer test-client-access-key\r\n"));
@@ -118,7 +118,7 @@ async fn core_health_probe_rejects_http_errors_redirects_and_empty_streams() {
     for (status, content_type, body, expected) in [
         ("401 Unauthorized", "application/json", "access denied", "HTTP 401"),
         ("200 OK", "application/json", "{\"choices\":[]}", "streaming response"),
-        ("200 OK", "text/event-stream", "data: [DONE]\n\n", "first token"),
+        ("200 OK", "text/event-stream", "data: [DONE]\n\n", "completion event"),
         ("302 Found\r\nLocation: http://127.0.0.1:1/v1/chat/completions", "text/plain", "", "HTTP 302"),
     ] {
         let (port, server) = mock_core_response(status, content_type, body, "").await;
@@ -215,5 +215,48 @@ fn openai_terminal_success_requires_both_exhausted_budget_and_valid_reasoning_us
     ] {
         let body = format!("data: {value}\n\ndata: [DONE]\n\n");
         assert!(!provider_health_stream_has_terminal_success("openai-chat", body.as_bytes()));
+    }
+}
+
+#[tokio::test]
+async fn health_probe_drains_stream_after_first_token() {
+    let first = "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"}}]}\n\n";
+    let (port, server) = mock_core_response("200 OK", "text/event-stream", first, "data: [DONE]\n\n").await;
+    let result = probe_core_model(&probe_config(port), "test", Some(2_000)).await.unwrap();
+    assert!(result.response_latency_ms >= result.first_token_latency_ms.unwrap() + 40);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn health_probe_rejects_truncated_or_failed_stream_after_text() {
+    for tail in ["", "data: {\"error\":{\"message\":\"failed\"}}\n\n"] {
+        let first = "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"}}]}\n\n";
+        let (port, server) = mock_core_response("200 OK", "text/event-stream", first, tail).await;
+        assert!(probe_core_model(&probe_config(port), "test", Some(2_000)).await.is_err());
+        server.await.unwrap();
+    }
+}
+
+#[test]
+fn claude_health_usage_preserves_messages_errors_and_redacts_credentials() {
+    let request: ProviderHealthProbeRequest = serde_json::from_value(serde_json::json!({
+        "url": "https://provider.invalid/anthropic/v1/messages",
+        "header": { "x-api-key": "secret", "Authorization": "Bearer secret", "X-Custom-Token": "secret", "Content-Type": "application/json" },
+        "data": "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+        "protocol": "claude", "model": "deepseek-v4.1-flash"
+    })).unwrap();
+    let stream = b"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},\"usage\":{\"input_tokens\":31,\"output_tokens\":16}}\n\ndata: {\"type\":\"message_stop\"}\n\n";
+    assert!(provider_health_stream_completed("claude", stream));
+    assert!(!provider_health_stream_has_text("claude", stream));
+    let error = health_stream_failure_reason("claude", stream);
+    assert!(error.contains("max_tokens"));
+    for error in [Some(error.as_str()), None] {
+        let event = provider_health_usage_event(&request, "POST /anthropic/v1/messages", 50, None,
+            stream, Some(200), error, &serde_json::json!({}));
+        assert_eq!(event["failed"], error.is_some());
+        assert_eq!(event["tokens"]["output_tokens"], 16);
+        assert_eq!(event["request_detail"]["requestBody"], request.data);
+        assert_eq!(event["request_detail"]["responseBody"], String::from_utf8_lossy(stream).as_ref());
+        assert!(!event.to_string().contains("secret"));
     }
 }

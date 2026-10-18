@@ -149,9 +149,9 @@ export function buildProviderHealthProbe(
       protocol: 'claude',
       data: JSON.stringify({
         model: normalizedModel,
-        max_tokens: 16,
+        max_tokens: 256,
         stream: true,
-        messages: [{ role: 'user', content: 'hi' }],
+        messages: [{ role: 'user', content: 'Reply with OK.' }],
       }),
     };
   }
