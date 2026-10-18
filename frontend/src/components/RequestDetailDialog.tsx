@@ -9,6 +9,7 @@ import './requestDetail.css';
 import { RequestDetailText } from './RequestDetailText';
 
 type RequestDetail = {
+  localUsage?: Record<string, unknown>;
   id: string;
   originator?: string;
   session_id?: string;
@@ -16,7 +17,7 @@ type RequestDetail = {
   protocol: string;
   method: string;
   path: string;
-  status: number;
+  status: number | null;
   requestHeaders: Record<string, unknown>;
   requestBody: string | null;
   upstreamRequestHeaders: Record<string, unknown>;
@@ -169,7 +170,8 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
     } catch (reason) { setError(String(reason)); }
   }
 
-  const sections = useMemo(() => {
+  const sections = useMemo<DetailSection[]>(() => {
+    if (detail?.localUsage) return [{ id: 'local-summary', title: label('Health check summary', '健康检查摘要'), text: pretty(detail.localUsage) }];
     const body = (value: string | null) => prettyJson ? pretty(value) : value ?? '';
     const sections: DetailSection[] = detail ? [
       { id: 'request-headers', title: label('Request headers', '请求头'), text: pretty(detail.requestHeaders) },
@@ -194,12 +196,13 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
     <div ref={dialogRef} className="config-dialog proxy-request-dialog" role="dialog" aria-modal="true" aria-labelledby="proxy-request-title">
       <header className="proxy-request-toolbar">
         <div><h2 id="proxy-request-title">{label('Request Detail', '请求详情')}</h2><small>{requestId}</small></div>
-        <button type="button" className="secondary-button" disabled={!detail || formatting} onClick={() => void format()}>
+        <button type="button" className="secondary-button" disabled={!detail || !!detail.localUsage || formatting} onClick={() => void format()}>
           {formatting ? label('Formatting…', '格式化中…') : label('Format', '格式化')}
         </button>
         <button type="button" className="secondary-button" aria-label={label('Close', '关闭')} onClick={onClose}><X size={18} /></button>
       </header>
-      {detail && <p>{detail.method} {detail.path} · {detail.status} · {formatted?.protocol ?? detail.protocol}</p>}
+      {detail && <p>{detail.method} {detail.path} · {detail.status ?? '—'} · {formatted?.protocol ?? detail.protocol}</p>}
+      {detail?.localUsage && <p>{label('This check ran directly from the desktop. Only its summary was saved; request and response bodies are unavailable.', '此检查由桌面端直接发起，仅保存了检查摘要，未保存请求和响应正文。')}</p>}
       {detail && <div className="proxy-client-context">
         {(['originator', 'session_id', 'thread_id'] as const).map(field => <div key={field}>
           <span>{field === 'originator' ? 'Originator' : field === 'session_id' ? 'Session ID' : 'Thread ID'}</span>

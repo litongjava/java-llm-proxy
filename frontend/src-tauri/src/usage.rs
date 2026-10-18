@@ -2214,6 +2214,61 @@ pub(crate) fn persist_local_usage_event(
     Ok(outcome.inserted)
 }
 
+pub(crate) fn local_health_request_detail(request_id: &str) -> Result<Value, String> {
+    local_health_request_detail_from(&open_usage_database()?, request_id)
+}
+
+fn local_health_request_detail_from(connection: &Connection, request_id: &str) -> Result<Value, String> {
+    connection.query_row(
+        "SELECT timestamp, model, provider, endpoint, failed, failure_status, latency_ms, ttft_ms,
+                input_tokens, output_tokens, reasoning_tokens, failure_body
+         FROM usage_events WHERE request_id = ?1 AND executor_type = 'DesktopProviderHealthCheck' LIMIT 1",
+        params![request_id],
+        |row| {
+            let failed: bool = row.get(4)?;
+            let failure_status: i64 = row.get(5)?;
+            let endpoint: String = row.get(3)?;
+            let (method, path) = endpoint.split_once(' ').unwrap_or(("POST", endpoint.as_str()));
+            Ok(serde_json::json!({
+                "id": request_id, "protocol": "desktop-health-check", "method": method, "path": path,
+                "status": if failed && failure_status > 0 { Some(failure_status) } else { None },
+                "requestHeaders": {}, "requestBody": null, "upstreamRequestHeaders": {},
+                "upstreamRequestBody": null, "responseHeaders": {}, "responseBody": null,
+                "requestTruncated": false, "responseTruncated": false,
+                "localUsage": {
+                    "timestamp": row.get::<_, String>(0)?, "model": row.get::<_, String>(1)?,
+                    "provider": row.get::<_, String>(2)?, "success": !failed,
+                    "latency_ms": row.get::<_, i64>(6)?, "ttft_ms": row.get::<_, Option<i64>>(7)?,
+                    "input_tokens": row.get::<_, i64>(8)?, "output_tokens": row.get::<_, i64>(9)?,
+                    "reasoning_tokens": row.get::<_, i64>(10)?, "error": row.get::<_, String>(11)?
+                }
+            }))
+        },
+    ).optional().map_err(|error| format!("Failed to read local health check: {error}"))?
+        .ok_or_else(|| "Local health check record was not found or has expired".to_string())
+}
+
+#[cfg(test)]
+mod local_health_detail_tests {
+    use super::*;
+
+    #[test]
+    fn reads_local_health_summary_and_distinguishes_missing_records() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE usage_events (request_id TEXT, executor_type TEXT, timestamp TEXT,
+            model TEXT, provider TEXT, endpoint TEXT, failed INTEGER, failure_status INTEGER, latency_ms INTEGER,
+            ttft_ms INTEGER, input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER, failure_body TEXT);
+            INSERT INTO usage_events VALUES ('desktop_health_check-test', 'DesktopProviderHealthCheck', 'now',
+            'combo:deepseek-flash', 'openai', 'POST /v1/chat/completions', 0, 0, 1739, 1620, 0, 0, 0, '');").unwrap();
+        let detail = local_health_request_detail_from(&db, "desktop_health_check-test").unwrap();
+        assert_eq!(detail["localUsage"]["latency_ms"], 1739);
+        assert_eq!(detail["localUsage"]["success"], true);
+        assert_eq!(detail["path"], "/v1/chat/completions");
+        assert!(detail["responseBody"].is_null());
+        assert!(local_health_request_detail_from(&db, "desktop_health_check-missing").is_err());
+    }
+}
+
 async fn wait_or_cancel(token: &CancellationToken, seconds: u64) {
     tokio::select! {
         _ = token.cancelled() => {},

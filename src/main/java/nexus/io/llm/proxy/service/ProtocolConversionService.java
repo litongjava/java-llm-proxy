@@ -14,6 +14,8 @@ public class ProtocolConversionService {
     if (from.equals(to)) { return body; }
     Kv canonical = canonicalRequest(body, from);
     canonical.set("model", model).set("stream", stream);
+    String effort = ReasoningEffortService.extract(body);
+    if (effort != null) { canonical.set("reasoning_effort", effort); }
     if ("openai".equals(to)) { return canonical; }
     List<Kv> messages = new ArrayList<>();
     List<Kv> system = new ArrayList<>();
@@ -74,6 +76,9 @@ public class ProtocolConversionService {
       }
     }
     Kv output = Kv.create().set("model", model).set("stream", stream);
+    if ("responses".equals(to) && effort != null) {
+      output.set("reasoning", Kv.create().set("effort", effort));
+    }
     for (String key : List.of("temperature", "top_p", "metadata")) { if (canonical.containsKey(key)) { output.set(key, canonical.get(key)); } }
     Object max = canonical.get("max_tokens");
     List<Kv> tools = new ArrayList<>();

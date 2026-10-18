@@ -165,6 +165,9 @@ pub(crate) async fn get_proxy_request_detail(
     request_id: String,
     format: bool,
 ) -> Result<serde_json::Value, String> {
+    if request_id.starts_with("desktop_health_check-") {
+        return super::usage::local_health_request_detail(&request_id);
+    }
     let config = gui_config_state.snapshot()?;
     let origin = core_origin(&config.host, config.port, current_core_tls_settings()?.enabled);
     let endpoint = if format { "format" } else { "detail" };

@@ -350,6 +350,8 @@ public class ProxyService {
     });
     String contentType = upstream.header("Content-Type", "application/json");
     if (contentType.contains("text/event-stream") && upstream.isSuccessful()) {
+      // Response headers and SSE keepalives are not generated model output.
+      record.firstByteMs = 0;
       record.stream = true;
       response.addServerSentEventsHeader();
       response.setSend(false);
@@ -426,6 +428,9 @@ public class ProxyService {
       while ((frame = frames.nextFrame()) != null) {
         byte[] chunk = hooks.streamChunk(streamHooks, frame, index++, record, headers, originalBody, upstreamBody, history);
         if (chunk.length == 0) { continue; }
+        if (record.firstByteMs == 0 && StreamOutputService.hasOutput(chunk)) {
+          record.firstByteMs = Math.max(1, System.currentTimeMillis() - record.timestamp);
+        }
         if (streamHooks.history()) {
           history.add(chunk);
           historyBytes += chunk.length;
