@@ -95,7 +95,7 @@ public class ProtocolConversionService {
         if (!blocks.isEmpty()) { messages.add(Kv.create().set("role", "assistant".equals(role) ? "model" : role).set("parts", blocks)); }
       } else if ("responses".equals(to)) {
         if ("tool".equals(role)) {
-          inputs.add(Kv.create().set("type", "function_call_output").set("call_id", message.get("tool_call_id")).set("output", message.get("content")));
+          inputs.add(Kv.create().set("type", "function_call_output").set("call_id", message.get("tool_call_id")).set("output", responsesToolOutput(message.get("content"))));
           continue;
         }
         List<Kv> blocks = new ArrayList<>();
@@ -314,6 +314,29 @@ public class ProtocolConversionService {
     return Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
         .set("output", converted.get("input")).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
             : Kv.create().set("input_tokens", in).set("output_tokens", out).set("total_tokens", in + out));
+  }
+
+  private Object responsesToolOutput(Object value) {
+    if (!(value instanceof List<?>)) { return value == null ? "" : value; }
+    List<Kv> output = new ArrayList<>();
+    for (Kv part : parts(value)) {
+      String type = part.getStr("type");
+      if (part.get("text") != null) {
+        output.add(Kv.create().set("type", "input_text").set("text", part.get("text")));
+      } else if ("image".equals(type)) {
+        Kv source = ProxyJson.object(part.get("source"));
+        String url = source.getStr("url");
+        if (url == null) { url = "data:" + source.getStr("media_type") + ";base64," + source.getStr("data"); }
+        output.add(Kv.create().set("type", "input_image").set("image_url", url));
+      } else if ("image_url".equals(type)) {
+        output.add(Kv.create().set("type", "input_image").set("image_url", imageUrl(part)));
+      } else if ("input_image".equals(type) || "input_file".equals(type)) {
+        output.add(Kv.create().set(part));
+      } else {
+        output.add(Kv.create().set("type", "input_text").set("text", JsonUtils.toJsonWithLongAsNumber(part)));
+      }
+    }
+    return output;
   }
 
   private List<Kv> parts(Object value) {
