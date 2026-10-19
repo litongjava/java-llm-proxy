@@ -20,7 +20,6 @@ import com.jfinal.kit.Kv;
 
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.CredentialInfo;
-import nexus.io.llm.proxy.model.UsageQuery;
 import nexus.io.llm.proxy.validation.ManagementParameterValidator;
 import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.environment.EnvUtils;
@@ -32,10 +31,7 @@ public class CredentialService {
     List<CredentialInfo> entries = list();
     StorageService storage = Aop.get(StorageService.class);
     for (CredentialInfo entry : entries) {
-      UsageQuery query = new UsageQuery();
-      query.provider = entry.name;
-      query.pageSize = 1;
-      Kv stats = ProxyJson.object(storage.usage(query).get("stats"));
+      Kv stats = storage.providerCounts(entry.name);
       long success = ProxyJson.number(stats, "success", 0);
       entry.success = BigInteger.valueOf(success);
       entry.failed = BigInteger.valueOf(ProxyJson.number(stats, "total", 0) - success);

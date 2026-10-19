@@ -240,7 +240,9 @@ public class ProxyService {
       NativePlugin executor = provider.upstreamType == null ? null : Aop.get(PluginService.class).provider(provider.upstreamType, true);
       ManagementHttpService transport = Aop.get(ManagementHttpService.class);
       String proxyUrl = ProxyJson.text(provider.metadata, "proxy_url", ProxyJson.text(provider.metadata, "proxy-url", transport.configuredProxy()));
-      OkHttpClient outbound = proxyUrl.isBlank() ? client : transport.client(proxyUrl, 0).newBuilder().readTimeout(0, TimeUnit.SECONDS).build();
+      OkHttpClient outbound = UpstreamLifecycle.client(
+          proxyUrl.isBlank() ? client : transport.client(proxyUrl, 0).newBuilder().readTimeout(0, TimeUnit.SECONDS).build(),
+          request.getChannelContext(), record.id);
       Response rawResponse = prepared.terminated() != null ? prepared.terminated() : Aop.get(RequestRetryService.class).execute(provider, () -> "devin".equals(provider.upstreamType)
           ? Aop.get(DevinTransportService.class).execute(outbound, signedRequest, selection.model(), record.stream) : executor == null ? UniChatClient.execute(outbound, signedRequest)
           : executor.execute(signedRequest, provider.metadata, selection.model(), upstreamProtocol, record.stream, executedPayload));
@@ -327,16 +329,16 @@ public class ProxyService {
     }
     catch (Exception error) {
       if (owned != null) { owned.close(); }
-      if (error instanceof IOException && route.executor() == null) {
+      if (error instanceof IOException && !UpstreamLifecycle.disconnected(request.getChannelContext()) && route.executor() == null) {
         Aop.get(RoutingService.class).result(provider, selection.model(), 502, null);
         if (retry.advance(provider, route.model(), protocol, route.provider(), session)) { throw new CredentialRetryState.NextCredential(); }
       }
       LOG.warn("Upstream connection failed for request {}", record.id, error);
-      record.status = 502;
-      record.error = "Upstream connection failed";
+      record.status = UpstreamLifecycle.disconnected(request.getChannelContext()) ? 499 : 502;
+      record.error = record.status == 499 ? "Client disconnected" : "Upstream connection failed";
       finish(record, provider, settings);
-      response.setStatus(502);
-      return response.respond(RespBodyVo.fail(502, record.error));
+      response.setStatus(record.status);
+      return response.respond(RespBodyVo.fail(record.status, record.error));
     }
     record.firstByteMs = System.currentTimeMillis() - record.timestamp;
     record.status = upstream.code();
@@ -452,8 +454,8 @@ public class ProxyService {
     } catch (Exception error) {
       LOG.warn("Stream interrupted for request {} (upstreamStatus={}, processedFrames={}, elapsedMs={})",
           record.id, upstream.code(), index, System.currentTimeMillis() - record.timestamp, error);
-      record.error = "Stream interrupted";
-      record.status = 502;
+      record.error = UpstreamLifecycle.disconnected(downstream) ? "Client disconnected" : "Stream interrupted";
+      record.status = UpstreamLifecycle.disconnected(downstream) ? 499 : 502;
     } finally {
       record.responseBody = settings.captureBodies ? capture.utf8() : null;
       finish(record, provider, settings);

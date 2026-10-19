@@ -114,7 +114,8 @@ public class NativeEndpointService {
     response.addHeader("x-request-id", record.id);
     boolean streaming = false;
     try {
-      Response received = UniChatClient.execute(transport.client(proxy, 0).newBuilder().readTimeout(0, TimeUnit.SECONDS).build(), upstream);
+      Response received = UniChatClient.execute(UpstreamLifecycle.client(
+          transport.client(proxy, 0).newBuilder().readTimeout(0, TimeUnit.SECONDS).build(), request.getChannelContext(), record.id), upstream);
       record.status = received.code(); record.firstByteMs = System.currentTimeMillis() - record.timestamp;
       record.upstreamResponseHeaders = HeaderService.redact(received.headers().toMultimap()); record.responseHeaders = record.upstreamResponseHeaders;
       response.setStatus(received.code());

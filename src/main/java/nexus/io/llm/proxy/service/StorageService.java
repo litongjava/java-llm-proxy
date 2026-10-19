@@ -59,6 +59,7 @@ public class StorageService {
               "CREATE INDEX IF NOT EXISTS requests_" + column + " ON requests(" + column + ", timestamp DESC)");
         }
         statement.execute("CREATE INDEX IF NOT EXISTS requests_time ON requests(timestamp DESC)");
+        statement.execute("CREATE INDEX IF NOT EXISTS requests_provider_time_status ON requests(provider,timestamp DESC,status)");
         statement.execute("CREATE TABLE IF NOT EXISTS usage_queue (id TEXT PRIMARY KEY)");
         statement.execute("""
             CREATE TABLE IF NOT EXISTS upstream_tasks (
@@ -147,6 +148,21 @@ public class StorageService {
       return buckets;
     } catch (Exception error) {
       throw new IllegalStateException("Cannot read recent request metrics", error);
+    }
+  }
+
+  public Kv providerCounts(String provider) {
+    try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement("""
+        SELECT count(*),coalesce(sum(CASE WHEN status>=200 AND status<400 THEN 1 ELSE 0 END),0)
+        FROM requests WHERE provider=?
+        """)) {
+      statement.setString(1, provider);
+      try (ResultSet result = statement.executeQuery()) {
+        result.next();
+        return Kv.create().set("total", result.getLong(1)).set("success", result.getLong(2));
+      }
+    } catch (Exception error) {
+      throw new IllegalStateException("Cannot read provider counts", error);
     }
   }
 

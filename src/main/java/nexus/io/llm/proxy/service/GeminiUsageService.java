@@ -2,7 +2,9 @@ package nexus.io.llm.proxy.service;
 
 import com.jfinal.kit.Kv;
 
-/** Normalizes Gemini counts without counting cached input as generated output. */
+/**
+ * Normalizes Gemini counts without counting cached input as generated output.
+ */
 public class GeminiUsageService {
   public Kv openAi(Kv metadata) {
     long input = Math.max(0, ProxyJson.number(metadata, "promptTokenCount", 0));
@@ -25,8 +27,9 @@ public class GeminiUsageService {
   }
 
   public Kv responses(Kv usage) {
-    return Kv.create().set("input_tokens", usage.get("prompt_tokens")).set("output_tokens", usage.get("completion_tokens"))
-        .set("total_tokens", usage.get("total_tokens")).set("input_tokens_details", usage.get("prompt_tokens_details"))
+    return Kv.create().set("input_tokens", usage.get("prompt_tokens"))
+        .set("output_tokens", usage.get("completion_tokens")).set("total_tokens", usage.get("total_tokens"))
+        .set("input_tokens_details", usage.get("prompt_tokens_details"))
         .set("output_tokens_details", usage.get("completion_tokens_details"));
   }
 }
