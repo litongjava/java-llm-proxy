@@ -55,12 +55,9 @@ public class OAuthTransportService {
         List<Object> sanitized = new ArrayList<>(input.size());
         for (Object item : input) {
           if (item instanceof Map<?, ?> entry && "reasoning".equals(entry.get("type"))) {
-            Kv copy = ProxyJson.object(entry);
-            copy.remove("content");
-            sanitized.add(copy);
-          } else {
-            sanitized.add(item);
+            continue;
           }
+          sanitized.add(item);
         }
         body.set("input", sanitized);
       }
