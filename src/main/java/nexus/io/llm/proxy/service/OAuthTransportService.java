@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.jfinal.kit.Kv;
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.Provider;
@@ -49,6 +51,19 @@ public class OAuthTransportService {
       body.set("stream", true).set("store", false);
       body.putIfAbsent("instructions", "");
       for (String field : List.of("previous_response_id", "generate", "prompt_cache_retention", "safety_identifier", "stream_options")) { body.remove(field); }
+      if ("gpt-6-astra".equals(model) && body.get("input") instanceof List<?> input) {
+        List<Object> sanitized = new ArrayList<>(input.size());
+        for (Object item : input) {
+          if (item instanceof Map<?, ?> entry && "reasoning".equals(entry.get("type"))) {
+            Kv copy = ProxyJson.object(entry);
+            copy.remove("content");
+            sanitized.add(copy);
+          } else {
+            sanitized.add(item);
+          }
+        }
+        body.set("input", sanitized);
+      }
     } else if ("antigravity".equals(provider.upstreamType)) {
       body.remove("model");
       body.remove("stream");
