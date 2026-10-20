@@ -9,7 +9,9 @@ public final class ReasoningEffortService {
   public static String extract(Kv payload) {
     Object nested = ProxyJson.object(payload.get("reasoning")).get("effort");
     String effort = nonBlank(nested);
-    return effort != null ? effort : nonBlank(payload.get("reasoning_effort"));
+    if (effort == null) { effort = nonBlank(payload.get("reasoning_effort")); }
+    if (effort == null) { effort = nonBlank(ProxyJson.object(payload.get("output_config")).get("effort")); }
+    return effort;
   }
 
   /** Usage shows an explicit upstream effort, or the client's requested effort when

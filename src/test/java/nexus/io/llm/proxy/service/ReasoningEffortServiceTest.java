@@ -8,6 +8,9 @@ public class ReasoningEffortServiceTest {
     assertEquals("medium", extract("{\"reasoning\":{\"effort\":\"medium\",\"context\":\"all_turns\"}}"));
     assertEquals("high", extract("{\"reasoning_effort\":\"high\"}"));
     assertEquals("none", extract("{\"reasoning\":{\"effort\":\"none\"}}"));
+    assertEquals("high", extract("{\"output_config\":{\"effort\":\"high\"}}"));
+    assertNull(extract("{\"output_config\":{\"effort\":\" \"}}"));
+    assertNull(extract("{\"output_config\":\"high\"}"));
     assertNull(extract("{}"));
     assertNull(extract("{\"reasoning\":null,\"reasoning_effort\":\" \"}"));
     assertNull(extract("{\"reasoning\":{\"effort\":42}}"));
