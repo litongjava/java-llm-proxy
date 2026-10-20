@@ -277,7 +277,7 @@ pub(crate) async fn put_management_oauth_model_aliases(
     read_management_value(response).await.map(|_| ())
 }
 
-pub(crate) const V8_PROVIDER_FAMILIES: [(&str, &str); 8] = [
+pub(crate) const V8_PROVIDER_FAMILIES: [(&str, &str); 9] = [
     ("gemini-api-key", "gemini"),
     ("interactions-api-key", "interactions"),
     ("vertex-api-key", "vertex"),
@@ -286,6 +286,7 @@ pub(crate) const V8_PROVIDER_FAMILIES: [(&str, &str); 8] = [
     ("xai-api-key", "xai"),
     ("meta-api-key", "meta"),
     ("openai-compatibility", "openai-compatibility"),
+    ("multi-protocol", "multi-protocol"),
 ];
 
 fn is_v8_shared_provider_field(field: &str) -> bool {
@@ -301,6 +302,8 @@ fn is_v8_shared_provider_field(field: &str) -> bool {
             | "request-retry"
             | "request-scoped-errors"
             | "base-url"
+            | "protocol-endpoints"
+            | "default-protocol"
     )
 }
 

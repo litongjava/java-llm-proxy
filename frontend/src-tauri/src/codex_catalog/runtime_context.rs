@@ -10,7 +10,11 @@ pub(crate) fn apply_configured_context_limits(
         .as_mapping()
         .ok_or("Kernel configuration root must be a YAML mapping")?;
     let mut limits: HashMap<String, u64> = HashMap::new();
-    for section in crate::MODEL_ALIAS_CONFIG_SECTIONS {
+    for section in crate::MODEL_ALIAS_CONFIG_SECTIONS
+        .iter()
+        .copied()
+        .chain(std::iter::once("multi-protocol"))
+    {
         let Some(providers) =
             crate::yaml_mapping_value(root, section).and_then(serde_norway::Value::as_sequence)
         else {
