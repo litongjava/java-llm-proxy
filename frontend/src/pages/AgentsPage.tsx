@@ -989,7 +989,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
         disableAutoCompact: Boolean(source.disableAutoCompact),
         manageDefaultModel: source.manageDefaultModel !== false,
         manageSubagentModel: source.manageSubagentModel !== false,
-        startupModel: source.startupModel?.trim() || 'opus',
+        startupModel: source.startupModel ?? 'opus',
         subagentModel: source.subagentModel ?? '',
       };
       return sameAgentModelMappings(currentClientDraft, next)

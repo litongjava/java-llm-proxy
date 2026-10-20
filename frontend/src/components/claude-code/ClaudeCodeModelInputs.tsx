@@ -26,7 +26,7 @@ export function ClaudeCodeModelInputs({ startupModel, subagentModel, models, rou
   return (
     <div className="claude-code-model-inputs">
       {(['startupModel', 'subagentModel'] as const).map((field) => {
-        const value = field === 'startupModel' ? startupModel || 'opus' : subagentModel;
+        const value = field === 'startupModel' ? startupModel : subagentModel;
         const preview = claudeCodeModelPreview(value, routes);
         return (
         <div className="claude-code-model-field" key={field}>
@@ -35,7 +35,7 @@ export function ClaudeCodeModelInputs({ startupModel, subagentModel, models, rou
           <AgentModelPicker
             models={options}
             value={value}
-            onChange={(value) => onChange(field, field === 'startupModel' ? value.trim() || 'opus' : value)}
+            onChange={(value) => onChange(field, value)}
             disabled={disabled}
             loading={loading}
             allowCustomValue
