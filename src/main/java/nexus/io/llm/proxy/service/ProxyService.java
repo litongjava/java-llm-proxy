@@ -115,7 +115,10 @@ public class ProxyService {
     PluginHookService.Route route = hooks.route(request, payload, protocol, routedModel, record.stream);
     SettingsService.Selection selection = retry.next != null ? retry.next : route.executor() == null ? settingsService.select(route.model(), protocol, route.provider(), null, session, Set.of(), retry.tool)
         : new SettingsService.Selection(route.executor(), route.model(), null);
-    Provider provider = Aop.get(DeepSeekTransportService.class).nativeProvider(selection.provider(), protocol, endpoint);
+    Provider selectedProvider = selection.provider();
+    Provider provider = selectedProvider.protocolEndpoints != null && !selectedProvider.protocolEndpoints.isEmpty()
+        ? Aop.get(MultiProtocolService.class).resolve(selectedProvider, protocol)
+        : Aop.get(DeepSeekTransportService.class).nativeProvider(selectedProvider, protocol, endpoint);
     record.provider = provider.name;
     record.model = selection.model();
     String upstreamProtocol = provider.protocol;

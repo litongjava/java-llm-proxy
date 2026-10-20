@@ -12,6 +12,7 @@ public class Provider {
   public String name;
   public String protocol = "openai";
   public String baseUrl;
+  public java.util.Map<String, String> protocolEndpoints = new java.util.LinkedHashMap<>();
   public String apiKey;
   public boolean enabled = true;
   public List<String> models = new ArrayList<>();

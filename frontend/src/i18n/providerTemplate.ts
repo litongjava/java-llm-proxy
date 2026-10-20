@@ -2,6 +2,11 @@ import { getCurrentLocale, type AppLocale } from './index';
 import { createTraditionalMessages } from './traditional';
 
 const messages = {
+  protocols: ['支持的协议', 'Supported protocols', '対応プロトコル'],
+  defaultProtocol: ['默认转换协议', 'Default conversion protocol', '既定の変換プロトコル'],
+  selectProtocol: ['请选择协议', 'Select a protocol', 'プロトコルを選択'],
+  protocolRequired: ['至少选择一种协议，并选择默认转换协议。', 'Select at least one protocol and a default conversion protocol.', 'プロトコルと既定の変換プロトコルを選択してください。'],
+  endpointRequired: ['请为每个已选协议填写有效的 HTTP(S) Base URL。', 'Enter a valid HTTP(S) Base URL for every selected protocol.', '各プロトコルに有効な HTTP(S) Base URL を入力してください。'],
   modelRules: ['模型规则', 'Model rules', 'モデルルール'],
   connectionRouting: ['连接与调度', 'Connection and routing', '接続とルーティング'],
   requestBehavior: ['请求行为', 'Request behavior', 'リクエスト動作'],

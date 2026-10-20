@@ -27,7 +27,7 @@ pub(crate) fn validate_api_access_provider_section(section: &str) -> Result<(), 
     if matches!(
         section,
         "gemini-api-key" | "interactions-api-key" | "vertex-api-key" | "codex-api-key"
-            | "claude-api-key" | "xai-api-key" | "meta-api-key" | "openai-compatibility"
+            | "claude-api-key" | "xai-api-key" | "meta-api-key" | "openai-compatibility" | "multi-protocol"
     ) {
         Ok(())
     } else {
@@ -49,6 +49,7 @@ pub(crate) fn usage_provider_section(provider: &str) -> Option<&'static str> {
         "vertex" | "vertex-ai" => Some("vertex-api-key"),
         "xai" | "grok" => Some("xai-api-key"),
         "meta" => Some("meta-api-key"),
+        "multi-protocol" => Some("multi-protocol"),
         "openai" | "openai-compatibility" => Some("openai-compatibility"),
         _ => None,
     }

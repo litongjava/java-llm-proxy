@@ -40,6 +40,7 @@ public final class ProxyParameterValidator {
   public static Provider provider(Provider input) {
     ParameterValidator.require(input != null, "Provider is required");
     input.name = ParameterValidator.text(input.name, "name", 120);
+    nexus.io.llm.proxy.service.MultiProtocolService.validate(input);
     input.baseUrl = ParameterValidator.text(input.baseUrl, "baseUrl", 2048);
     URI uri;
     try {

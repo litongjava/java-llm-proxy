@@ -29,6 +29,7 @@ const PROVIDER_SECTIONS = [
   'xai-api-key',
   'meta-api-key',
   'openai-compatibility',
+  'multi-protocol',
 ] as const;
 type ProviderSection = (typeof PROVIDER_SECTIONS)[number];
 const V8_PROVIDER_BY_SECTION = {
@@ -40,10 +41,12 @@ const V8_PROVIDER_BY_SECTION = {
   'xai-api-key': 'xai',
   'meta-api-key': 'meta',
   'openai-compatibility': 'openai-compatibility',
+  'multi-protocol': 'multi-protocol',
 } as const;
 const SHARED_PROVIDER_FIELDS = new Set([
   'priority', 'prefix', 'proxy-url', 'headers', 'models', 'excluded-models',
   'disable-cooling', 'request-retry', 'request-scoped-errors',
+  'protocol-endpoints', 'default-protocol',
 ]);
 
 const clone = <Value,>(value: Value): Value => structuredClone(value);
@@ -330,6 +333,7 @@ function createState(scenario: BrowserMockScenario) {
     'vertex-api-key': [],
     'xai-api-key': [],
     'meta-api-key': [],
+    'multi-protocol': [],
     'codex-api-key': [
       {
         name: 'Codex Direct',

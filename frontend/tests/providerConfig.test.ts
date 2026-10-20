@@ -289,6 +289,7 @@ describe('API 接入配置合并', () => {
       'vertex-api-key',
       'xai-api-key',
       'meta-api-key',
+      'multi-protocol',
     ]);
   });
 

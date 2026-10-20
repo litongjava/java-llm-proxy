@@ -1,4 +1,5 @@
 import { useConfirmation } from '../components/ConfirmationDialog';
+import { protocolLabels, protocolConfiguration, protocolEndpointPreview, type ProtocolDraft, type MultiProtocol } from '../services/multiProtocol';
 import { AdvancedSettingsGroup } from '../components/api-access/AdvancedSettingsGroup';
 import { FreeApiProviders } from '../components/api-access/FreeApiProviders';
 import { freeApiProviderText } from '../i18n/freeApiProviders';
@@ -107,6 +108,7 @@ export type ProviderSection =
   | 'meta-api-key'
   | 'codex-api-key'
   | 'claude-api-key'
+  | 'multi-protocol'
   | 'openai-compatibility';
 
 export type ProviderCategory = ProviderSection | 'deepseek';
@@ -231,7 +233,7 @@ type ProviderSaveResult =
 const requestErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-export type ProviderDraft = {
+export type ProviderDraft = ProtocolDraft & {
   weight?: string;
   templateFields?: Record<string, unknown>;
   groupKeys?: ProviderKeyDraft[];
@@ -283,6 +285,7 @@ const providerDefinitions: ProviderDefinition[] = [
   { id: 'vertex-api-key', section: 'vertex-api-key', responseKey: 'vertex-api-key', labelKey: 'apiAccess.provider.gemini', label: 'Vertex AI', icon: vertexIcon, openAi: false },
   { id: 'xai-api-key', section: 'xai-api-key', responseKey: 'xai-api-key', labelKey: 'apiAccess.provider.codex', label: 'xAI', icon: grokIcon, openAi: false },
   { id: 'meta-api-key', section: 'meta-api-key', responseKey: 'meta-api-key', labelKey: 'apiAccess.provider.codex', label: 'Meta', icon: metaIcon, openAi: false },
+  { id: 'multi-protocol', section: 'multi-protocol', responseKey: 'multi-protocol', labelKey: 'apiAccess.provider.codex', label: 'Multi-Protocol', icon: openaiIcon, openAi: false },
 ];
 
 const providerLabel = (definition: ProviderDefinition) => definition.label ?? translate(getCurrentLocale(), definition.labelKey);
@@ -320,6 +323,7 @@ const emptyRecords = (): Record<ProviderSection, Record<string, unknown>[]> => (
   'vertex-api-key': [],
   'xai-api-key': [],
   'meta-api-key': [],
+  'multi-protocol': [],
   'codex-api-key': [],
   'claude-api-key': [],
   'openai-compatibility': [],
@@ -442,6 +446,10 @@ const providerModelType = (
   section: ProviderSection,
   record?: Record<string, unknown>,
 ): ModelProvider => {
+  if (section === 'multi-protocol') {
+    const protocol = readString(record ?? {}, 'default-protocol');
+    return protocol === 'anthropic' ? 'claude' : protocol === 'responses' ? 'codex' : protocol === 'gemini' ? 'gemini' : 'openai';
+  }
   if (section === 'gemini-api-key') return 'gemini';
   if (section === 'interactions-api-key') return 'interactions';
   if (section === 'vertex-api-key') return 'vertex';
@@ -720,6 +728,10 @@ const draftFromRow = (row: ProviderRow): ProviderDraft => {
     remark: row.remark || (!Array.isArray(row.record.keys) && definition.openAi && !isDeepSeek ? row.name : ''),
     baseUrl: row.baseUrl,
     ...providerProxyDraftFromRecord(row.section, row.record),
+    ...(row.section === 'multi-protocol' ? {
+      protocolEndpoints: isRecord(row.record['protocol-endpoints']) ? { ...row.record['protocol-endpoints'] } as ProtocolDraft['protocolEndpoints'] : {},
+      defaultProtocol: readString(row.record, 'default-protocol'),
+    } : {}),
     priority: row.priority === null ? '' : String(row.priority),
     models: row.models,
     prefix: readString(row.record, 'prefix'),
@@ -777,6 +789,7 @@ const emptyProviderDraft = (): ProviderDraft => ({
 
 export const createProviderDraft = (category: ProviderCategory): ProviderDraft => {
   const draft = emptyProviderDraft();
+  if (category === 'multi-protocol') return { ...draft, protocolEndpoints: {}, defaultProtocol: '', groupKeys: [providerKeyDraft({ 'api-key': '' })] };
   if (category === 'openai-compatibility') return { ...draft, thinkingLevels: [], thinkingLevelsEdited: false };
   if (category !== 'deepseek') return draft;
   return {
@@ -971,6 +984,9 @@ export const buildProviderRecord = (
   }
   if (draft.baseUrl.trim()) next['base-url'] = draft.baseUrl.trim();
   else delete next['base-url'];
+  if (section === 'multi-protocol') {
+    Object.assign(next, protocolConfiguration(draft), { name: draft.name.trim() });
+  }
   if (draft.proxyUrl !== undefined && draft.proxyUrlEdited !== false) {
     const proxyUrl = draft.proxyUrl.trim();
     if (proxyUrl) next['proxy-url'] = proxyUrl;
@@ -1097,6 +1113,7 @@ export const buildProviderGroupRecord = (
     ];
     for (const [field, configField] of fields) {
       if (field === 'models' && draft.thinkingLevelsEdited) continue;
+      if (section === 'multi-protocol' && field === 'baseUrl') continue;
       if (field === 'excludedModelsText' && draft.modelSelectionCatalog) continue;
       if (JSON.stringify(draft[field]) !== JSON.stringify(baseline[field])) continue;
       if (Object.prototype.hasOwnProperty.call(current, configField)) next[configField] = structuredClone(current[configField]);
@@ -1406,13 +1423,13 @@ export function ApiAccessPage() {
     const parsedApiKeys = definition.openAi
       ? (preparedDraft.groupKeys ?? []).map(({ value }) => readString(value, 'api-key').trim())
       : parseProviderApiKeys(preparedDraft.apiKey);
-    if (definition.openAi && (!preparedDraft.name.trim() || preparedDraft.name.trim().length > 80 || /[\u0000-\u001f\u007f]/.test(preparedDraft.name))) {
+    if ((definition.openAi || activeSection === 'multi-protocol') && (!preparedDraft.name.trim() || preparedDraft.name.trim().length > 80 || /[\u0000-\u001f\u007f]/.test(preparedDraft.name))) {
       return { saved: false, target: 'form', error: t('apiAccess.entries.nameRequired') };
     }
     const invalidKey = validateProviderGroupKeys(preparedDraft.groupKeys ?? []);
     if (invalidKey) return { saved: false, target: 'form', error: t('apiAccess.groups.invalidKey', { field: invalidKey }) };
     if (
-      (!definition.openAi && parsedApiKeys.length !== 1)
+      (!definition.openAi && !preparedDraft.groupKeys && parsedApiKeys.length !== 1)
       || (baseUrlRequired && !preparedDraft.baseUrl.trim())
     ) {
       return {
@@ -1496,7 +1513,7 @@ export function ApiAccessPage() {
       let nextList: Record<string, unknown>[];
       const location = editingRow?.source ? locateProviderEntry(current, editingRow.source) : undefined;
       const currentRecord = editingRow?.record;
-      const savedRecord = definition.openAi
+      const savedRecord = definition.openAi || activeSection === 'multi-protocol'
         ? buildProviderGroupRecord(activeSection, draftToSave, currentRecord)
         : buildProviderKeyRecord(activeSection, draftToSave, currentRecord);
       const currentEntries = providerRowsFromGroups(activeSection, current);
@@ -1513,7 +1530,7 @@ export function ApiAccessPage() {
       await providerGroupsApi.put(activeSection, nextList.map(stripResponseFields));
       const detached = location && nextList.length > current.length;
       const savedGroupIndex = location ? location.groupIndex + (detached ? 1 : 0) : nextList.length - 1;
-      const savedKeyIndex = definition.openAi ? undefined : location && !detached ? location.keyIndex : 0;
+      const savedKeyIndex = definition.openAi || activeSection === 'multi-protocol' ? undefined : location && !detached ? location.keyIndex : 0;
       const savedRow = providerRowsFromGroups(activeSection, nextList).find((row) => row.source?.groupIndex === savedGroupIndex && row.source?.keyIndex === savedKeyIndex)!;
       await persistEntryRemarks(activeSection, current, nextList, { row: savedRow, remark: draftToSave.remark });
       setNotice(editingRow ? t('apiAccess.notice.updated') : t('apiAccess.notice.added'));
@@ -1641,7 +1658,7 @@ export function ApiAccessPage() {
           <div className="management-panel-heading">
             <div>
               <h2 title={providerLabel(activeDefinition)}>{providerLabel(activeDefinition)}</h2>
-              <span>{t(activeDefinition.openAi ? 'apiAccess.entries.summaryProviders' : 'apiAccess.entries.summaryKeys', { count: rows.length })}</span>
+              <span>{t(activeDefinition.openAi || activeSection === 'multi-protocol' ? 'apiAccess.entries.summaryProviders' : 'apiAccess.entries.summaryKeys', { count: rows.length })}</span>
             </div>
             <div className="management-toolbar compact-toolbar api-access-search">
               <Search size={16} aria-hidden="true" />
@@ -1700,6 +1717,10 @@ export function ApiAccessPage() {
                       {row.remark ? <span title={row.remark}>{row.remark}</span> : null}
                     </div>
                     <span className="provider-row-url" title={row.baseUrl || undefined}>{row.baseUrl || t('apiAccess.defaultUrl')}</span>
+                    {row.section === 'multi-protocol' && isRecord(row.record['protocol-endpoints']) ? <span className="provider-row-url">
+                      {Object.keys(row.record['protocol-endpoints']).map(protocol => protocolLabels[protocol as MultiProtocol] ?? protocol).join(' · ')}
+                      {' — '}{providerText('defaultProtocol')}: {protocolLabels[readString(row.record, 'default-protocol') as MultiProtocol]}
+                    </span> : null}
                     <div className="provider-row-meta">
                       <code title={t('apiAccess.keys.count', { count: row.apiKeys.length })}>
                         {row.apiKeys.length > 1
@@ -2176,7 +2197,7 @@ export function ApiProviderDialog({
     setModelLoading(true);
     setModelError('');
     try {
-      const provider: ModelProvider = activeCategory === 'deepseek' ? 'deepseek' : providerModelType(definition.section);
+      const provider: ModelProvider = activeCategory === 'deepseek' ? 'deepseek' : providerModelType(definition.section, { 'default-protocol': draft.defaultProtocol });
       const selectedKey = draft.groupKeys?.find((key) => key.id === discoveryKeyId) ?? draft.groupKeys?.[0];
       const connection = selectedKey ? providerDraftConnection(draft, selectedKey) : null;
       const modelApiKey = connection ? readString(connection, 'api-key') : draft.apiKey.split(/\r?\n/).map((value) => value.trim()).find(Boolean) ?? '';
@@ -2312,11 +2333,39 @@ export function ApiProviderDialog({
         <section className="provider-dialog-section">
         <h3>{t('apiAccess.entries.basic')} · {providerLabel(definition)}</h3>
         <div className="provider-dialog-basic-grid">
-        {definition.openAi ? <label><span>{t('apiAccess.entries.name')}</span><input autoFocus value={draft.name} maxLength={80} onChange={(event) => updateTextField('name', event.currentTarget.value)} placeholder={t('apiAccess.entries.namePlaceholder')} /></label> : null}
+        {definition.openAi || activeSection === 'multi-protocol' ? <label><span>{t('apiAccess.entries.name')}</span><input autoFocus value={draft.name} maxLength={80} onChange={(event) => updateTextField('name', event.currentTarget.value)} placeholder={t('apiAccess.entries.namePlaceholder')} /></label> : null}
         <label><span>{t('apiAccess.field.remark')}</span><input value={draft.remark} maxLength={80} onChange={(event) => updateTextField('remark', event.currentTarget.value)} placeholder={t('apiAccess.remarkPlaceholder')} /></label>
-        <label><span>{t('apiAccess.field.baseUrl')}</span><input value={draft.baseUrl} onChange={(event) => updateTextField('baseUrl', event.currentTarget.value)} placeholder={activeSection === 'codex-api-key' || activeSection === 'openai-compatibility' ? t('apiAccess.baseRequiredPlaceholder') : t('apiAccess.baseOptionalPlaceholder')} /></label>
+        {activeSection !== 'multi-protocol' ? <label><span>{t('apiAccess.field.baseUrl')}</span><input value={draft.baseUrl} onChange={(event) => updateTextField('baseUrl', event.currentTarget.value)} placeholder={activeSection === 'codex-api-key' || activeSection === 'openai-compatibility' ? t('apiAccess.baseRequiredPlaceholder') : t('apiAccess.baseOptionalPlaceholder')} /></label> : null}
         </div>
-        {!definition.openAi ? <div className="provider-dialog-secret">
+        {activeSection === 'multi-protocol' ? <fieldset className="multi-protocol-fields"><legend>{providerText('protocols')}</legend>
+          {(Object.entries(protocolLabels) as [MultiProtocol, string][]).map(([protocol, label]) => {
+            const selected = Object.prototype.hasOwnProperty.call(draft.protocolEndpoints ?? {}, protocol);
+            return <div key={protocol}>
+              <label><input type="checkbox" checked={selected} onChange={event => {
+                const checked = event.currentTarget.checked;
+                setDraft(current => {
+                  const endpoints = { ...current.protocolEndpoints };
+                  if (checked) endpoints[protocol] = ''; else delete endpoints[protocol];
+                  const defaultProtocol = checked && !Object.keys(current.protocolEndpoints ?? {}).length ? protocol
+                    : current.defaultProtocol === protocol && !checked ? '' : current.defaultProtocol;
+                  return { ...current, protocolEndpoints: endpoints, defaultProtocol, baseUrl: endpoints[defaultProtocol as MultiProtocol] ?? '' };
+                });
+              }} />{label}</label>
+              {selected ? <label><span>{label} Base URL</span><input value={draft.protocolEndpoints?.[protocol] ?? ''} onChange={event => {
+                const value = event.currentTarget.value;
+                setDraft(current => ({ ...current, protocolEndpoints: { ...current.protocolEndpoints, [protocol]: value },
+                  baseUrl: current.defaultProtocol === protocol ? value : current.baseUrl }));
+              }} /><small>{protocolEndpointPreview(protocol, draft.protocolEndpoints?.[protocol] ?? '')}</small></label> : null}
+            </div>;
+          })}
+          <label><span>{providerText('defaultProtocol')}</span><select value={draft.defaultProtocol ?? ''} onChange={event => {
+            const protocol = event.currentTarget.value;
+            setDraft(current => ({ ...current, defaultProtocol: protocol, baseUrl: current.protocolEndpoints?.[protocol as MultiProtocol] ?? '' }));
+          }}><option value="">{providerText('selectProtocol')}</option>
+            {Object.keys(draft.protocolEndpoints ?? {}).map(protocol => <option key={protocol} value={protocol}>{protocolLabels[protocol as MultiProtocol]}</option>)}
+          </select></label>
+        </fieldset> : null}
+        {!definition.openAi && !draft.groupKeys ? <div className="provider-dialog-secret">
           <label><span>{t('apiAccess.field.key')}</span><input autoFocus type={keyVisible ? 'text' : 'password'} autoComplete="off" spellCheck={false}
             value={draft.apiKey} onChange={(event) => updateTextField('apiKey', event.currentTarget.value)} placeholder="sk-..." /></label>
           <button type="button" className="secondary-button compact-button" aria-pressed={keyVisible} onClick={() => setKeyVisible((value) => !value)}>

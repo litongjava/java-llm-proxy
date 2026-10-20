@@ -180,6 +180,20 @@ public class DesktopConfigService {
   }
 
   private void write(Kv config) {
+    for (Object value : list(object(config.get("api-keys")).get("multi-protocol"))) {
+      Kv group = object(value);
+      List<?> keys = list(group.get("keys"));
+      if (keys.isEmpty()) { keys = List.of(Kv.create()); }
+      for (Object key : keys) {
+        Kv effective = Kv.create().set(group).set(object(key));
+        Provider provider = new Provider();
+        provider.upstreamType = "multi-protocol";
+        provider.protocol = effective.getStr("default-protocol");
+        object(effective.get("protocol-endpoints")).forEach((protocol, base) ->
+            provider.protocolEndpoints.put(protocol.toString(), base instanceof String text ? text : ""));
+        MultiProtocolService.validate(provider);
+      }
+    }
     try {
       Files.createDirectories(path().getParent());
       DumperOptions options = new DumperOptions();
@@ -258,6 +272,12 @@ public class DesktopConfigService {
             default -> "https://api.openai.com/v1";
             }).replaceAll("/+$", "");
             provider.apiKey = effective.getStr("api-key");
+            if ("multi-protocol".equals(section)) {
+              provider.protocol = effective.getStr("default-protocol");
+              object(effective.get("protocol-endpoints")).forEach((key, value) ->
+                  provider.protocolEndpoints.put(key.toString(), value instanceof String text ? text : ""));
+              MultiProtocolService.validate(provider);
+            }
             for (Provider existing : previous.providers) {
               if (Objects.equals(provider.name, existing.name) && Objects.equals(provider.baseUrl, existing.baseUrl)
                   && Objects.equals(provider.apiKey, existing.apiKey)

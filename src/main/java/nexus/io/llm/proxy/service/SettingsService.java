@@ -183,7 +183,7 @@ public class SettingsService {
         .toList();
     BusinessException.require(!candidates.isEmpty(), 503, "NO_PROVIDER",
         "No enabled provider for this model and protocol");
-    List<Provider> nativeCandidates = candidates.stream().filter(provider -> provider.protocol.equals(protocol))
+    List<Provider> nativeCandidates = candidates.stream().filter(provider -> MultiProtocolService.supports(provider, protocol))
         .toList();
     if (!nativeCandidates.isEmpty()) {
       candidates = nativeCandidates;

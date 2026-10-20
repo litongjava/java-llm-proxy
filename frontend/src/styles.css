@@ -12116,3 +12116,34 @@ body.table-col-resizing * {
   .codex-session-context-editor .context-editor-nav { flex-direction: column; align-items: flex-start; }
   .context-editor-actions, .codex-session-actions { width: 100%; justify-content: space-between; }
 }
+.multi-protocol-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border-color, #8884);
+  border-radius: 8px;
+}
+
+.multi-protocol-fields > div,
+.multi-protocol-fields label:has(input:not([type="checkbox"])),
+.multi-protocol-fields > label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.multi-protocol-fields label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.multi-protocol-fields input[type="checkbox"] {
+  width: auto;
+}
+
+.multi-protocol-fields small {
+  overflow-wrap: anywhere;
+}

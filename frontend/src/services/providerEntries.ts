@@ -30,7 +30,7 @@ const equal = (left: unknown, right: unknown): boolean => {
 export function providerEntries(section: string, groups: ProviderRecord[]): ProviderEntry[] {
   const snapshot = structuredClone(groups);
   return snapshot.flatMap((group, groupIndex) => {
-    if (section === 'openai-compatibility') {
+    if (section === 'openai-compatibility' || section === 'multi-protocol') {
       return [{ record: structuredClone(group), source: { groups: snapshot, groupIndex, group } }];
     }
     const { name: _name, keys: _keys, ...shared } = group;
@@ -83,7 +83,7 @@ const fragmentName = (group: ProviderRecord, names: Set<string>) => {
 
 export function appendProviderEntry(groups: ProviderRecord[], section: string, record: ProviderRecord): ProviderRecord[] {
   const next = cleanGroups(groups);
-  if (section === 'openai-compatibility') return [...next, structuredClone(cleanProviderGroup(record))];
+  if (section === 'openai-compatibility' || section === 'multi-protocol') return [...next, structuredClone(cleanProviderGroup(record))];
   const family = section.replace(/-api-key$/, '');
   const names = namesIn(next);
   let suffix = 1;
@@ -184,7 +184,7 @@ export function reorderProviderEntries(
   const to = locateProviderEntry(groups, target);
   const visible = visibleSources?.map((entry) => locateProviderEntry(groups, entry));
   const next = cleanGroups(groups);
-  if (section === 'openai-compatibility') {
+  if (section === 'openai-compatibility' || section === 'multi-protocol') {
     if (from.keyIndex !== undefined || to.keyIndex !== undefined || visible?.some((entry) => entry.keyIndex !== undefined)) throw staleEntry();
     moveInSlots(next, from.groupIndex, to.groupIndex, visible?.map((entry) => entry.groupIndex));
     return next;
