@@ -248,8 +248,18 @@ impl MockCore {
                 let mut parts = first.split_whitespace();
                 let method = parts.next().unwrap();
                 let path = parts.next().unwrap();
-                requests.push(format!("{method} {path}"));
                 let request_body = &bytes[header_end..header_end + content_length];
+                // The Java management adapter tunnels config mutations through POST.
+                // Normalize the transport envelope before exercising transaction semantics.
+                let envelope: serde_json::Value = serde_json::from_slice(request_body).unwrap_or_default();
+                let normalized_body;
+                let (method, request_body) = if method == "POST" {
+                    normalized_body = serde_json::to_vec(&envelope["value"]).unwrap();
+                    (envelope["operation"].as_str().expect("management operation"), normalized_body.as_slice())
+                } else {
+                    (method, request_body)
+                };
+                requests.push(format!("{method} {path}"));
                 let mut status = "200 OK";
                 let mut response = "{\"status\":\"ok\"}".to_string();
                 if method == "GET" {
@@ -288,6 +298,19 @@ impl MockCore {
                             .strip_prefix("/v8/management/config/")
                             .unwrap_or_else(|| panic!("unexpected management path: {path}"));
                         match (method, suffix) {
+                            ("PUT", scoped) if scoped.starts_with("tool-model-aliases/") => {
+                                let tool = scoped.strip_prefix("tool-model-aliases/").unwrap();
+                                if !persisted["tool-model-aliases"].is_object() {
+                                    persisted["tool-model-aliases"] = serde_json::json!({});
+                                }
+                                persisted["tool-model-aliases"][tool] = serde_json::from_slice(request_body).unwrap();
+                            }
+                            ("DELETE", scoped) if scoped.starts_with("tool-model-aliases/") => {
+                                if let Some(scopes) = persisted["tool-model-aliases"].as_object_mut() {
+                                    scopes.remove(scoped.strip_prefix("tool-model-aliases/").unwrap());
+                                    if scopes.is_empty() { persisted.as_object_mut().unwrap().remove("tool-model-aliases"); }
+                                }
+                            }
                             ("PUT", "requests/payload") => {
                                 persisted["payload"] =
                                     serde_json::from_slice(request_body).unwrap();
@@ -715,6 +738,7 @@ async fn desktop_backup_restore_updates_core_routes_and_mapping_metadata() {
         "model-a"
     );
     let (persisted, _) = core.finish();
+    let persisted = effective_desktop_view(persisted);
     assert_eq!(persisted, yaml_json(&fixture.core_a));
 }
 
@@ -756,6 +780,7 @@ async fn desktop_legacy_backup_restores_the_routes_referenced_by_its_profile() {
             assert_eq!(config_images(&paths).unwrap(), after);
             assert_eq!(current_desktop_mappings(&fixture.home).unwrap(), mappings);
             let (persisted, _) = core.finish();
+    let persisted = effective_desktop_view(persisted);
             let models = persisted["claude-api-key"][0]["models"].as_array().unwrap();
             for route in LEGACY_CLAUDE_DESKTOP_MODEL_IDS {
                 assert!(models.iter().any(|model| model["name"] == source
@@ -799,6 +824,7 @@ async fn desktop_backup_keeps_a_direct_legacy_id_alongside_a_new_family_route() 
     execute_restore_plan(&core.config, plan, &revision).await.unwrap();
     assert_eq!(config_images(&paths).unwrap(), after);
     let (persisted, _) = core.finish();
+    let persisted = effective_desktop_view(persisted);
     let models = persisted["openai-compatibility"][0]["models"].as_array().unwrap();
     assert!(models.iter().any(|model| model["name"] == direct && model.get("alias").is_none()));
     for (alias, source) in [(CLAUDE_DESKTOP_OPUS_MODEL_ID, "gpt-one"), (CLAUDE_DESKTOP_HAIKU_MODEL_ID, "gpt-two")] {
@@ -829,6 +855,7 @@ async fn desktop_custom_backup_restores_aliases_profile_and_mapping_metadata() {
     assert_eq!(profile["inferenceModels"][0]["name"], entries[0].alias);
     assert_eq!(profile["inferenceModels"][0]["labelOverride"], "model-a");
     let (persisted, _) = core.finish();
+    let persisted = effective_desktop_view(persisted);
     assert_eq!(persisted, yaml_json(&fixture.core_a));
 }
 
@@ -850,6 +877,7 @@ async fn desktop_direct_model_backup_restores_without_an_alias_route() {
     assert_eq!(profile["inferenceModels"][0]["name"], entry.model);
     assert_eq!(profile["inferenceModels"][0]["labelOverride"], entry.model);
     let (persisted, _) = core.finish();
+    let persisted = effective_desktop_view(persisted);
     assert_eq!(persisted, yaml_json(&fixture.core_a));
     assert!(!persisted.to_string().contains("\"alias\""));
 }
@@ -1040,4 +1068,16 @@ async fn alias_transaction_checks_core_before_a_local_only_commit() {
     result.unwrap();
     assert!(committed.load(Ordering::SeqCst));
     assert_eq!(core.finish().0, yaml_json(&current));
+}
+
+// Desktop routes are stored per tool by the Java backend; inspect that tool's
+// effective model view rather than expecting changes to global provider routes.
+fn effective_desktop_view(persisted: serde_json::Value) -> serde_json::Value {
+    let raw = serde_norway::to_string(&persisted).unwrap();
+    let mut view = yaml_json(&tool_alias_view(&raw, "claude-desktop").unwrap());
+    view.as_object_mut().unwrap().remove("tool-model-aliases");
+    for key in ["oauth-model-alias", "payload"] {
+        if view[key].is_null() { view.as_object_mut().unwrap().remove(key); }
+    }
+    view
 }

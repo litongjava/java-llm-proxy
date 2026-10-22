@@ -1,3 +1,4 @@
+import { pollWhileActive } from '../services/windowActivity';
 import { useMemo, useSyncExternalStore } from 'react';
 import { ChevronDown, CircleHelp, Clock3, Info, LoaderCircle, PauseCircle, RotateCcw, ShieldAlert } from 'lucide-react';
 import { useI18n } from '../i18n';
@@ -13,14 +14,14 @@ import {
 import './AuthFileHealthStatus.css';
 
 let clockNow = Date.now();
-let timer: ReturnType<typeof setInterval> | undefined;
+let stopClock: (() => void) | undefined;
 const listeners = new Set<() => void>();
 const getClockSnapshot = () => clockNow;
 const subscribeClock = (listener: () => void) => {
   listeners.add(listener);
-  if (!timer) {
+  if (!stopClock) {
     clockNow = Date.now();
-    timer = setInterval(() => {
+    stopClock = pollWhileActive(() => {
       clockNow = Date.now();
       listeners.forEach((notify) => notify());
     }, 1000);
@@ -28,8 +29,8 @@ const subscribeClock = (listener: () => void) => {
   return () => {
     listeners.delete(listener);
     if (!listeners.size) {
-      clearInterval(timer);
-      timer = undefined;
+      stopClock?.();
+      stopClock = undefined;
     }
   };
 };
@@ -149,7 +150,7 @@ function HealthStatus({ file, snapshot, nowMs, resetting = false, resetDisabled 
       </details> : <div className="auth-health-summary">{summary}</div>}
       {hasTimers && onReset ? <div className="auth-health-actions">
         <span className="auth-health-hint">{t('authFiles.cooldown.resetHint')}</span>
-        <button type="button" className="secondary-button compact-button auth-health-reset"
+        <button type="button" className="secondary-button small-button auth-health-reset"
           onClick={onReset} disabled={resetDisabled || resetting} aria-busy={resetting}
           title={t('authFiles.cooldown.resetHint')}>
           {resetting ? <LoaderCircle size={14} className="spin" aria-hidden="true" /> : <RotateCcw size={14} aria-hidden="true" />}

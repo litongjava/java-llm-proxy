@@ -1219,7 +1219,8 @@ pub(crate) fn is_managed_claude_model_alias(model: &serde_norway::Value, alias: 
     client_model.eq_ignore_ascii_case(alias)
         && display_name
             .as_deref()
-            .is_some_and(|value| value == expected_display_name)
+            .is_some_and(|value| value == expected_display_name
+                || value == expected_display_name.replace("LLMPoroxyUI", "EasyCLIProxyAPI"))
 }
 
 pub(crate) fn configured_managed_claude_alias_matches(

@@ -1,19 +1,10 @@
+import { pollWhileActive, windowActivity } from './services/windowActivity';
+import { onCoreStatusChanged } from './services/events';
+import { getCoreStatus } from './services/coreLifecycle';
+import type { CoreStatus } from './services/coreLifecycle';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 
-export type CoreStatus = {
-  installed: boolean;
-  running: boolean;
-  ready: boolean;
-  starting: boolean;
-  managed: boolean;
-  processId: number | null;
-  currentVersion: string | null;
-  installDir: string;
-  binaryPath: string | null;
-  message: string;
-};
+export type { CoreStatus } from './services/coreLifecycle';
 
 type CoreRuntimeContextValue = {
   status: CoreStatus | null;
@@ -41,7 +32,7 @@ export function CoreRuntimeProvider({ children }: { children: ReactNode }) {
   const refreshStatus = useCallback(() => {
     if (refreshRequest.current) return refreshRequest.current;
     const revision = statusRevision.current;
-    refreshRequest.current = invoke<CoreStatus>('get_core_status')
+    refreshRequest.current = getCoreStatus()
       .then((nextStatus) => {
         if (revision === statusRevision.current) publishStatus(nextStatus);
       })
@@ -58,8 +49,8 @@ export function CoreRuntimeProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
-    listen<CoreStatus>('core-status-changed', (event) => {
-      if (!disposed) {
+    onCoreStatusChanged((event) => {
+      if (!disposed && windowActivity.active()) {
         publishStatus(event.payload);
       }
     }).then((stop) => {
@@ -74,17 +65,12 @@ export function CoreRuntimeProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    void refreshStatus();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) {
-        void refreshStatus();
-      }
-    }, 10_000);
+    const stopPolling = pollWhileActive(() => { void refreshStatus(); }, 10_000);
 
     return () => {
       disposed = true;
       unlisten?.();
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [publishStatus, refreshStatus]);
 

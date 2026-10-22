@@ -11,6 +11,28 @@ import static org.junit.Assert.*;
 
 public class OAuthModelRoutingTest {
   @Test
+  public void credentialExclusionsOverrideGlobalAndEmptyListsInherit() throws Exception {
+    Path config = Files.createTempFile("oauth-exclusions", ".yaml");
+    String previous = EnvUtils.get("proxy.config");
+    try {
+      Files.writeString(config, "oauth:\n  excluded-models:\n    codex: ['global-*']\n");
+      EnvUtils.set("proxy.config", config.toString());
+      ModelCatalogService catalog = new ModelCatalogService();
+      Kv credential = Kv.create().set("type", "codex");
+      assertFalse(catalog.allowed(credential, "global-model"));
+      credential.set("excluded_models", List.of());
+      assertFalse(catalog.allowed(credential, "global-model"));
+      credential.set("excluded_models", List.of("private-*", 123));
+      assertTrue(catalog.allowed(credential, "global-model"));
+      assertFalse(catalog.allowed(credential, "private-model"));
+      assertTrue(catalog.allowed(credential, "123"));
+    } finally {
+      EnvUtils.set("proxy.config", previous);
+      Files.deleteIfExists(config);
+    }
+  }
+
+  @Test
   public void claudeUsesAntigravityAndCodexRetainsItsOwnModels() throws Exception {
     Path directory = Files.createTempDirectory("oauth-routing-test");
     Path config = directory.resolve("config.yaml");

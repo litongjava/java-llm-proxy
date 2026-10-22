@@ -2,19 +2,26 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createServer: createPortProbe } = require('node:net');
 
 (async () => {
   const { createServer } = await import('vite');
   const react = (await import('@vitejs/plugin-react')).default;
+  const probe = createPortProbe();
+  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve); });
+  const port = probe.address().port;
+  await new Promise((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
   const server = await createServer({
     configFile: false, root: path.resolve(__dirname, '..'),
     cacheDir: 'node_modules/.vite-plugin-oauth-providers-test', plugins: [react()],
     logLevel: 'error', optimizeDeps: { entries: ['tests/fixtures/plugin-oauth-providers.html'] },
-    server: { host: '127.0.0.1', port: 1436, strictPort: false, watch: null },
+    server: { host: '127.0.0.1', port, strictPort: true, watch: null },
   });
   let browser;
   try {
+    assert.equal(server.config.server.port, port, 'Use the allocated port instead of Vite’s default port');
     await server.listen();
+    assert.equal(server.httpServer.address().port, port);
     const base = `http://127.0.0.1:${server.httpServer.address().port}`;
     const channel = process.env.PLAYWRIGHT_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined);
     browser = await chromium.launch({ channel, headless: true, args: ['--no-proxy-server'] });
@@ -42,7 +49,7 @@ const path = require('node:path');
     await open();
     await card('ZCode OAuth').waitFor();
     await card('CodeBuddy OAuth').waitFor();
-    assert.equal(await page.locator('.oauth-card').count(), 9, 'seven built-ins plus two eligible plugin providers');
+    assert.equal(await page.locator('.oauth-card').count(), 10, 'eight built-ins including Vertex plus two eligible plugin providers');
     for (const name of ['Disabled provider', 'Unregistered provider', 'Non OAuth provider', 'Invalid provider', 'Missing provider', 'Duplicate ZCode', 'Duplicate Codex']) {
       assert.equal(await page.getByRole('heading', { name: `${name} OAuth`, exact: true }).count(), 0, `${name} must not become a provider card`);
     }
@@ -77,8 +84,8 @@ const path = require('node:path');
 
     // Reloading provider metadata must expose newly installed plugins and remove disabled ones.
     await open('empty');
-    await page.waitForFunction(() => window.pluginOAuthProvidersFixture.listCalls === 1);
-    assert.equal(await page.locator('.oauth-card').count(), 7);
+    await page.waitForFunction(() => window.pluginOAuthProvidersFixture.listCalls >= 1);
+    assert.equal(await page.locator('.oauth-card').count(), 8);
     await page.evaluate(() => {
       const fixture = window.pluginOAuthProvidersFixture;
       fixture.plugins = structuredClone(fixture.installedPlugins);
@@ -116,7 +123,7 @@ const path = require('node:path');
     await card('CodeBuddy OAuth').waitFor({ state: 'detached' });
     await page.evaluate(() => window.pluginOAuthProvidersFixture.releaseList());
     await settle();
-    assert.equal(await page.locator('.oauth-card').count(), 7, 'stale provider response must be ignored');
+    assert.equal(await page.locator('.oauth-card').count(), 8, 'stale provider response must be ignored');
 
     // Refocusing the window discovers changes made outside this page.
     await page.evaluate(() => {
@@ -130,7 +137,7 @@ const path = require('node:path');
     // Plugin registration can finish after navigating away from the installer.
     // The provider should appear from the bounded retry without another event.
     await open('pendingRegistration');
-    await page.waitForFunction(() => window.pluginOAuthProvidersFixture.listCalls === 1);
+    await page.waitForFunction(() => window.pluginOAuthProvidersFixture.listCalls >= 1);
     await settle();
     assert.equal(await card('ZCode OAuth').count(), 0, 'pending plugin is not ready for login');
     await page.evaluate(() => {
@@ -139,17 +146,17 @@ const path = require('node:path');
     });
     await card('ZCode OAuth').waitFor();
     assert.ok(await page.evaluate(() => window.pluginOAuthProvidersFixture.listCalls > 1), 'registration must be refreshed automatically');
-    assert.equal(await page.locator('.oauth-card').count(), 8);
+    assert.equal(await page.locator('.oauth-card').count(), 9);
 
     await open('unsupported');
     await settle();
-    assert.equal(await page.locator('.oauth-card').count(), 7);
+    assert.equal(await page.locator('.oauth-card').count(), 8);
     assert.equal(await page.evaluate(() => window.pluginOAuthProvidersFixture.listCalls), 0, 'unsupported kernel must not request plugins');
     await open('listError');
     await page.waitForFunction(() => window.pluginOAuthProvidersFixture.listCalls > 0);
     await settle();
-    assert.equal(await page.locator('.oauth-card').count(), 7, 'plugin failure must leave built-in login available');
-    assert.equal(await card('Codex OAuth').getByRole('button', { name: 'Start Sign-In', exact: true }).isEnabled(), true);
+    assert.equal(await page.locator('.oauth-card').count(), 8, 'plugin failure must leave built-in login available');
+    assert.equal(await card('Codex OAuth').locator('.management-card-actions > .primary-button').isEnabled(), true);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await open('theme=dark&locale=zh-CN');

@@ -162,6 +162,11 @@ public class CredentialService {
           Kv value = read(info.name);
           info.type = value.getStr("type");
           info.provider = info.type;
+          NativePlugin plugin = Aop.get(PluginService.class).provider(info.type, true);
+          if (plugin != null && plugin.supports("quota_provider")) {
+            info.supports_quota = true;
+            info.quota_plugin_id = plugin.id;
+          }
           info.email = value.getStr("email");
           info.note = value.getStr("note");
           info.prefix = value.getStr("prefix");
@@ -261,6 +266,15 @@ public class CredentialService {
         && value.getStr("coding_plan_key") != null && !value.getStr("coding_plan_key").isBlank()) {
       return value;
     }
+    if (force || ("vertex".equals(value.getStr("type")) && accessToken(value) == null)
+        || refreshDue(value, Instant.now())) {
+      value = Aop.get(OAuthService.class).refreshCredential(value);
+      save(name, value);
+    }
+    return value;
+  }
+
+  static boolean refreshDue(Kv value, Instant now) {
     String expiry = ProxyJson.text(value, "expired", ProxyJson.text(value, "expires_at", ""));
     long expiresAt = Long.MAX_VALUE;
     if (!expiry.isBlank()) {
@@ -274,12 +288,11 @@ public class CredentialService {
         }
       }
     }
-    if (force || ("vertex".equals(value.getStr("type")) && accessToken(value) == null)
-        || expiresAt < Instant.now().getEpochSecond() + 120) {
-      value = Aop.get(OAuthService.class).refreshCredential(value);
-      save(name, value);
-    }
-    return value;
+    // Codex refresh tokens permit proactive renewal; imported access-only tokens
+    // retain the normal expiry window instead of triggering an impossible refresh.
+    long lead = "codex".equals(value.getStr("type")) && value.getStr("refresh_token") != null
+        && !value.getStr("refresh_token").isBlank() ? 96 * 60 * 60 : 120;
+    return expiresAt < now.getEpochSecond() + lead;
   }
 
   public String accessToken(Kv credential) {

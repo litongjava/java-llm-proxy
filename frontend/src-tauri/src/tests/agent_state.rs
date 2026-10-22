@@ -737,7 +737,7 @@ fn version_three_cleanup_covers_every_non_desktop_agent_format() {
         &claude_path,
         r#"{
   "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8317",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8318",
     "ANTHROPIC_API_KEY": "secret",
     "ANTHROPIC_AUTH_TOKEN": "secret",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
@@ -781,7 +781,7 @@ model_catalog_json = "cpa-gui-model-catalog.json"
 
 [model_providers.cpa-gui]
 name = "EasyCLIProxyAPI"
-base_url = "http://127.0.0.1:8317/v1"
+base_url = "http://127.0.0.1:8318/v1"
 
 [model_providers.other]
 name = "Other"
@@ -804,7 +804,7 @@ name = "Other"
     assert!(codex.get("model").is_none());
     assert_eq!(
         codex["model_providers"][MANAGED_AGENT_PROVIDER_ID]["base_url"].as_str(),
-        Some("http://127.0.0.1:8317/v1")
+        Some("http://127.0.0.1:8318/v1")
     );
     assert_eq!(
         codex["model_providers"]["other"]["name"].as_str(),
@@ -821,7 +821,7 @@ name = "Other"
   models: {
     mode: "merge",
     providers: {
-      "cpa-gui": {baseUrl: "http://127.0.0.1:8317/v1"},
+      "cpa-gui": {baseUrl: "http://127.0.0.1:8318/v1"},
       other: {keep: true}
     }
   },
@@ -872,7 +872,7 @@ custom_providers:
   - name: other
     keep: true
   - name: cpa-gui
-    base_url: http://127.0.0.1:8317/v1
+    base_url: http://127.0.0.1:8318/v1
 model:
   default: gpt-test
   provider: cpa-gui

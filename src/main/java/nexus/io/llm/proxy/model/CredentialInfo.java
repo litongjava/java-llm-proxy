@@ -15,6 +15,8 @@ public class CredentialInfo {
   public String email;
   public String note;
   public String prefix;
+  public boolean supports_quota;
+  public String quota_plugin_id;
   public String status;
   public String status_message;
   public String source = "file";

@@ -2250,7 +2250,7 @@ fn claude_desktop_aliases_expose_role_routes_only() {
     assert!(rendered.contains("\n      - name: gpt-5.6-sol\n"));
     assert!(rendered.contains(&format!("\n        alias: {CLAUDE_DESKTOP_OPUS_MODEL_ID}\n")));
     assert!(
-        rendered.contains("\n        display-name: EasyCLIProxyAPI managed Claude Opus mapping\n")
+        rendered.contains(&format!("\n        display-name: {MANAGED_CLAUDE_OPUS_ALIAS_DISPLAY_NAME}\n"))
     );
     assert_eq!(
         ensure_claude_desktop_model_aliases_in_yaml(&rendered, &mappings, &available_models,)

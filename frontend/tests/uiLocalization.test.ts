@@ -7,6 +7,8 @@ import ts from 'typescript';
 const sourceRoot = fileURLToPath(new URL('../src/', import.meta.url));
 const technicalText = new Set([
   'EasyCLIProxyAPI',
+  'LLM Poroxy UI', // Local product and protocol identifiers are not translated.
+  'API', 'Base URL', 'Originator', 'Session ID', 'Thread ID', 'GitHub Copilot Chat ·',
   'WebSocket',
   'Fast',
   'HTTP',
@@ -21,6 +23,7 @@ const technicalText = new Set([
 const technicalPlaceholders = new Set([
   '1h',
   'sk-...',
+  'http://127.0.0.1:1455/auth/callback?code=...&state=...',
   'gpt-5.6-terra',
   'https://...',
   'socks5://127.0.0.1:1080',

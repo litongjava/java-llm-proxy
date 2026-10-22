@@ -518,6 +518,8 @@ pub(crate) fn inspect_pi_provider_status_with_executable(
         current_model: current_model.clone(),
         oauth_configuration: false,
         codex_native_oauth: false,
+        codex_openai_provider: false,
+        codex_remote_compaction: false,
         modification_enabled: configured,
         modification_state: modification_state.to_string(),
         backup_available: false,
@@ -1123,11 +1125,6 @@ pub(crate) fn inspect_agent_config_with_executables(
         copilot_cli.map(|(_, version)| version)
     } else if client == AgentClient::VscodeCopilot {
         None
-    } else if client == AgentClient::ZCode {
-        find_named_agent_executable(home, &["zcode"])
-            .filter(|path| executable.as_ref() != Some(path))
-            .as_deref()
-            .and_then(|path| read_agent_version(path, home))
     } else if should_probe_primary_agent_executable_version(client) {
         executable
             .as_deref()
@@ -1149,7 +1146,7 @@ pub(crate) fn inspect_agent_config_with_executables(
             .or_else(|| find_deepseek_harness_desktop_application(home)))
         .flatten();
     let app_version = match client {
-        AgentClient::VscodeCopilot => executable.as_deref().and_then(|path| read_agent_version(path, home)),
+        AgentClient::VscodeCopilot => executable.as_deref().and_then(|path| read_vscode_version(path, home)),
         AgentClient::ClaudeDesktop => read_claude_desktop_version(home),
         AgentClient::Codex => codex_app_installation
             .as_ref()
@@ -1224,6 +1221,10 @@ pub(crate) fn inspect_agent_config_with_executables(
         oauth_configuration,
         codex_native_oauth: client == AgentClient::Codex
             && codex_native_oauth_enabled(home).unwrap_or(false),
+        codex_openai_provider: client == AgentClient::Codex
+            && codex_openai_proxy_enabled(home).unwrap_or(false),
+        codex_remote_compaction: client == AgentClient::Codex
+            && codex_remote_compaction_enabled(home).unwrap_or(false),
         modification_enabled: configured,
         modification_state: if !config_valid {
             "invalid"
@@ -1261,6 +1262,8 @@ pub(crate) fn agent_installation_detected(
 }
 
 pub(crate) fn should_probe_primary_agent_executable_version(client: AgentClient) -> bool {
+    // Desktop apps must use metadata only. A PATH entry (including a differently
+    // cased path or a wrapper) is not proof of a separate, safe CLI entry point.
     !matches!(client, AgentClient::ClaudeDesktop | AgentClient::ZCode | AgentClient::WorkBuddy)
 }
 
@@ -1599,7 +1602,7 @@ pub(crate) fn agent_has_managed_marker(
             )
             .map_err(|error| format!("Failed to parse Codex configuration: {error}"))?;
             Ok(root.get("model_provider").and_then(toml::Value::as_str)
-                == Some(MANAGED_AGENT_PROVIDER_ID))
+                == Some(codex_managed_provider_id(&root)))
         }
         AgentClient::OpenCode => {
             if !paths[0].is_file() {
@@ -2602,6 +2605,9 @@ pub(crate) fn find_agent_executable(client: AgentClient, home: &Path) -> Option<
     if client == AgentClient::OpenCode {
         return find_opencode_executable(home);
     }
+    if client == AgentClient::DeepSeekHarness {
+        return find_deepseek_harness_executable(home);
+    }
     find_named_agent_executable(home, client.executable_names())
 }
 
@@ -2626,6 +2632,41 @@ pub(crate) fn find_opencode_managed_executable(home: &Path) -> Option<PathBuf> {
     {
         find_named_agent_executable_in_directories(&[home.join(".opencode/bin")], &["opencode"])
     }
+}
+
+pub(crate) fn find_deepseek_harness_executable(home: &Path) -> Option<PathBuf> {
+    find_named_agent_executable(home, &["dsh"])
+        .or_else(|| find_deepseek_harness_managed_executable(home))
+}
+
+pub(crate) fn find_deepseek_harness_managed_executable(home: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        let roots = [home.join("Applications"), PathBuf::from("/Applications")];
+        find_deepseek_harness_managed_executable_in_roots(home, &roots)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let dsh_home = deepseek_harness_home(home);
+        find_named_agent_executable_in_directories(&[dsh_home.join("bin"), home.join(".dsh/bin")], &["dsh"])
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn find_deepseek_harness_managed_executable_in_roots(
+    home: &Path,
+    app_roots: &[PathBuf],
+) -> Option<PathBuf> {
+    let dsh_home_bin = deepseek_harness_home(home).join("bin/dsh");
+    let mut candidates = vec![dsh_home_bin, home.join(".dsh/bin/dsh")];
+    candidates.extend(
+        app_roots
+            .iter()
+            .map(|root| root.join("DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh")),
+    );
+    candidates
+        .into_iter()
+        .find(|path| agent_cli_executable(path))
 }
 
 pub(crate) fn find_kimi_code_executable(home: &Path) -> Option<PathBuf> {
@@ -3463,6 +3504,18 @@ pub(crate) fn read_agent_json5_or_empty(
     Ok(value)
 }
 
+fn codex_managed_provider_id(root: &toml::Value) -> &'static str {
+    if root.get("model_provider").and_then(toml::Value::as_str) == Some("openai")
+        && root.get("model_providers").and_then(|p| p.get(MANAGED_AGENT_PROVIDER_ID))
+            .is_some_and(|p| p.get("name").and_then(toml::Value::as_str).is_some_and(is_codex_managed_provider_name)
+                && root.get("openai_base_url").and_then(toml::Value::as_str)
+                    .is_some_and(|base| p.get("base_url").and_then(toml::Value::as_str) == Some(base))) {
+        "openai"
+    } else {
+        MANAGED_AGENT_PROVIDER_ID
+    }
+}
+
 pub(crate) fn inspect_codex_agent_config(
     path: &Path,
     port: u16,
@@ -3480,6 +3533,7 @@ fn inspect_codex_agent_config_for_tool(path: &Path, port: u16, api_key: &str, to
     )
     .map_err(|error| format!("Failed to parse Codex configuration: {error}"))?;
     let expected_base = format!("{}/v1", managed_core_loopback_origin(port));
+    let provider_id = codex_managed_provider_id(&root);
     let provider = root
         .get("model_providers")
         .and_then(toml::Value::as_table)
@@ -3500,13 +3554,13 @@ fn inspect_codex_agent_config_for_tool(path: &Path, port: u16, api_key: &str, to
         codex_auth_file_has_api_key(&auth_path, api_key)
     };
     let configured_without_auth = root.get("model_provider").and_then(toml::Value::as_str)
-        == Some(MANAGED_AGENT_PROVIDER_ID)
+        == Some(provider_id)
         && root.get("model_catalog_json").and_then(toml::Value::as_str)
             == Some(CODEX_MODEL_CATALOG_FILE)
         && provider
             .and_then(|provider| provider.get("name"))
             .and_then(toml::Value::as_str)
-            == Some("EasyCLIProxyAPI")
+            .is_some_and(is_codex_managed_provider_name)
         && provider
             .and_then(|provider| provider.get("base_url"))
             .and_then(toml::Value::as_str).is_some_and(|url| tool_base_url_matches(url, &expected_base, tool))

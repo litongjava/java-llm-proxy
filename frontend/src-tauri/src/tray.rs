@@ -25,11 +25,11 @@ pub(crate) fn set_macos_dock_visible(app_handle: &tauri::AppHandle, visible: boo
 
 #[cfg(target_os = "macos")]
 pub(crate) fn show_main_window_on_main_thread(app_handle: &tauri::AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
+    let Some(window) = app_handle.get_window("main") else {
         return;
     };
     set_macos_dock_visible(app_handle, true);
-    if let Err(error) = window.show() {
+    if let Err(error) = crate::window_activity::show(&window) {
         eprintln!("Failed to show the main window: {error}");
         set_macos_dock_visible(app_handle, false);
         return;
@@ -400,10 +400,10 @@ impl WindowsTrayState {
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) fn show_windows_main_window(app_handle: &tauri::AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
+    let Some(window) = app_handle.get_window("main") else {
         return;
     };
-    if let Err(error) = window.show() {
+    if let Err(error) = crate::window_activity::show(&window) {
         eprintln!("Failed to show the main window: {error}");
         return;
     }

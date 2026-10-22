@@ -1,18 +1,38 @@
+import { Notice } from '../components/Notice';
+import { EmptyState } from '../components/EmptyState';
+import { Tabs } from '../components/Tabs';
+import { Switch } from '../components/Switch';
+import { open } from '../services/platform';
+import { restartCoreProcess } from '../services/coreLifecycle';
+import { openExternalUrl } from '../services/appSettings';
+import { openCoreLogsDirectory } from '../services/coreSettings';
+import {
+  getPluginSupport,
+  installLocalPlugin,
+  pluginsApi,
+  pluginStoreApi,
+  type PluginListEntry,
+  type PluginListResponse,
+  type PluginStoreEntry,
+  type PluginStoreResponse,
+} from '../services/plugins';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { ArrowLeft, Download, ExternalLink, Folder, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
+import { Download, ExternalLink, Folder, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { pluginText } from '../i18n/plugins';
 import { FloatingNotice, useAppNotice } from '../appNotice';
 import { useConfirmation } from '../components/ConfirmationDialog';
-import { pluginsApi, pluginStoreApi, type PluginListEntry, type PluginListResponse, type PluginStoreEntry, type PluginStoreResponse } from '../services/plugins';
-import { collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
+import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isDefaultPluginStoreSource, getPluginRepositorySlug, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
 import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
+import { refreshPluginReleaseVersions } from '../services/pluginReleaseVersions';
+import { waitForPluginInstall, waitForPluginToggle, type PluginActionStatus } from '../services/pluginPolling';
+import type { PluginStoreInstallResult } from '../services/plugins';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
 import { PluginOAuthDialog } from './PluginOAuthDialog';
 import { GitHubTokenHint, isGitHubRateLimit } from './PluginRateLimitHint';
 import { PluginSettingsPanel } from './PluginSettingsPanel';
+import { Select } from '../components/Select';
 import './PluginsPage.css';
 
 type Tab = 'installed' | 'store' | 'settings';
@@ -25,6 +45,7 @@ export function PluginsPage() {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [data, setData] = useState<PluginListResponse | null>(null);
   const [store, setStore] = useState<PluginStoreResponse | null>(null);
+  const [localUpdates, setLocalUpdates] = useState<PluginStoreResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -35,7 +56,6 @@ export function PluginsPage() {
   const [installEntry, setInstallEntry] = useState<PluginStoreEntry | null>(null);
   const [oauthPlugin, setOAuthPlugin] = useState<PluginListEntry | null>(null);
   const [restartRequired, setRestartRequired] = useState(false);
-  const [resource, setResource] = useState<{ entry: PluginResourceEntry; url: string } | null>(null);
   const requests = useRef(0);
   const mounted = useRef(false);
   const pending = useRef(false);
@@ -45,22 +65,30 @@ export function PluginsPage() {
   const { askConfirmation, confirmationDialog } = useConfirmation();
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++requests.current; }; }, []);
-  const load = useCallback(async (target: Tab = tabRef.current) => {
+  const load = useCallback(async (target: Tab = tabRef.current, refreshVersions = false) => {
     const revision = ++requests.current;
     setLoading(true); setError('');
+    if (target === 'installed') setLocalUpdates(null);
     try {
-      const support = await invoke<boolean>('get_plugin_support');
+      const support = await getPluginSupport();
       if (!mounted.current || revision !== requests.current) return;
       setSupported(support);
-      if (!support) { setData(null); setStore(null); setResource(null); return; }
+      if (!support) { setData(null); setStore(null); setLocalUpdates(null); return; }
       const next = await pluginsApi.list();
       if (!mounted.current || revision !== requests.current) return;
       setData(next);
       notifyPluginResourcesChanged();
-      setResource(previous => previous && collectPluginResourceEntries(next.plugins).some(entry => entry.pluginID === previous.entry.pluginID && entry.menuIndex === previous.entry.menuIndex && entry.menu.path === previous.entry.menu.path) ? previous : null);
       if (target === 'store') {
         const nextStore = await pluginStoreApi.list();
         if (mounted.current && revision === requests.current) setStore(nextStore);
+      } else if (target === 'installed' && refreshVersions) {
+        const nextStore = await pluginStoreApi.list();
+        if (!mounted.current || revision !== requests.current) return;
+        const installedIDs = new Set(next.plugins.filter(isPluginInstalled).map(plugin => plugin.id));
+        const updates = await refreshPluginReleaseVersions({ ...nextStore, plugins: nextStore.plugins.filter(entry =>
+          installedIDs.has(entry.id) && entry.installed && ['matched', 'assumed'].includes(entry.installSourceStatus),
+        ) });
+        if (mounted.current && revision === requests.current) setLocalUpdates(updates);
       }
     } catch (reason) { if (mounted.current && revision === requests.current) setError(message(reason)); }
     finally { if (mounted.current && revision === requests.current) setLoading(false); }
@@ -73,7 +101,7 @@ export function PluginsPage() {
     ? data.plugins.filter(plugin => plugin.path && plugin.enabled && !plugin.effectiveEnabled).map(plugin => plugin.id).sort().join('|')
     : '';
   useEffect(() => {
-    if (!pendingPlugins || busy || loading || restartRequired) return;
+    if (!pendingPlugins || busy || loading || restartRequired || installEntry) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let attempts = 0;
@@ -89,7 +117,7 @@ export function PluginsPage() {
     };
     timer = setTimeout(() => void poll(), 1500);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [pendingPlugins, busy, loading, restartRequired]);
+  }, [pendingPlugins, busy, loading, restartRequired, installEntry]);
 
   const mutate = async (operation: () => Promise<unknown>, success: string) => {
     if (pending.current) return;
@@ -103,6 +131,38 @@ export function PluginsPage() {
     } catch (reason) { if (mounted.current) setError(message(reason)); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
+  const reportStatus = (status: PluginActionStatus, success: string) => {
+    if (!mounted.current || status === 'cancelled') return;
+    notice.showNotice(status === 'ready' ? success : pt(status === 'restart' ? 'restart' : status === 'globalDisabled' ? 'disabledHint' : 'runtimePending'), status === 'ready' ? 'success' : 'info');
+  };
+  const toggle = async (plugin: PluginListEntry) => {
+    if (pending.current) return;
+    pending.current = true; setBusy(true); setError('');
+    ++requests.current;
+    let written = false;
+    try {
+      await pluginsApi.updateEnabled(plugin.id, !plugin.enabled);
+      written = true;
+      const status = await waitForPluginToggle(plugin.id, !plugin.enabled, () => !mounted.current);
+      reportStatus(status, pt('runtimeReady'));
+      if (mounted.current) await load();
+    } catch (reason) {
+      if (mounted.current) setError(`${written ? pt('refreshFailed') + ' ' : ''}${message(reason)}`);
+    } finally { pending.current = false; if (mounted.current) setBusy(false); }
+  };
+  const installed = async (result: PluginStoreInstallResult) => {
+    ++requests.current;
+    setRestartRequired(previous => previous || result.restartRequired);
+    try {
+      reportStatus(await waitForPluginInstall(result, () => !mounted.current), pt('installedSuccess'));
+    } catch (reason) {
+      // Installation already succeeded. A failed status read must never invite a duplicate install.
+      if (mounted.current) notice.showNotice(`${pt('refreshFailed')} ${message(reason)}`, 'info');
+    } finally {
+      if (mounted.current) { setInstallEntry(null); notifyPluginResourcesChanged(); }
+    }
+    if (mounted.current) await load();
+  };
   const remove = async (plugin: PluginListEntry) => {
     const installed = isPluginInstalled(plugin);
     const label = pt(installed ? 'remove' : 'removeConfig');
@@ -113,78 +173,96 @@ export function PluginsPage() {
       if (mounted.current && result.restartRequired) setRestartRequired(true);
     }, pt(installed ? 'removed' : 'removedConfig'));
   };
-  const openResource = async (entry: PluginResourceEntry) => {
+  const installLocal = async () => {
     if (pending.current) return;
-    pending.current = true; setBusy(true); setError('');
+    pending.current = true; setBusy(true);
     try {
-      const url = await invoke<string>('get_plugin_resource_url', { pluginId: entry.pluginID, menuIndex: entry.menuIndex });
-      if (mounted.current) setResource({ entry, url });
+      const selected = await open({ directory: false, title: pt('localInstall'), filters: [{ name: pt('localBinary'), extensions: ['dll', 'so', 'dylib'] }] });
+      if (!selected || !mounted.current) return;
+      const filename = selected.split(/[\\/]/).pop() || selected;
+      if (!await askConfirmation({ title: pt('localInstall'), message: `${filename}\n\n${pt('localTrust')}`, confirmText: pt('install') }) || !mounted.current) return;
+      const path = await installLocalPlugin(selected);
+      if (!mounted.current) return;
+      setRestartRequired(true);
+      setSearch(''); setFilter('all'); setTab('installed');
+      notice.showNotice(`${pt('localInstalled')} ${path}`, 'info');
+      notifyPluginResourcesChanged();
+      await load('installed');
     } catch (reason) { if (mounted.current) setError(message(reason)); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
+  const openResource = (entry: PluginResourceEntry) => window.dispatchEvent(new CustomEvent('app:navigate', { detail: buildPluginResourceRoute(entry.pluginID, entry.menuIndex) }));
   const matches = (values: (string | undefined)[]) => values.join(' ').toLowerCase().includes(search.trim().toLowerCase());
   const plugins = (data?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.metadata?.name, plugin.metadata?.author]));
   const storePlugins = (store?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.name, plugin.description, plugin.author, ...plugin.tags]) && (filter === 'all' || (filter === 'installed' && plugin.installed) || (filter === 'updates' && plugin.updateAvailable)));
-  const installedCount = data?.plugins.filter(isPluginInstalled).length ?? 0;
-  const configOnlyCount = data?.plugins.filter(plugin => plugin.configured && !isPluginInstalled(plugin)).length ?? 0;
+  const sourceErrors = (tab === 'installed' ? localUpdates : store)?.sourceErrors ?? [];
   const locked = busy || loading || Boolean(configPlugin || installEntry || oauthPlugin);
 
-  return <div className="plugins-page">
-    <header className="plugins-heading"><div><h1>{pt('title')}</h1><p>{pt('description')}</p></div><button className="secondary-button" disabled={locked} onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button></header>
-    {error && <div className="plugin-error plugin-banner" role="alert"><span>{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</span><button className="secondary-button" disabled={busy || loading} onClick={() => void load()}>{pt('retry')}</button></div>}
-    {supported === false ? <section className="plugin-empty"><Puzzle size={36} /><p>{pt('unsupported')}</p></section> : supported === null ? <section className="plugin-empty" role="status">{loading ? t('common.loading') : pt('retry')}</section> : <>
-      <div className="plugin-summary"><label className="plugin-global-toggle"><input type="checkbox" checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label><span><Folder size={15} aria-hidden="true" />{data?.pluginsDir || pt('directory')}</span><span>{pt('installed')} <strong>{installedCount}</strong>{configOnlyCount > 0 && <> · {pt('configOnly')} <strong>{configOnlyCount}</strong></>}</span></div>
-      {data && !data.pluginsEnabled && <p className="plugin-banner">{pt('disabledHint')}</p>}
-      {restartRequired && <div className="plugin-banner"><span>{pt('restart')}</span><button className="secondary-button" disabled={locked} onClick={async () => { if (await askConfirmation({ title: pt('restartButton'), message: pt('restartConfirm') })) void mutate(async () => { await invoke('restart_core_process'); if (mounted.current) setRestartRequired(false); }, pt('saved')); }}>{pt('restartButton')}</button></div>}
-      {resource ? <section className="plugin-resource"><div className="plugin-toolbar"><button className="secondary-button" onClick={() => setResource(null)}><ArrowLeft size={16} />{pt('back')}</button><strong>{resource.entry.label}</strong><button className="secondary-button" onClick={() => void invoke('open_external_url', { url: resource.url }).catch(e => setError(message(e)))}><ExternalLink size={16} />{pt('openExternal')}</button></div><iframe key={resource.url} src={resource.url} title={resource.entry.label} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="clipboard-read; clipboard-write" /></section> : <>
-        <div className="plugin-navigation">
-        <nav className="plugin-tabs" aria-label={pt('title')}>{(['installed', 'store', 'settings'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''} aria-current={tab === value ? 'page' : undefined} disabled={busy} onClick={() => { setTab(value); setSearch(''); setFilter('all'); }}>{pt(value === 'installed' ? 'local' : value)}</button>)}</nav>
-          {tab !== 'settings' &&
-          <div className="plugin-toolbar">
-            <div className="plugin-search">
-              <Search size={17} aria-hidden="true" />
-              <input ref={searchRef} type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder={pt('search')} aria-label={pt('search')} />
-              <button type="button" className="plugin-search-clear" disabled={!search} aria-label={t('common.clear')} title={t('common.clear')}
-                onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={15} aria-hidden="true" /></button>
-            </div>
-            {tab === 'store' && <select aria-label={pt('store')} value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'installed', 'updates'].map(value => <option key={value} value={value}>{pt(value as 'all' | 'installed' | 'updates')}</option>)}</select>}
-          </div>}
+  return <div className="plugins-page" role="region" aria-label={pt('title')}>
+    <div className="plugin-navigation">
+      {supported === true && <Tabs activation="manual" className="plugin-tabs" aria-label={pt('title')} value={tab} disabled={busy}
+        onChange={value => { setTab(value); setSearch(''); setFilter('all'); }}
+        items={(['installed', 'store', 'settings'] as const).map(value => ({ value, id: `plugin-tab-${value}`, panelId: 'plugin-tab-panel', label: pt(value === 'installed' ? 'local' : value) }))} />}
+      <div className="plugin-toolbar">
+        {supported === true && tab !== 'settings' && <>
+        <div className="plugin-search">
+          <Search size={17} aria-hidden="true" />
+          <input ref={searchRef} type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder={pt('search')} aria-label={pt('search')} />
+          <button type="button" className="icon-button quiet ghost tiny-button plugin-search-clear" disabled={!search} aria-label={t('common.clear')} title={t('common.clear')}
+            onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={15} aria-hidden="true" /></button>
         </div>
-        {tab === 'settings' ? <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} /> : <>
+        {tab === 'store' && <Select aria-label={pt('store')} value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'installed', 'updates'].map(value => <option key={value} value={value}>{pt(value as 'all' | 'installed' | 'updates')}</option>)}</Select>}
+        </>}
+        {supported === true && <button type="button" className="secondary-button plugin-development-guide" disabled={locked} onClick={() => void installLocal()}><Download size={16} aria-hidden="true" />{pt('localInstall')}</button>}
+        <button type="button" className="secondary-button plugin-development-guide" onClick={() => void openExternalUrl({ url: 'https://help.router-for.me/cn/plugin/development.html' }).catch(reason => { if (mounted.current) setError(message(reason)); })}><ExternalLink size={16} aria-hidden="true" />{pt('developmentGuide')}</button>
+        <button className="secondary-button plugin-refresh" disabled={locked} onClick={() => void load(tabRef.current, true)}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button>
+      </div>
+    </div>
+    <div className="plugin-tab-panel" id="plugin-tab-panel" role={supported === true ? "tabpanel" : undefined} aria-labelledby={supported === true ? `plugin-tab-${tab}` : undefined}>
+    {error && <Notice tone="error" icon={false} className="plugin-banner" action={<button className="secondary-button" disabled={busy || loading} onClick={() => void load(tabRef.current, true)}>{pt('retry')}</button>}>{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</Notice>}
+    {supported === false ? <EmptyState className="plugin-empty" icon={<Puzzle size={36} />}>{pt('unsupported')}</EmptyState> : supported === null ? <EmptyState className="plugin-empty" role="status">{loading ? t('common.loading') : pt('retry')}</EmptyState> : <>
+      {data && !data.pluginsEnabled && <Notice tone="info" icon={false} className="plugin-banner">{pt('disabledHint')}</Notice>}
+      {restartRequired && <Notice tone="info" icon={false} className="plugin-banner" action={<button className="secondary-button" disabled={locked} onClick={async () => { if (await askConfirmation({ title: pt('restartButton'), message: pt('restartConfirm') })) void mutate(async () => { await restartCoreProcess(); if (mounted.current) setRestartRequired(false); }, pt('saved')); }}>{pt('restartButton')}</button>}>{pt('restart')}</Notice>}
+      <>
+        {tab === 'settings' ? <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} globalControl={<label className="plugin-global-toggle"><Switch checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label>} /> : <>
+          {sourceErrors.length ? <details className="plugin-source-errors"><summary>{pt('sourceErrors')}</summary>{sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
           {loading && <p className="plugin-loading" role="status">{t('common.loading')}…</p>}
           {tab === 'installed' ? <div className="plugin-grid">{plugins.map(plugin => {
             const status = getPluginStatus(plugin, data?.pluginsEnabled ?? false);
             const installed = isPluginInstalled(plugin);
-            const meta = [plugin.metadata?.version, plugin.metadata?.author].filter(Boolean).join(' · ');
+            const update = localUpdates?.plugins.find(entry => entry.id === plugin.id && entry.updateAvailable);
+            const meta = [update ? `${update.installedVersion} → ${update.version}` : plugin.metadata?.version, plugin.metadata?.author].filter(Boolean).join(' · ');
             const removeLabel = `${pt(installed ? 'remove' : 'removeConfig')} ${getPluginTitle(plugin)}`;
-            return <article className="plugin-card plugin-local-card" key={plugin.id}>
+            return <article className="surface-card plugin-card plugin-local-card" key={plugin.id}>
             <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{getPluginTitle(plugin)}</h2>{getPluginTitle(plugin) !== plugin.id && <code>{plugin.id}</code>}</div><span className={`plugin-badge ${status === 'active' ? 'active' : status === 'missingFile' || status === 'notLoaded' ? 'warning' : ''}`}>{pt(status)}</span></div>
             {meta && <p className="plugin-meta">{meta}</p>}{plugin.path && <p className="plugin-path" title={plugin.path}>{plugin.path}</p>}
             {status === 'missingFile' && <p className="plugin-card-description">{pt('missingFileHint')}</p>}
             {status === 'notLoaded' && <p className="plugin-card-description">{pt('notLoadedHint')}</p>}
-            {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button" disabled={locked} onClick={() => void openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
+            {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button small-button" disabled={locked} onClick={() => openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
             <div className="plugin-card-actions">
-            {plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider && <button className="secondary-button" disabled={locked} onClick={() => setOAuthPlugin(plugin)}><LogIn size={15} />{pt('oauth')}</button>}
-              {installed ? <button className="secondary-button" disabled={locked} onClick={() => void mutate(() => pluginsApi.updateEnabled(plugin.id, !plugin.enabled), pt('saved'))}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}
-              <button className="secondary-button" disabled={locked} onClick={() => setConfigPlugin(plugin)}><Settings2 size={15} />{pt('configure')}</button>
-              {status === 'notLoaded' && <button className="secondary-button" disabled={locked} onClick={() => void invoke('open_core_logs_directory').catch(reason => { if (mounted.current) setError(message(reason)); })}><Folder size={15} />{pt('openLogs')}</button>}
-              <button className="icon-button quiet plugin-delete" disabled={locked} aria-label={removeLabel} title={removeLabel} onClick={() => void remove(plugin)}><Trash2 size={16} /></button>
+              {installed && update && <button className="primary-button compact-button" disabled={locked || (update.authRequired && !update.authConfigured)} onClick={() => setInstallEntry(update)}><Download size={15} />{pt(update.authRequired && !update.authConfigured ? 'authMissing' : 'update')}</button>}
+            {plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider && <button className="secondary-button compact-button" disabled={locked} onClick={() => setOAuthPlugin(plugin)}><LogIn size={15} />{pt('oauth')}</button>}
+              {installed ? <button className="secondary-button compact-button" disabled={locked} onClick={() => void toggle(plugin)}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button compact-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}
+              <button className="secondary-button compact-button" disabled={locked} onClick={() => setConfigPlugin(plugin)}><Settings2 size={15} />{pt('configure')}</button>
+              {status === 'notLoaded' && <button className="secondary-button compact-button" disabled={locked} onClick={() => void openCoreLogsDirectory().catch(reason => { if (mounted.current) setError(message(reason)); })}><Folder size={15} />{pt('openLogs')}</button>}
+              <button className="icon-button danger plugin-delete" disabled={locked} aria-label={removeLabel} title={removeLabel} onClick={() => void remove(plugin)}><Trash2 size={16} /></button>
             </div>
           </article>; })}</div> : <>
-            {store?.sourceErrors.length ? <details className="plugin-source-errors" open><summary>{pt('sourceErrors')}</summary>{store.sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{store.sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
-            <div className="plugin-grid">{storePlugins.map(entry => <article className="plugin-card" key={entry.storeId}>
-              <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{entry.name || entry.id}</h2><code>{entry.id}</code></div><span className={`plugin-badge ${isOfficialPlugin(entry) ? 'active' : 'warning'}`}>{pt(isOfficialPlugin(entry) ? 'official' : 'thirdParty')}</span></div>
-              <p className="plugin-card-description">{entry.description}</p><p className="plugin-meta">{[entry.installedVersion && entry.updateAvailable ? `${entry.installedVersion} → ${entry.version}` : entry.installedVersion || entry.version, entry.author, entry.license].filter(Boolean).join(' · ')}</p><p className="plugin-meta">{pt('source')}: {entry.sourceName || entry.sourceId}</p>
+            <div className="plugin-grid">{storePlugins.map(entry => <article className="surface-card plugin-card" key={entry.storeId}>
+              <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{entry.name || entry.id}</h2><code>{entry.id}</code></div><span className={`plugin-badge ${isDefaultPluginStoreSource(entry) ? 'active' : ''}`}>{pt(isDefaultPluginStoreSource(entry) ? 'officialStore' : 'additionalStore')}</span></div>
+              <p className="plugin-card-description">{entry.description}</p><p className="plugin-meta">{[entry.installedVersion && entry.updateAvailable ? `${entry.installedVersion} → ${entry.version}` : entry.installedVersion || entry.version, entry.author, entry.license].filter(Boolean).join(' · ')}</p><p className="plugin-meta">{pt('storeSource')}: {isDefaultPluginStoreSource(entry) ? pt('officialStore') : entry.sourceName || entry.sourceId}</p>
+              {entry.repository && <p className="plugin-meta plugin-repository" title={entry.repository}>{pt('repository')}: <span>{getPluginRepositorySlug(entry.repository) || entry.repository}</span></p>}
               {entry.platforms.length > 0 && <p className="plugin-meta">{entry.platforms.map(platform => `${platform.goos}/${platform.goarch}`).join(' · ')}</p>}
-              <div className="plugin-card-actions">{entry.installed && <span className="plugin-badge">{pt(entry.updateAvailable ? 'updates' : 'installed')}</span>}<button className="primary-button" disabled={locked || (entry.authRequired && !entry.authConfigured)} onClick={() => setInstallEntry(entry)}><Download size={15} />{pt(entry.authRequired && !entry.authConfigured ? 'authMissing' : !entry.installed ? 'install' : entry.updateAvailable ? 'update' : 'reinstall')}</button></div>
+              <div className="plugin-card-actions">{entry.installed && <span className="plugin-badge">{pt(entry.updateAvailable ? 'updates' : 'installed')}</span>}<button className="primary-button compact-button" disabled={locked || (entry.authRequired && !entry.authConfigured)} onClick={() => setInstallEntry(entry)}><Download size={15} />{pt(entry.authRequired && !entry.authConfigured ? 'authMissing' : !entry.installed ? 'install' : entry.updateAvailable ? 'update' : 'reinstall')}</button></div>
             </article>)}</div>
           </>}
-          {!loading && !error && (tab === 'installed' ? !plugins.length : !storePlugins.length) && <section className="plugin-empty"><Puzzle size={36} /><h2>{pt(search || filter !== 'all' ? 'noMatches' : 'empty')}</h2>{tab === 'installed' && !search && <><p>{pt('emptyHint')}</p><button className="primary-button" onClick={() => setTab('store')}>{pt('store')}</button></>}</section>}
+          {!loading && !error && (tab === 'installed' ? !plugins.length : !storePlugins.length) && <EmptyState className="plugin-empty" icon={<Puzzle size={36} />} title={pt(search || filter !== 'all' ? 'noMatches' : 'empty')} action={tab === 'installed' && !search ? <button className="primary-button" onClick={() => setTab('store')}>{pt('store')}</button> : undefined}>{tab === 'installed' && !search ? pt('emptyHint') : null}</EmptyState>}
         </>}
-      </>}
+      </>
     </>}
+    </div>
     {configPlugin && <PluginConfigDialog plugin={configPlugin} onClose={() => setConfigPlugin(null)} onSaved={() => { notice.showNotice(pt('saved')); void load(); }} />}
-    {installEntry && <PluginInstallDialog entry={installEntry} onClose={() => setInstallEntry(null)} onInstalled={result => { setInstallEntry(null); setRestartRequired(previous => previous || result.restartRequired); notice.showNotice(pt('installedSuccess')); void load(); }} />}
+    {installEntry && <PluginInstallDialog key={installEntry.storeId} entry={installEntry} onClose={() => setInstallEntry(null)} onInstalled={installed} />}
     {oauthPlugin && <PluginOAuthDialog plugin={oauthPlugin} onClose={() => setOAuthPlugin(null)} onCompleted={() => { notice.showNotice(pt('authorized')); void load(); }} />}
     {confirmationDialog}<FloatingNotice notice={notice.notice} onDismiss={notice.clearNotice} />
   </div>;

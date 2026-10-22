@@ -113,7 +113,7 @@ fn gui_config_defaults_are_stable() {
     let config = GuiConfigFile::default();
     let content = toml::to_string_pretty(&config).unwrap();
 
-    assert!(content.contains("port = 8317"));
+    assert!(content.contains("port = 8318"));
     assert!(content.contains("allow-lan = false"));
     assert!(content.contains("run-on-startup = false"));
     assert!(content.contains("start-core-on-launch = true"));
@@ -178,6 +178,149 @@ fn silent_start_defaults_off_and_requires_tray_support() {
             target_os = "macos",
             target_os = "windows"
         ))
+    );
+}
+
+#[test]
+fn gui_window_position_round_trips_and_can_be_cleared_in_portable_config() {
+    let home = agent_test_home("window-position");
+    let path = home.join("config.toml");
+    fs::write(&path, "# retained\ncustom-option = 'keep'\n").unwrap();
+    let mut config = GuiConfigFile {
+        window_x: Some(-1800),
+        window_y: Some(120),
+        ..GuiConfigFile::default()
+    };
+    write_gui_config_to_path(&config, &path).unwrap();
+    let content = fs::read_to_string(&path).unwrap();
+    assert!(content.contains("window-x = -1800"));
+    assert!(content.contains("window-y = 120"));
+    assert!(content.contains("# retained"));
+    assert!(content.contains("custom-option = 'keep'"));
+    let restored: GuiConfigFile = toml::from_str(&content).unwrap();
+    assert_eq!(
+        configured_window_position(&restored),
+        Some(tauri::PhysicalPosition::new(-1800, 120))
+    );
+
+    config.window_x = None;
+    config.window_y = None;
+    write_gui_config_to_path(&config, &path).unwrap();
+    let content = fs::read_to_string(&path).unwrap();
+    assert!(!content.contains("window-x"));
+    assert!(!content.contains("window-y"));
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn gui_window_position_is_optional_and_requires_both_coordinates() {
+    let mut config: GuiConfigFile = toml::from_str("port = 8317\n").unwrap();
+    assert_eq!(configured_window_position(&config), None);
+    for (x, y) in [(Some(0), None), (None, Some(-100))] {
+        config.window_x = x;
+        config.window_y = y;
+        assert_eq!(configured_window_position(&config), None);
+        assert!(sanitize_gui_config(&mut config).unwrap());
+        assert_eq!((config.window_x, config.window_y), (None, None));
+    }
+    config.window_x = Some(0);
+    config.window_y = Some(0);
+    assert_eq!(
+        configured_window_position(&config),
+        Some(tauri::PhysicalPosition::new(0, 0))
+    );
+}
+
+#[test]
+fn saved_window_position_preserves_negative_monitor_coordinates_and_uses_work_area() {
+    let work_area = tauri::PhysicalRect {
+        position: tauri::PhysicalPosition::new(-2560, -200),
+        size: tauri::PhysicalSize::new(2560, 1400),
+    };
+    // Physical dimensions also cover a window on a display with fractional DPI scaling.
+    let size = tauri::PhysicalSize::new(1600, 1000);
+    for (saved, expected) in [
+        ((-2400, -100), (-2400, -100)),
+        ((-500, 800), (-1600, 200)),
+        ((-3000, -400), (-2560, -200)),
+    ] {
+        assert_eq!(
+            fit_window_position_to_work_area(tauri::PhysicalPosition::new(saved.0, saved.1), size, &work_area),
+            tauri::PhysicalPosition::new(expected.0, expected.1)
+        );
+    }
+}
+
+#[test]
+fn saved_window_position_recovers_from_disconnected_displays_and_oversized_windows() {
+    let work_area = tauri::PhysicalRect {
+        position: tauri::PhysicalPosition::new(0, 40),
+        size: tauri::PhysicalSize::new(1920, 1040),
+    };
+    assert_eq!(
+        fit_window_position_to_work_area(
+            tauri::PhysicalPosition::new(4000, 3000),
+            tauri::PhysicalSize::new(1280, 800),
+            &work_area,
+        ),
+        tauri::PhysicalPosition::new(640, 280)
+    );
+    assert_eq!(
+        fit_window_position_to_work_area(
+            tauri::PhysicalPosition::new(i32::MIN, i32::MAX),
+            tauri::PhysicalSize::new(u32::MAX, u32::MAX),
+            &work_area,
+        ),
+        work_area.position
+    );
+}
+
+#[test]
+fn restore_window_position_uses_target_display_scale_factor_on_mixed_dpi_displays() {
+    let external_work_area = tauri::PhysicalRect {
+        position: tauri::PhysicalPosition::new(1512, -458),
+        size: tauri::PhysicalSize::new(2560, 1440),
+    };
+    let external_window_size = tauri::PhysicalSize::new(2081, 1170);
+    let (fitted, target) = restore_window_position_for_monitor(
+        tauri::PhysicalPosition::new(1688, -330),
+        external_window_size,
+        &external_work_area,
+        1.0,
+    );
+    assert_eq!(fitted, tauri::PhysicalPosition::new(1688, -330));
+    #[cfg(target_os = "macos")]
+    assert_eq!(
+        target,
+        tauri::Position::Logical(tauri::LogicalPosition::new(1688.0, -330.0))
+    );
+    #[cfg(not(target_os = "macos"))]
+    assert_eq!(
+        target,
+        tauri::Position::Physical(tauri::PhysicalPosition::new(1688, -330))
+    );
+
+    let retina_work_area = tauri::PhysicalRect {
+        position: tauri::PhysicalPosition::new(0, 0),
+        size: tauri::PhysicalSize::new(3024, 1964),
+    };
+    let retina_window_size = tauri::PhysicalSize::new(2400, 1600);
+    let (fitted_retina, target_retina) = restore_window_position_for_monitor(
+        tauri::PhysicalPosition::new(300, 160),
+        retina_window_size,
+        &retina_work_area,
+        2.0,
+    );
+    assert_eq!(fitted_retina, tauri::PhysicalPosition::new(300, 160));
+    #[cfg(target_os = "macos")]
+    assert_eq!(
+        target_retina,
+        tauri::Position::Logical(tauri::LogicalPosition::new(150.0, 80.0))
+    );
+    #[cfg(not(target_os = "macos"))]
+    assert_eq!(
+        target_retina,
+        tauri::Position::Physical(tauri::PhysicalPosition::new(300, 160))
     );
 }
 

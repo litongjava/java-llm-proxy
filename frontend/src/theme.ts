@@ -1,52 +1,101 @@
+import {
+  listCustomThemes,
+  detectWindowMaterial as readWindowMaterial,
+  getThemeSelection,
+  saveThemeSelection,
+  openCustomThemesDirectory as openThemesDirectory,
+  detectCorePlatform,
+  getLinuxSystemTheme,
+  setWindowMaterial,
+} from './services/desktopTheme';
 import { useSyncExternalStore } from 'react';
-import { invoke, isTauri } from '@tauri-apps/api/core';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { createThemeController, type AppTheme, type ThemePreference } from './themeController';
+import { isTauri, getCurrentWebview, getCurrentWindow } from './services/platform';
+import { createThemeController, type ThemePreference } from './themeController';
 import { ThemePreferences } from './services/themePreferences';
+import { createThemeApplicator, themeWindowMaterial } from './themes/applyTheme';
+import { cacheFirstPaint, firstPaint } from './themes/firstPaint';
+import type { PlatformWindowMaterial } from './themes/types';
+import { builtinThemes, createThemeRegistry, themeRegistry, type ThemeRegistry } from './themes/registry';
+import { parseCustomThemes } from './themes/customThemes';
 
 export type { AppTheme, ThemePreference } from './themeController';
 
-const preferences = new ThemePreferences(() => window.localStorage);
-const WINDOW_BACKGROUND: Record<AppTheme, string> = {
-  light: '#ffffff',
-  dark: '#0b0d11',
-};
+const preferences = new ThemePreferences();
+let platformMaterial: PlatformWindowMaterial | null = null;
+const applyTheme = createThemeApplicator(document, () => platformMaterial);
 
 export function detectThemePreference(): ThemePreference {
   return preferences.get();
 }
 
-export async function initializeThemePreferences(): Promise<void> {
-  if (!isTauri()) return;
+export type CustomThemeStatus = { loading: boolean; failed: boolean; skipped: readonly string[]; omitted: number };
+
+let customRegistry = themeRegistry;
+let customStatus: CustomThemeStatus = { loading: false, failed: false, skipped: [], omitted: 0 };
+let customLoads = 0;
+const customSubscribers = new Set<() => void>();
+
+function reportCustomThemes(next: CustomThemeStatus) {
+  customStatus = next;
+  customSubscribers.forEach((listener) => listener());
+}
+
+async function loadCustomThemes() {
+  const load = ++customLoads;
+  reportCustomThemes({ ...customStatus, loading: true });
   try {
-    await preferences.initialize({
-      load: () => invoke<ThemePreference | null>('get_theme_preference'),
-      save: (preference) => invoke('save_theme_preference', { preference }),
-    });
+    const { files, omitted } = await listCustomThemes();
+    const { themes, skipped } = parseCustomThemes(files);
+    if (load !== customLoads) return;
+    customRegistry = createThemeRegistry([...builtinThemes, ...themes]);
+    controller?.setRegistry(customRegistry);
+    reportCustomThemes({ loading: false, failed: false, skipped, omitted });
   } catch {
-    console.error('Failed to load theme preference; using browser preference');
+    if (load === customLoads) reportCustomThemes({ ...customStatus, loading: false, failed: true });
   }
 }
 
-function applyTheme(theme: AppTheme): void {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-  document.documentElement.style.backgroundColor = WINDOW_BACKGROUND[theme];
-  if (document.body) {
-    document.body.style.backgroundColor = WINDOW_BACKGROUND[theme];
-  }
+async function detectWindowMaterial() {
+  platformMaterial = await readWindowMaterial().catch(() => null);
 }
+
+export async function initializeThemePreferences(): Promise<void> {
+  if (!isTauri()) return;
+  await Promise.all([preferences.initialize({
+    load: () => getThemeSelection(),
+    save: (selection) => saveThemeSelection({ selection }),
+  }), loadCustomThemes(), detectWindowMaterial()]);
+}
+
+export const reloadCustomThemes = loadCustomThemes;
+
+export const openCustomThemesDirectory = () => openThemesDirectory();
+
+const subscribeCustomThemes = (listener: () => void) => {
+  customSubscribers.add(listener);
+  return () => { customSubscribers.delete(listener); };
+};
+
+export function useCustomThemeStatus() {
+  return useSyncExternalStore(subscribeCustomThemes, () => customStatus);
+}
+
+export function useThemePreferenceIssue() {
+  return useSyncExternalStore(preferences.subscribe, preferences.getIssue);
+}
+
+export const retryThemeSave = preferences.retry;
 
 let controller: ReturnType<typeof createThemeController> | undefined;
 
-export function initializeTheme() {
+export function initializeTheme(registry: ThemeRegistry = customRegistry) {
   if (controller) return controller;
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   controller = createThemeController({
     readPreference: detectThemePreference,
-    savePreference(preference) {
-      preferences.set(preference);
+    readSystemThemes: preferences.getSystemThemes,
+    savePreference(preference, remembered) {
+      preferences.set(preference, remembered);
     },
     readMediaTheme: () => media?.matches ? 'dark' : 'light',
     listenMedia(listener) {
@@ -67,29 +116,47 @@ export function initializeTheme() {
         document.removeEventListener('visibilitychange', visible);
       };
     },
-    applyTheme,
+    applyTheme(_appearance, definition) {
+      applyTheme(definition);
+      cacheFirstPaint(() => window.localStorage,
+        firstPaint(controller?.getRegistry() ?? registry, preferences.get(), preferences.getSystemThemes(), definition));
+    },
     async connectNative() {
       if (!isTauri()) return null;
       const currentWindow = getCurrentWindow();
       const currentWebview = getCurrentWebview();
-      const { os } = await invoke<{ os: string }>('detect_core_platform');
+      const { os } = await detectCorePlatform();
       return {
         explicitSystemAppearance: os === 'linux',
         setTheme: (theme) => currentWindow.setTheme(theme),
         readTheme: () => os === 'linux'
-          ? invoke<AppTheme | null>('get_linux_system_theme')
+          ? getLinuxSystemTheme()
           : currentWindow.theme(),
         listen: (listener) => currentWindow.onThemeChanged(({ payload }) => listener(payload)),
-        async setBackground(theme) {
-          const background = WINDOW_BACKGROUND[theme];
-          await Promise.allSettled([
+        async setBackground(_appearance, definition) {
+          const material = themeWindowMaterial(definition, platformMaterial);
+          const paint = (background: string) => Promise.allSettled([
             currentWindow.setBackgroundColor(background),
             currentWebview.setBackgroundColor(background),
           ]);
+          if (!platformMaterial) {
+            await paint(definition.windowBackground);
+            return;
+          }
+          const switchMaterial = () => setWindowMaterial({ material, appearance: definition.appearance });
+          if (!material) {
+            await paint(definition.windowBackground);
+            await switchMaterial();
+          } else if (await switchMaterial().then(() => true, () => false)) {
+            await paint('#00000000');
+          } else {
+            platformMaterial = null;
+            controller?.setRegistry(controller.getRegistry());
+          }
         },
       };
     },
-  });
+  }, registry);
   return controller;
 }
 
@@ -97,6 +164,25 @@ export function useThemePreference() {
   const themeController = initializeTheme();
   const preference = useSyncExternalStore(themeController.subscribe, themeController.getPreference);
   return [preference, themeController.setPreference] as const;
+}
+
+export function useSystemThemes() {
+  const themeController = initializeTheme();
+  return useSyncExternalStore(themeController.subscribe, themeController.getSystemThemes);
+}
+
+export function useResolvedThemeId() {
+  const themeController = initializeTheme();
+  return useSyncExternalStore(themeController.subscribe, themeController.getResolvedThemeId);
+}
+
+export function useThemeRegistry() {
+  const themeController = initializeTheme();
+  return useSyncExternalStore(themeController.subscribe, themeController.getRegistry);
+}
+
+export function setSystemTheme(id: string) {
+  initializeTheme().setSystemTheme(id);
 }
 
 if (import.meta.hot) {

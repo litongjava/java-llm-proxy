@@ -10,6 +10,17 @@ import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
 
 /** Converts chat payloads while preserving native payloads when protocols match. */
 public class ProtocolConversionService {
+  static String thoughtSignature(Kv tool) {
+    Object signature = ProxyJson.object(ProxyJson.object(tool.get("extra_content")).get("google")).get("thought_signature");
+    return signature instanceof String text && !text.isBlank() ? text : null;
+  }
+
+  static void withThoughtSignature(Kv tool, String signature) {
+    if (signature != null && !signature.isBlank()) {
+      tool.set("extra_content", Kv.create().set("google", Kv.create().set("thought_signature", signature)));
+    }
+  }
+
   private final GeminiUsageService geminiUsage = Aop.get(GeminiUsageService.class);
   public Kv request(Kv body, String from, String to, String model, boolean stream) {
     if (from.equals(to)) { return body; }
@@ -90,7 +101,10 @@ public class ProtocolConversionService {
         for (Object toolValue : ProxyJson.list(message.get("tool_calls"))) {
           Kv tool = ProxyJson.object(toolValue);
           Kv function = ProxyJson.object(tool.get("function"));
-          blocks.add(Kv.create().set("functionCall", Kv.create().set("id", tool.get("id")).set("name", function.get("name")).set("args", arguments(function.get("arguments")))));
+          Kv part = Kv.create().set("functionCall", Kv.create().set("id", tool.get("id")).set("name", function.get("name")).set("args", arguments(function.get("arguments"))));
+          String signature = thoughtSignature(tool);
+          if (signature != null) { part.set("thoughtSignature", signature); }
+          blocks.add(part);
         }
         if (!blocks.isEmpty()) { messages.add(Kv.create().set("role", "assistant".equals(role) ? "model" : role).set("parts", blocks)); }
       } else if ("responses".equals(to)) {
@@ -150,6 +164,27 @@ public class ProtocolConversionService {
       if (max != null) { output.set("max_output_tokens", max); }
       if (!tools.isEmpty()) { output.set("tools", tools); }
     }
+    if ("responses".equals(to)) {
+      if (canonical.containsKey("parallel_tool_calls")) { output.set("parallel_tool_calls", canonical.get("parallel_tool_calls")); }
+      Object choice = canonical.get("tool_choice");
+      if (choice instanceof String) { output.set("tool_choice", choice); }
+      else if ("function".equals(ProxyJson.object(choice).getStr("type"))) {
+        output.set("tool_choice", Kv.create().set("type", "function")
+            .set("name", ProxyJson.object(ProxyJson.object(choice).get("function")).get("name")));
+      }
+    } else if ("anthropic".equals(to) && !tools.isEmpty()) {
+      Object choice = canonical.get("tool_choice");
+      Kv selected = Kv.create();
+      if (choice instanceof String text) { selected.set("type", "required".equals(text) ? "any" : text); }
+      else if ("function".equals(ProxyJson.object(choice).getStr("type"))) {
+        selected.set("type", "tool").set("name", ProxyJson.object(ProxyJson.object(choice).get("function")).get("name"));
+      }
+      if (canonical.get("parallel_tool_calls") instanceof Boolean parallel && !"none".equals(selected.getStr("type"))) {
+        if (selected.isEmpty()) { selected.set("type", "auto"); }
+        selected.set("disable_parallel_tool_use", !parallel);
+      }
+      if (!selected.isEmpty()) { output.set("tool_choice", selected); }
+    }
     return output;
   }
 
@@ -160,6 +195,12 @@ public class ProtocolConversionService {
     Kv result = Kv.create();
     for (String key : List.of("temperature", "top_p", "metadata", "max_tokens", "stop")) { if (body.containsKey(key)) { result.set(key, body.get(key)); } }
     if ("anthropic".equals(from)) {
+      Kv choice = ProxyJson.object(body.get("tool_choice"));
+      String choiceType = choice.getStr("type");
+      if ("tool".equals(choiceType)) {
+        result.set("tool_choice", Kv.create().set("type", "function").set("function", Kv.create().set("name", choice.get("name"))));
+      } else if (choiceType != null) { result.set("tool_choice", "any".equals(choiceType) ? "required" : choiceType); }
+      if (choice.get("disable_parallel_tool_use") instanceof Boolean disabled) { result.set("parallel_tool_calls", !disabled); }
       if (body.get("system") != null) { messages.add(Kv.create().set("role", "system").set("content", body.get("system"))); }
       for (Object value : ProxyJson.list(body.get("messages"))) {
         Kv message = ProxyJson.object(value);
@@ -230,7 +271,9 @@ public class ProtocolConversionService {
           if (part.get("text") != null) { content.add(Kv.create().set("type", "text").set("text", part.get("text"))); }
           else if (part.get("functionCall") != null) {
             Kv function = ProxyJson.object(part.get("functionCall"));
-            calls.add(call(ProxyJson.text(function, "id", function.getStr("name")), function.getStr("name"), JsonUtils.toJsonWithLongAsNumber(function.get("args"))));
+            Kv convertedCall = call(ProxyJson.text(function, "id", function.getStr("name")), function.getStr("name"), JsonUtils.toJsonWithLongAsNumber(function.get("args")));
+            withThoughtSignature(convertedCall, part.getStr("thoughtSignature"));
+            calls.add(convertedCall);
           } else if (part.get("functionResponse") != null) {
             Kv function = ProxyJson.object(part.get("functionResponse"));
             messages.add(Kv.create().set("role", "tool").set("tool_call_id", ProxyJson.text(function, "id", function.getStr("name")))
@@ -288,7 +331,7 @@ public class ProtocolConversionService {
       long in = ProxyJson.number(usage, "input_tokens", ProxyJson.number(usage, "promptTokenCount", 0));
       long out = ProxyJson.number(usage, "output_tokens", ProxyJson.number(usage, "candidatesTokenCount", 0));
       canonical = Kv.create().set("id", ProxyJson.text(input, "id", "chatcmpl-" + SnowflakeIdUtils.id())).set("object", "chat.completion").set("model", model)
-          .set("choices", List.of(Kv.create().set("index", 0).set("message", message).set("finish_reason", message.containsKey("tool_calls") ? "tool_calls" : "stop")))
+          .set("choices", List.of(Kv.create().set("index", 0).set("message", message).set("finish_reason", "anthropic".equals(from) ? ProtocolStopReason.chat(input.getStr("stop_reason")) : message.containsKey("tool_calls") ? "tool_calls" : "stop")))
           .set("usage", Kv.create().set("prompt_tokens", (int) in).set("completion_tokens", (int) out).set("total_tokens", (int) (in + out)));
       if ("gemini".equals(from)) {
         canonical.set("usage", geminiUsage.openAi(usage));
@@ -297,23 +340,33 @@ public class ProtocolConversionService {
     if ("openai".equals(to)) { return canonical; }
     List<?> choices = ProxyJson.list(canonical.get("choices"));
     Kv message = choices.isEmpty() ? Kv.create().set("role", "assistant").set("content", "") : ProxyJson.object(ProxyJson.object(choices.getFirst()).get("message"));
+    String finishReason = choices.isEmpty() ? "stop" : ProxyJson.object(choices.getFirst()).getStr("finish_reason");
     Kv converted = request(Kv.create().set("messages", List.of(message)), "openai", to, model, false);
     Kv usage = ProxyJson.object(canonical.get("usage"));
     int in = (int) ProxyJson.number(usage, "prompt_tokens", 0);
     int out = (int) ProxyJson.number(usage, "completion_tokens", 0);
     if ("anthropic".equals(to)) {
       return Kv.create().set("id", canonical.get("id")).set("type", "message").set("role", "assistant").set("model", model)
-          .set("content", ProxyJson.object(ProxyJson.list(converted.get("messages")).getFirst()).get("content"))
-          .set("stop_reason", message.containsKey("tool_calls") ? "tool_use" : "end_turn").set("stop_sequence", null)
+          .set("content", ProxyJson.list(converted.get("messages")).isEmpty() ? List.of() : ProxyJson.object(ProxyJson.list(converted.get("messages")).getFirst()).get("content"))
+          .set("stop_reason", ProtocolStopReason.anthropic(finishReason, message.containsKey("tool_calls"))).set("stop_sequence", null)
           .set("usage", "gemini".equals(from) ? geminiUsage.anthropic(usage) : Kv.create().set("input_tokens", in).set("output_tokens", out));
     }
     if ("gemini".equals(to)) {
       return Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", ProxyJson.list(converted.get("contents")).getFirst()).set("finishReason", "STOP")))
           .set("usageMetadata", Kv.create().set("promptTokenCount", in).set("candidatesTokenCount", out).set("totalTokenCount", in + out)).set("modelVersion", model);
     }
-    return Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
+    return ProtocolStopReason.response(Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
         .set("output", converted.get("input")).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
-            : Kv.create().set("input_tokens", in).set("output_tokens", out).set("total_tokens", in + out));
+            : responsesUsage(usage, in, out)), finishReason);
+  }
+
+  static Kv responsesUsage(Kv usage, int input, int output) {
+    Kv result = Kv.create().set("input_tokens", input).set("output_tokens", output).set("total_tokens", input + output);
+    Kv details = ProxyJson.object(usage.get("output_tokens_details"));
+    if (!details.containsKey("reasoning_tokens")) { details = ProxyJson.object(usage.get("completion_tokens_details")); }
+    Object reasoning = details.containsKey("reasoning_tokens") ? details.get("reasoning_tokens") : usage.get("reasoning_tokens");
+    if (reasoning != null) { result.set("output_tokens_details", Kv.create().set("reasoning_tokens", reasoning)); }
+    return result;
   }
 
   private Object responsesToolOutput(Object value) {

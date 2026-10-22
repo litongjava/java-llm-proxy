@@ -109,7 +109,7 @@ public class ProtocolFormatService {
       record.cachedTokens = Math.max(record.cachedTokens, number(usage, "prompt_cache_hit_tokens"));
       record.cachedTokens = Math.max(record.cachedTokens, number(asObject(usage.get("prompt_tokens_details")), "cached_tokens"));
       record.cachedTokens = Math.max(record.cachedTokens, number(asObject(usage.get("input_tokens_details")), "cached_tokens"));
-      record.reasoningTokens = Math.max(record.reasoningTokens, number(usage, "thoughtsTokenCount"));
+      record.reasoningTokens = Math.max(record.reasoningTokens, number(usage, "thoughtsTokenCount", "reasoning_tokens"));
       record.reasoningTokens = Math.max(record.reasoningTokens, number(asObject(usage.get("completion_tokens_details")), "reasoning_tokens"));
       record.reasoningTokens = Math.max(record.reasoningTokens, number(asObject(usage.get("output_tokens_details")), "reasoning_tokens"));
     }

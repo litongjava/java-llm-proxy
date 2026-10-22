@@ -78,6 +78,23 @@ const coversCenterOf = (locator) => locator.evaluate(el => {
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
     await page.screenshot({ path: 'bin-work/windows-immersive-dark.png' });
 
+    // A material theme must remain visible through the restored window shell.
+    await page.evaluate(() => {
+      document.documentElement.dataset.windowMaterial = 'mica';
+      document.documentElement.style.setProperty('--theme-window-material-workspace-opacity', '37%');
+    });
+    const material = await page.evaluate(() => Object.fromEntries(
+      ['.immersive-window', '.window-titlebar', '.workspace'].map(selector =>
+        [selector, getComputedStyle(document.querySelector(selector)).backgroundColor])));
+    assert.equal(material['.immersive-window'], 'rgba(0, 0, 0, 0)', 'frame does not cover native material');
+    assert.equal(material['.window-titlebar'], material['.workspace'], 'caption uses workspace material opacity');
+    assert.match(material['.window-titlebar'], /0\.37/, 'custom opacity reaches the caption');
+    await page.screenshot({ path: 'bin-work/windows-immersive-material.png' });
+    await page.evaluate(() => {
+      delete document.documentElement.dataset.windowMaterial;
+      document.documentElement.style.removeProperty('--theme-window-material-workspace-opacity');
+    });
+
     await page.locator('.sidebar-easy-entry').click();
     await page.locator('.app-shell-easy-mode').waitFor();
     assert.equal(await page.locator('.window-titlebar').count(), 1, 'easy mode keeps controls');
@@ -120,12 +137,12 @@ const coversCenterOf = (locator) => locator.evaluate(el => {
     await native.getByRole('button', { name: 'Maximize', exact: true }).click();
     await native.getByRole('alert').waitFor();
 
-    // Modal backdrops (lowest app backdrop is .install-dialog-backdrop) must cover the titlebar so a
+    // Modal backdrops (shared app backdrop is .config-dialog-backdrop) must cover the titlebar so a
     // dialog's own close button can never sit underneath the window close button.
     assert.equal(await coversCenterOf(native.locator('.window-close')), true);
     await native.evaluate(() => {
       const backdrop = document.createElement('div');
-      backdrop.className = 'install-dialog-backdrop';
+      backdrop.className = 'config-dialog-backdrop';
       document.body.append(backdrop);
     });
     assert.equal(await coversCenterOf(native.locator('.window-close')), false,

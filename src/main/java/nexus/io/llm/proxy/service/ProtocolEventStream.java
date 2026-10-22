@@ -27,6 +27,8 @@ public class ProtocolEventStream extends InputStream {
   private boolean started;
   private boolean finished;
   private boolean terminal;
+  private String finishReason;
+  private final Kv rawUsage = Kv.create();
   private int inputTokens;
   private int outputTokens;
   private final Kv geminiMetadata = Kv.create();
@@ -90,17 +92,21 @@ public class ProtocolEventStream extends InputStream {
       usage(ProxyJson.object(event.get("usage")), "prompt_tokens", "completion_tokens");
       for (Object value : ProxyJson.list(event.get("choices"))) {
         Kv choice = ProxyJson.object(value);
-        if (choice.get("finish_reason") != null) { terminal = true; }
+        if (choice.get("finish_reason") != null) { terminal = true; finishReason = choice.getStr("finish_reason"); }
         Kv delta = ProxyJson.object(choice.get("delta"));
         if (delta.getStr("content") != null) { events.append(text(delta.getStr("content"))); }
         for (Object call : ProxyJson.list(delta.get("tool_calls"))) {
           Kv tool = ProxyJson.object(call);
           Kv function = ProxyJson.object(tool.get("function"));
-          events.append(tool((int) ProxyJson.number(tool, "index", 0), tool.getStr("id"), function.getStr("name"), function.getStr("arguments")));
+          int index = (int) ProxyJson.number(tool, "index", 0);
+          events.append(tool(index, tool.getStr("id"), function.getStr("name"), function.getStr("arguments")));
+          String signature = ProtocolConversionService.thoughtSignature(tool);
+          if (signature != null) { tools.set(String.valueOf(index), ProxyJson.object(tools.get(String.valueOf(index))).set("thoughtSignature", signature)); }
         }
       }
     } else if ("anthropic".equals(from)) {
       String type = event.getStr("type");
+      if ("message_delta".equals(type)) { finishReason = ProxyJson.object(event.get("delta")).getStr("stop_reason"); }
       if ("message_stop".equals(type)) { terminal = true; }
       if ("message_start".equals(type)) { usage(ProxyJson.object(ProxyJson.object(event.get("message")).get("usage")), "input_tokens", "output_tokens"); }
       if ("content_block_start".equals(type)) {
@@ -134,7 +140,18 @@ public class ProtocolEventStream extends InputStream {
           if (part.getStr("text") != null && !Boolean.TRUE.equals(part.getBoolean("thought"))) { events.append(text(part.getStr("text"))); }
           if (part.get("functionCall") != null) {
             Kv function = ProxyJson.object(part.get("functionCall"));
-            events.append(tool(tools.size(), function.getStr("id"), function.getStr("name"), JsonUtils.toJsonWithLongAsNumber(function.get("args"))));
+            int index = tools.size();
+            String translated = tool(index, function.getStr("id"), function.getStr("name"), JsonUtils.toJsonWithLongAsNumber(function.get("args")));
+            String signature = part.getStr("thoughtSignature");
+            if (signature != null) {
+              tools.set(String.valueOf(index), ProxyJson.object(tools.get(String.valueOf(index))).set("thoughtSignature", signature));
+              if ("openai".equals(to)) {
+                Kv signed = Kv.create().set("index", index);
+                ProtocolConversionService.withThoughtSignature(signed, signature);
+                translated += openai(Kv.create().set("tool_calls", List.of(signed)), null, null);
+              }
+            }
+            events.append(translated);
           }
         }
       }
@@ -195,7 +212,7 @@ public class ProtocolEventStream extends InputStream {
   }
   private String finish() {
     StringBuilder result = new StringBuilder(start());
-    Kv usage = Kv.create().set("prompt_tokens", inputTokens).set("completion_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens);
+    Kv usage = Kv.create().set(rawUsage).set("prompt_tokens", inputTokens).set("completion_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens);
     if ("gemini".equals(from)) {
       usage = geminiUsage.openAi(geminiMetadata);
     }
@@ -208,7 +225,7 @@ public class ProtocolEventStream extends InputStream {
         result.append(event("content_block_delta", Kv.create().set("index", call.get("index")).set("delta", Kv.create().set("type", "input_json_delta").set("partial_json", call.get("arguments")))));
         result.append(event("content_block_stop", Kv.create().set("index", call.get("index"))));
       }
-      result.append(event("message_delta", Kv.create().set("delta", Kv.create().set("stop_reason", tools.isEmpty() ? "end_turn" : "tool_use").set("stop_sequence", null))
+      result.append(event("message_delta", Kv.create().set("delta", Kv.create().set("stop_reason", ProtocolStopReason.anthropic(finishReason, !tools.isEmpty())).set("stop_sequence", null))
           .set("usage", "gemini".equals(from) ? geminiUsage.anthropic(usage)
               : Kv.create().set("input_tokens", inputTokens).set("output_tokens", outputTokens))));
       result.append(event("message_stop", Kv.create()));
@@ -216,7 +233,9 @@ public class ProtocolEventStream extends InputStream {
       List<Kv> parts = new ArrayList<>();
       for (Object value : tools.values()) {
         Kv call = ProxyJson.object(value);
-        parts.add(Kv.create().set("functionCall", Kv.create().set("id", call.get("id")).set("name", call.get("name")).set("args", ProxyJson.parse(ProxyJson.text(call, "arguments", "{}")))));
+        Kv part = Kv.create().set("functionCall", Kv.create().set("id", call.get("id")).set("name", call.get("name")).set("args", ProxyJson.parse(ProxyJson.text(call, "arguments", "{}"))));
+        if (call.getStr("thoughtSignature") != null) { part.set("thoughtSignature", call.get("thoughtSignature")); }
+        parts.add(part);
       }
       result.append(event(null, Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", Kv.create().set("role", "model").set("parts", parts)).set("finishReason", "STOP")))
           .set("usageMetadata", Kv.create().set("promptTokenCount", inputTokens).set("candidatesTokenCount", outputTokens).set("totalTokenCount", inputTokens + outputTokens))));
@@ -233,10 +252,11 @@ public class ProtocolEventStream extends InputStream {
         result.append(event("response.function_call_arguments.done", Kv.create().set("item_id", call.get("id")).set("output_index", call.get("index")).set("arguments", call.get("arguments"))));
       }
       for (int index = 0; index < outputs.size(); index++) { result.append(event("response.output_item.done", Kv.create().set("output_index", index).set("item", outputs.get(index)))); }
-      result.append(event("response.completed", Kv.create().set("response", Kv.create().set("id", id).set("object", "response").set("status", "completed")
+      Kv response = ProtocolStopReason.response(Kv.create().set("id", id).set("object", "response").set("status", "completed")
           .set("model", model).set("output", outputs).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
-              : Kv.create().set("input_tokens", inputTokens).set("output_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens)))));
-    } else { result.append(openai(Kv.create(), tools.isEmpty() ? "stop" : "tool_calls", usage)).append("data: [DONE]\n\n"); }
+              : ProtocolConversionService.responsesUsage(usage, inputTokens, outputTokens)), finishReason);
+      result.append(event("response." + response.getStr("status"), Kv.create().set("response", response)));
+    } else { result.append(openai(Kv.create(), finishReason == null ? tools.isEmpty() ? "stop" : "tool_calls" : ProtocolStopReason.chat(finishReason), usage)).append("data: [DONE]\n\n"); }
     return result.toString();
   }
   private String openai(Kv delta, String finish, Kv usage) {
@@ -252,6 +272,7 @@ public class ProtocolEventStream extends InputStream {
     return (type == null ? "" : "event: " + type + "\n") + "data: " + JsonUtils.toJsonWithLongAsNumber(value) + "\n\n";
   }
   private void usage(Kv usage, String input, String output) {
+    rawUsage.set(usage);
     inputTokens = (int) ProxyJson.number(usage, input, inputTokens);
     outputTokens = (int) ProxyJson.number(usage, output, outputTokens);
   }

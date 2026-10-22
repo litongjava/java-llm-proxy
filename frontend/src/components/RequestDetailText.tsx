@@ -1,3 +1,4 @@
+import { javaProxyText } from '../i18n/javaProxy';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 const PREVIEW_LENGTH = 10_000;
@@ -66,7 +67,7 @@ export const RequestDetailText = memo(function RequestDetailText({ text, title, 
       </button>
     </div>}
     {large && expanded ? <>
-      <p className="proxy-body-preview-hint">{zh ? '滚动查看全文；超长行分段显示。使用复制按钮获取完整文本。' : 'Scroll to read the full text; long lines are split for display. Use Copy for the complete text.'}</p>
+      <p className="proxy-body-preview-hint">{javaProxyText('fullTextHint', zh ? 'zh-CN' : 'en')}</p>
       <VirtualText text={text} title={title} />
     </> : renderFormatted ? renderFormatted(text) : <pre tabIndex={0}>{preview || (zh ? '（空）' : '(empty)')}</pre>}
   </>;

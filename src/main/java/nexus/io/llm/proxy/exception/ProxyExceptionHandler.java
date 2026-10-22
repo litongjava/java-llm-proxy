@@ -30,6 +30,15 @@ public class ProxyExceptionHandler implements TioBootExceptionHandler {
     } else if (error instanceof BusinessException business) {
       status = business.getStatus();
       message = business.getMessage();
+    } else if (error instanceof java.io.InterruptedIOException) {
+      status = 504;
+      message = "Upstream request timed out. Check the outbound proxy and try again.";
+      LOG.warn("Request timed out: {}", request.getRequestURI());
+    } else if (error instanceof java.net.SocketException || error instanceof java.net.UnknownHostException
+        || error instanceof javax.net.ssl.SSLException) {
+      status = 502;
+      message = "Upstream connection failed. Check the outbound proxy, network and certificate trust.";
+      LOG.warn("Upstream connection failed: {} ({})", request.getRequestURI(), error.getClass().getSimpleName());
     } else {
       LOG.error("Request failed: {}", request.getRequestURI(), error);
     }

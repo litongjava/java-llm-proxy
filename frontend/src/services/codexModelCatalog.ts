@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import type { MessageKey } from '../i18n/resources';
 
 export const codexReasoningEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const;
@@ -21,6 +22,7 @@ export type CodexModelConfiguration = {
   input_modalities: Array<'text' | 'image'>;
   visibility: 'list' | 'hide' | 'none';
   supports_parallel_tool_calls: boolean;
+  supports_search_tool: boolean;
 };
 
 export type CodexCatalogEditorModel = {
@@ -33,6 +35,7 @@ export type CodexCatalogEditorModel = {
 };
 
 export type CodexCatalogEditorSnapshot = {
+  defaultAutoReviewModel?: string | null;
   revision: string;
   models: CodexCatalogEditorModel[];
 };
@@ -69,6 +72,7 @@ export function sameCodexModelConfiguration(left: CodexModelConfiguration, right
     && left.default_reasoning_level === right.default_reasoning_level
     && left.visibility === right.visibility
     && left.supports_parallel_tool_calls === right.supports_parallel_tool_calls
+    && left.supports_search_tool === right.supports_search_tool
     && left.input_modalities.join(',') === right.input_modalities.join(',')
     && left.supported_reasoning_levels.length === right.supported_reasoning_levels.length
     && left.supported_reasoning_levels.every((level, index) => level.effort === right.supported_reasoning_levels[index].effort
@@ -118,3 +122,9 @@ export function validateCodexModelConfiguration(configuration: CodexModelConfigu
   if (!configuration.input_modalities.length) return 'agents.catalog.invalidModalities';
   return null;
 }
+
+export const getCodexModelCatalogEditor = (): Promise<CodexCatalogEditorSnapshot> =>
+  invoke<CodexCatalogEditorSnapshot>('get_codex_model_catalog_editor');
+
+export const saveCodexModelCatalogEditor = (args: { request: { revision: string; review_model?: { model: string | null }; models: { slug: string; configuration: CodexModelConfiguration; }[]; }; }): Promise<CodexCatalogEditorSaveResult> =>
+  invoke<CodexCatalogEditorSaveResult>('save_codex_model_catalog_editor', args);

@@ -25,7 +25,8 @@ import okhttp3.Credentials;
 public class ManagementHttpService {
   public OkHttpClient client(String proxyUrl, int timeoutSeconds) {
     OkHttpClient.Builder builder = new OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
-        .callTimeout(timeoutSeconds, TimeUnit.SECONDS).followRedirects(false).retryOnConnectionFailure(false);
+        .callTimeout(timeoutSeconds, TimeUnit.SECONDS)
+        .readTimeout(timeoutSeconds, TimeUnit.SECONDS).writeTimeout(timeoutSeconds, TimeUnit.SECONDS).followRedirects(false).retryOnConnectionFailure(false);
     if (proxyUrl != null && !proxyUrl.isBlank() && !"direct".equals(proxyUrl) && !"none".equals(proxyUrl)) {
       URI uri = URI.create(proxyUrl);
       BusinessException.require(uri.getScheme() != null && uri.getHost() != null

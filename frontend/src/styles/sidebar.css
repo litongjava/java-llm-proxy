@@ -408,45 +408,6 @@
 
 /* Theme: icon segmented control; the thumb is the same raised surface. */
 
-.sidebar-theme-selector {
-  display: inline-flex;
-  flex: none;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--sidebar-track-bg);
-}
-
-.sidebar-theme-selector button {
-  display: grid;
-  width: 26px;
-  height: 24px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--sidebar-icon);
-  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease,
-    transform 120ms var(--sidebar-ease-out);
-}
-
-@media (hover: hover) {
-  .sidebar-theme-selector button:not(.active):hover {
-    color: var(--sidebar-text-strong);
-  }
-}
-
-.sidebar-theme-selector button:active {
-  transform: scale(0.92);
-}
-
-.sidebar-theme-selector button.active {
-  background: var(--sidebar-thumb-bg);
-  box-shadow: var(--sidebar-selected-shadow);
-  color: var(--sidebar-text-strong);
-}
-
 /* Privacy: a single toggle beside the theme control; accent while masking. */
 
 .sidebar-utility-actions {
@@ -616,3 +577,13 @@
     display: none;
   }
 }
+
+.nav-plugin-row { position: relative; min-width: 0; }
+.nav-plugin-row.dragging { z-index: 5; background: var(--bg-card); border-radius: 8px; box-shadow: none; }
+.nav-section .nav-plugin-row .nav-plugin-entry { width: 100%; padding-right: 28px; }
+.nav-section .nav-plugin-row .nav-plugin-drag { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); width: 22px; height: 26px; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center; opacity: .35; color: var(--text-tertiary); touch-action: none; cursor: grab; border: 0; background: transparent; }
+.nav-plugin-row:hover .nav-plugin-drag, .nav-plugin-row:focus-within .nav-plugin-drag { opacity: 1; }
+.nav-section .nav-plugin-row .nav-plugin-drag:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+.nav-section .nav-plugin-row.dragging .nav-plugin-drag { cursor: grabbing; opacity: 1; }
+@media (max-width: 900px) { .nav-plugin-row { flex-shrink: 0; } }
+@media (prefers-reduced-motion: reduce) { .nav-plugin-row { transition: none !important; } }

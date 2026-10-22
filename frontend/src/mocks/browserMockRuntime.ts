@@ -1,5 +1,6 @@
+import { isThemeSelection, type ThemeSelection } from '../themes/types';
 import { applyTemplateChanges, readTemplatePath, sameTemplateValue, type TemplateConfigChange } from '../services/templateConfig';
-import { createPluginMock } from './pluginMock';
+import { createPluginMock, type PluginWebviewMockState } from './pluginMock';
 import { createQuotaMock, createQuotaMockFiles } from './quotaMock';
 
 export type BrowserMockScenario = 'running' | 'stopped' | 'empty' | 'error';
@@ -20,6 +21,19 @@ export type BrowserMockRuntime = {
 
 const SCENARIOS = new Set<BrowserMockScenario>(['running', 'stopped', 'empty', 'error']);
 const BUNDLED_CORE = { version: '7.3.15', assetName: 'CLIProxyAPI_7.3.15_windows_amd64.zip' };
+const MOCK_CUSTOM_THEME = {
+  id: 'harbor-dark',
+  name: { en: 'Harbor', 'zh-CN': '港湾', ja: 'ハーバー' },
+  description: { en: 'Deep teal surfaces with a sea-glass accent', 'zh-CN': '深青底色与海玻璃色点缀', ja: '深い青緑とシーグラスのアクセント' },
+  appearance: 'dark',
+  windowBackground: '#0E1A1F',
+  tokens: {
+    workspaceBackground: '#0E1A1F', surface: '#14242B', softSurface: '#1A2E36', hoverBackground: '#213842',
+    textPrimary: '#E6F1F2', textSecondary: '#B7CACD', textTertiary: '#8FA7AB', textMuted: '#7D959A',
+    border: '#2A434C', borderSubtle: '#1F353D', accent: '#6FD3C1', accentStrong: '#8FE0D1',
+    accentSoft: '#1D3B3A', accentContrast: '#0E1A1F', sidebarBackground: '#0B151A', popoverBackground: '#14242B',
+  },
+};
 const PROVIDER_SECTIONS = [
   'gemini-api-key',
   'interactions-api-key',
@@ -255,6 +269,8 @@ function createAgentStatuses() {
     currentModel: id.startsWith('claude') ? 'claude-sonnet-4-6' : 'gpt-5.2-codex',
     oauthConfiguration: id === 'codex',
     codexNativeOauth: false,
+    codexOpenaiProvider: false,
+    codexRemoteCompaction: false,
     modificationEnabled: id !== 'openclaw',
     modificationState: id === 'openclaw' ? 'unconfigured' : 'applied',
     backupAvailable: true,
@@ -588,6 +604,7 @@ function createState(scenario: BrowserMockScenario) {
       { id: 'claude:claude-sonnet-4-6', model: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', provider: 'Claude OAuth', kind: 'claude-oauth', protocol: 'anthropic', reasoningLevels: ['low', 'medium', 'high'] },
     ],
     codexCatalog: {
+      defaultAutoReviewModel: null as string | null,
       revision: 'mock-catalog-r1',
       models: ['gpt-5.2-codex', 'gpt-5.1-codex'].map((slug) => {
         const configuration = {
@@ -602,6 +619,7 @@ function createState(scenario: BrowserMockScenario) {
           input_modalities: ['text', 'image'],
           visibility: 'list',
           supports_parallel_tool_calls: true,
+          supports_search_tool: true,
           base_instructions: 'You are Codex, a coding assistant.',
         };
         return {
@@ -951,6 +969,8 @@ export function createBrowserMockRuntime(
   scenario: BrowserMockScenario,
   emitEvent: EmitMockEvent = () => {},
   delayMs = 0,
+  pluginPages = 0,
+  onPluginWebview?: (state: PluginWebviewMockState) => void,
 ): BrowserMockRuntime {
   const state = createState(scenario);
   const toolAliases = new Map<string, { thinking: typeof state.thinkingAliases; speed: typeof state.speedAliases }>();
@@ -964,6 +984,9 @@ export function createBrowserMockRuntime(
     }
     return aliases;
   };
+  let usageViewPreferences: Record<string, string> = {};
+  let privacyMode: boolean | null = null;
+  let themeSelection: ThemeSelection | null = null;
   if (scenario === 'empty') {
     state.usageEvents = [];
     state.usagePrices = [];
@@ -975,7 +998,7 @@ export function createBrowserMockRuntime(
     state.usageStorage.totalRecords = 0;
     state.coreConfig.apiKeys = [];
   }
-  const pluginMock = createPluginMock(state);
+  const pluginMock = createPluginMock(state, pluginPages, onPluginWebview);
   const emit = (event: string, payload: unknown) => emitEvent(event, clone(payload));
 
   const invoke = async (command: string, rawPayload?: unknown): Promise<unknown> => {
@@ -1003,12 +1026,16 @@ export function createBrowserMockRuntime(
       case 'save_usage_events_export': return null;
       case 'detect_core_platform': return { os: 'windows', arch: 'x86_64', assetOs: 'windows', assetArch: 'amd64', archiveKind: 'zip' };
       case 'get_linux_system_theme': return 'light';
+      case 'detect_window_material': return null;
+      case 'list_custom_themes': return { files: [{ fileName: 'harbor-dark.json', content: JSON.stringify(MOCK_CUSTOM_THEME) }], omitted: 0 };
       case 'set_app_locale':
       case 'open_external_url':
       case 'open_oauth_url':
       case 'resolve_windows_close_request':
       case 'open_auth_files_directory':
       case 'open_core_logs_directory':
+      case 'open_custom_themes_directory':
+      case 'set_window_material':
       case 'restart_agent_app':
       case 'restart_codex_app':
       case 'restart_opencode_app':
@@ -1020,6 +1047,7 @@ export function createBrowserMockRuntime(
       case 'launch_agent': return null;
 
       case 'get_core_status': return clone(state.coreStatus);
+      case 'main_window_active': return !document.hidden;
       case 'start_core_process': {
         if (!state.coreStatus.installed) throw new Error('Browser Mock: install the core first');
         Object.assign(state.coreStatus, { running: true, ready: true, managed: true, starting: false, processId: 42817, message: 'Browser Mock core is running' });
@@ -1038,6 +1066,28 @@ export function createBrowserMockRuntime(
         Object.assign(state.coreStatus, { running: true, ready: true, managed: true, starting: false, processId: 42818, message: 'Browser Mock core restarted' });
         emit('core-status-changed', state.coreStatus);
         return clone(state.coreStatus);
+      }
+      case 'get_usage_view_preferences': return clone(usageViewPreferences);
+      case 'save_usage_view_preferences': {
+        const values = asObject(payload.values);
+        if (!payload.values || typeof payload.values !== 'object' || Array.isArray(payload.values) || Object.keys(values).length > 100
+          || Object.entries(values).some(([key, value]) => typeof value !== 'string' || new TextEncoder().encode(key).length > 128 || new TextEncoder().encode(value as string).length > 16_384
+            || (!key.startsWith('cpa-gui.usage-') && key !== 'cpa-gui.pricing-sync-source.v1'))) throw new Error('Invalid usage preferences');
+        usageViewPreferences = clone(values) as Record<string, string>;
+        return null;
+      }
+      case 'get_privacy_mode': return privacyMode;
+      case 'save_privacy_mode': {
+        if (typeof payload.enabled !== 'boolean') throw new Error('Invalid privacy mode');
+        privacyMode = payload.enabled;
+        return null;
+      }
+      case 'get_theme_selection': return clone(themeSelection);
+      case 'save_theme_selection': {
+        if (!isThemeSelection(payload.selection)
+          || Object.keys(payload.selection).some(key => !['version', 'selectedId', 'lastLightId', 'lastDarkId'].includes(key))) throw new Error('Invalid theme selection');
+        themeSelection = clone(payload.selection);
+        return null;
       }
       case 'get_gui_settings': return clone(state.guiSettings);
       case 'get_core_config_settings': return clone(state.coreConfig);
@@ -1453,6 +1503,7 @@ export function createBrowserMockRuntime(
       case 'get_codex_model_catalog_editor': return clone(state.codexCatalog);
       case 'save_codex_model_catalog_editor': {
         const request = asObject(payload.request);
+        if (request.review_model !== undefined) state.codexCatalog.defaultAutoReviewModel = readString(asObject(request.review_model).model) || null;
         const models = asArray(request.models).map(asObject);
         state.codexCatalog.models = state.codexCatalog.models.map((model) => {
           const update = models.find((item) => item.slug === model.slug);
@@ -1565,10 +1616,20 @@ export function createBrowserMockRuntime(
           failedCount: 0,
         };
       }
+      case 'set_codex_remote_compaction': {
+        const codex = state.agentStatuses.find((status) => status.id === 'codex');
+        if (codex) codex.codexRemoteCompaction = Boolean(payload.enabled);
+        return {};
+      }
+      case 'set_codex_openai_provider': {
+        const codex = state.agentStatuses.find((status) => status.id === 'codex');
+        if (codex) codex.codexOpenaiProvider = Boolean(payload.enabled);
+        return createActionResult(payload);
+      }
       case 'repair_codex_session_metadata': {
         emit('codex-session-repair-progress', { phase: 'complete', percent: 100, processed: state.codexSessions.length, total: state.codexSessions.length });
         return {
-          targetProvider: 'cpa-gui', changedRolloutFiles: 2, sqliteRowsUpdated: 2,
+          targetProvider: state.agentStatuses.find((status) => status.id === 'codex')?.codexOpenaiProvider ? 'openai' : 'cpa-gui', changedRolloutFiles: 2, sqliteRowsUpdated: 2,
           skippedLockedFiles: [], backupPath: 'C:\\Users\\Mock\\.codex\\backups\\repair.zip',
           encryptedContentWarning: null, warnings: [],
         };

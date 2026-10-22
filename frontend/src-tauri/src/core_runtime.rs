@@ -275,8 +275,7 @@ pub(crate) fn auto_install_bundled_core_if_needed(app: &tauri::AppHandle) -> Res
         return Ok(false);
     }
     let window = app
-        .get_webview_window("main")
-        .map(|webview| webview.as_ref().window())
+        .get_window("main")
         .ok_or_else(|| "Cannot access the main window to automatically install the offline kernel".to_string())?;
     let state = app.state::<CoreDownloadState>();
     state.start(CancellationToken::new(), Some(info.version.clone()))?;
@@ -386,7 +385,10 @@ pub(crate) fn pause_core_process_for_install(
     process_state: &CoreProcessState,
 ) -> Result<bool, String> {
     process_state.ensure_active()?;
-    let was_running = current_core_status(Some(process_state), None)?.running;
+    let was_running = current_core_status(Some(process_state), None)?.running
+        || process_state.recovery.wants_running();
+    // Also cancel a pending recovery when an update finds an already-dead core.
+    process_state.recovery.cancel();
     if was_running {
         stop_core_process_inner(process_state)?;
     }
@@ -442,6 +444,7 @@ pub(crate) fn start_core_process_with_state(
 ) -> Result<CoreStatus, String> {
     network_proxy::refresh(gui_config_state)?;
     let config = gui_config_state.snapshot()?;
+    process_state.recovery.cancel();
     start_core_process_inner(process_state, &config)?;
     if let Err(error) = gui_config_state.set_run_on_startup(true) {
         let _ = stop_core_process_inner(process_state);
@@ -475,6 +478,7 @@ pub(crate) fn restart_core_process_with_state(
 ) -> Result<CoreStatus, String> {
     network_proxy::refresh(gui_config_state)?;
     let config = gui_config_state.snapshot()?;
+    process_state.recovery.cancel();
     if current_core_status(Some(process_state), None)?.running {
         stop_core_process_inner(process_state)?;
     }
@@ -1349,6 +1353,7 @@ pub(crate) fn current_core_status(
         running,
         ready,
         starting,
+        recovery: process_state.and_then(|state| state.recovery.status()),
         managed: managed_pid.is_some(),
         process_id,
         current_version,
@@ -1706,6 +1711,7 @@ pub(crate) fn configure_networked_command(command: &mut Command, proxy_url: &str
 }
 
 pub(crate) fn stop_core_process_inner(process_state: &CoreProcessState) -> Result<(), String> {
+    process_state.recovery.cancel();
     let mut stopped_any = false;
     let mut errors = Vec::new();
 
@@ -2863,7 +2869,7 @@ pub(crate) fn configure_initial_main_window(
     start_hidden: bool,
 ) -> Result<(), String> {
     let window = app_handle
-        .get_webview_window("main")
+        .get_window("main")
         .ok_or_else(|| "Main window does not exist".to_string())?;
 
     #[cfg(target_os = "macos")]
@@ -2880,18 +2886,19 @@ pub(crate) fn configure_initial_main_window(
     };
 
     if start_hidden {
-        return window
-            .hide()
+        return crate::window_activity::hide(&window)
             .map_err(|error| format!("Failed to hide main window during silent startup: {error}"));
     }
 
-    window
-        .show()
+    crate::window_activity::show(&window)
         .map_err(|error| format!("Failed to show main window: {error}"))?;
     if window.is_minimized().unwrap_or(false) {
         window
             .unminimize()
             .map_err(|error| format!("Failed to restore main window: {error}"))?;
+    }
+    if let Err(error) = sync_main_webview_bounds(app_handle) {
+        eprintln!("Failed to synchronize the main webview bounds: {error}");
     }
     window
         .set_focus()

@@ -1,5 +1,7 @@
+import { Notice } from '../Notice';
+import { EmptyState } from '../EmptyState';
 import { useMemo, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../services/native';
 import { ArrowUpRight, ExternalLink, KeyRound, Monitor, Search, Sparkles, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { freeApiProviderText } from '../../i18n/freeApiProviders';
@@ -40,15 +42,15 @@ export function FreeApiProviders({ onManage }: { onManage?: () => void }) {
       </div>
       <div className="free-api-directory-toolbar">
         <div className="free-api-search"><Search size={18} aria-hidden="true" /><input type="search" value={query} onChange={event => setQuery(event.currentTarget.value)} placeholder={text('search')} aria-label={text('search')} />
-          {query ? <button type="button" onClick={() => setQuery('')} aria-label={text('clear')}><X size={16} /></button> : null}
+          {query ? <button className="icon-button quiet ghost" type="button" onClick={() => setQuery('')} aria-label={text('clear')}><X size={16} /></button> : null}
         </div>
         <div className="free-api-filters" role="group" aria-label={text('discover')}>
-          {categories.filter(item => item === 'all' || freeApiProviders.some(provider => provider.category === item)).map(item => <button type="button" key={item} aria-pressed={category === item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>
+          {categories.filter(item => item === 'all' || freeApiProviders.some(provider => provider.category === item)).map(item => <button type="button" key={item} aria-pressed={category === item} className={category === item ? 'primary-button compact-button' : 'secondary-button compact-button'} onClick={() => setCategory(item)}>
             {text(item)}<span>{item === 'all' ? freeApiProviders.length : freeApiProviders.filter(provider => provider.category === item).length}</span>
           </button>)}
         </div>
       </div>
-      <div className="free-api-results"><span role="status">{filtered.length} {text('results')}</span>{query || category !== 'all' ? <button type="button" onClick={clear}>{text('clear')}</button> : null}</div>
+      <div className="free-api-results"><Notice tone="info" variant="text">{filtered.length} {text('results')}</Notice>{query || category !== 'all' ? <button className="secondary-button ghost compact-button" type="button" onClick={clear}>{text('clear')}</button> : null}</div>
       <ul className="free-api-provider-grid">
         {filtered.map(provider => (
           <li key={provider.id} className={`panel free-api-provider-card category-${provider.category}`}>
@@ -64,9 +66,9 @@ export function FreeApiProviders({ onManage }: { onManage?: () => void }) {
           </li>
         ))}
       </ul>
-      {filtered.length === 0 ? <div className="free-api-empty"><Search size={28} aria-hidden="true" /><h3>{text('empty')}</h3><p>{text('emptyHint')}</p><button type="button" className="secondary-button" onClick={clear}>{text('clear')}</button></div> : null}
+      {filtered.length === 0 ? <EmptyState icon={<Search size={28} />} title={text('empty')} action={<button type="button" className="secondary-button" onClick={clear}>{text('clear')}</button>}>{text('emptyHint')}</EmptyState> : null}
       <p className="free-api-policy">{text('policy')}</p>
-      {failedUrl ? <p role="alert">{text('failed')} <a href={failedUrl} target="_blank" rel="noopener noreferrer">{failedUrl}</a></p> : null}
+      {failedUrl ? <Notice tone="error" variant="text">{text('failed')} <a href={failedUrl} target="_blank" rel="noopener noreferrer">{failedUrl}</a></Notice> : null}
     </section>
   );
 }

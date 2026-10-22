@@ -74,11 +74,11 @@ public class ModelCatalogService {
 
   public boolean allowed(Kv credential, String model) {
     Kv oauth = ProxyJson.object(Aop.get(DesktopConfigService.class).section("oauth"));
-    List<Object> exclusions = new ArrayList<>(ProxyJson.list(ProxyJson.object(oauth.get("excluded-models")).get(credential.get("type"))));
-    exclusions.addAll(ProxyJson.list(credential.get("excluded_models")));
-    exclusions.addAll(ProxyJson.list(credential.get("excluded-models")));
+    List<?> exclusions = ProxyJson.list(credential.get("excluded_models"));
+    if (exclusions.isEmpty()) { exclusions = ProxyJson.list(credential.get("excluded-models")); }
+    if (exclusions.isEmpty()) { exclusions = ProxyJson.list(ProxyJson.object(oauth.get("excluded-models")).get(credential.get("type"))); }
     for (Object value : exclusions) {
-      String pattern = value.toString();
+      if (!(value instanceof String pattern) || pattern.isBlank()) { continue; }
       String regex = Pattern.quote(pattern).replace("*", "\\E.*\\Q");
       if (model.matches(regex)) { return false; }
     }

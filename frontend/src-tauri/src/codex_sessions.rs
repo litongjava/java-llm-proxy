@@ -232,6 +232,7 @@ pub(crate) async fn delete_codex_sessions(
 #[tauri::command]
 pub(crate) async fn repair_codex_session_metadata(
     app: tauri::AppHandle,
+    expected_provider: Option<String>,
 ) -> Result<CodexSessionRepairResult, String> {
     let user_home = app
         .path()
@@ -240,7 +241,12 @@ pub(crate) async fn repair_codex_session_metadata(
     let codex_home = resolve_codex_home(&user_home);
     let progress_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = crate::AGENT_CONFIG_FILE_LOCK.lock()
+            .map_err(|_| "Agent configuration file lock is poisoned".to_string())?;
         let target_provider = resolve_current_codex_provider(&codex_home)?;
+        if expected_provider.as_deref().is_some_and(|expected| expected != target_provider) {
+            return Err("Codex provider changed before session synchronization. Refresh and try again".to_string());
+        }
         repair_codex_session_metadata_from_home(&codex_home, &target_provider, |progress| {
             let _ = progress_app.emit(REPAIR_PROGRESS_EVENT, progress);
         })
@@ -295,10 +301,15 @@ fn resolve_sqlite_home(codex_home: &Path) -> PathBuf {
     existing_env_directory("CODEX_SQLITE_HOME").unwrap_or_else(|| codex_home.to_path_buf())
 }
 
+#[cfg(not(test))]
 fn existing_env_directory(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os(name).map(PathBuf::from)?;
     (!path.as_os_str().is_empty() && path.is_dir()).then_some(path)
 }
+
+// Tests must never discover the developer's real session store through environment variables.
+#[cfg(test)]
+fn existing_env_directory(_: &str) -> Option<PathBuf> { None }
 
 fn open_read_only(path: &Path) -> Result<Connection, String> {
     let connection = Connection::open_with_flags(

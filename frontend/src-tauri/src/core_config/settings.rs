@@ -309,7 +309,20 @@ pub(crate) fn merge_core_config_yaml(
                 current.to_string()
             }
         }
-        None => merge_core_config_fields(template, None)?,
+        None => {
+            // Only new configurations omit template plugin instances. No scan or
+            // cleanup is performed for existing installations.
+            let file = template.parse::<yaml_edit::YamlFile>()
+                .map_err(|error| format!("Failed to parse kernel configuration template: {error}"))?;
+            let root = file.document().and_then(|document| document.as_mapping())
+                .ok_or_else(|| "Kernel configuration template root must be a YAML mapping".to_string())?;
+            if let Some(value) = root.get("plugins") {
+                if let Some(plugins) = value.as_mapping() {
+                    plugins.remove("configs");
+                }
+            }
+            merge_core_config_fields(&file.to_string(), None)?
+        },
     };
     // Old mirrored values may be stale after a kernel upgrade. Only an explicit
     // software-side opt-out should disable statistics when starting the kernel.
@@ -1714,6 +1727,129 @@ pub(crate) fn configured_window_size(config: &GuiConfigFile) -> Option<SavedWind
     }
 }
 
+pub(crate) fn configured_window_position(
+    config: &GuiConfigFile,
+) -> Option<tauri::PhysicalPosition<i32>> {
+    config
+        .window_x
+        .zip(config.window_y)
+        .map(|(x, y)| tauri::PhysicalPosition::new(x, y))
+}
+
+// Use physical coordinates for monitor layouts, including displays left of the primary.
+pub(crate) fn fit_window_position_to_work_area(
+    position: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+    work_area: &tauri::PhysicalRect<i32, u32>,
+) -> tauri::PhysicalPosition<i32> {
+    let clamp = |coordinate: i32, origin: i32, available: u32, length: u32| {
+        let min = i64::from(origin);
+        let max = (min + i64::from(available) - i64::from(length)).max(min);
+        i64::from(coordinate).clamp(min, max) as i32
+    };
+    tauri::PhysicalPosition::new(
+        clamp(
+            position.x,
+            work_area.position.x,
+            work_area.size.width,
+            size.width,
+        ),
+        clamp(
+            position.y,
+            work_area.position.y,
+            work_area.size.height,
+            size.height,
+        ),
+    )
+}
+
+pub(crate) fn restore_window_position_for_monitor(
+    saved_position: tauri::PhysicalPosition<i32>,
+    window_size: tauri::PhysicalSize<u32>,
+    work_area: &tauri::PhysicalRect<i32, u32>,
+    scale_factor: f64,
+) -> (tauri::PhysicalPosition<i32>, tauri::Position) {
+    let fitted_physical = fit_window_position_to_work_area(saved_position, window_size, work_area);
+    #[cfg(target_os = "macos")]
+    let target_position = if scale_factor.is_finite() && scale_factor > 0.0 {
+        tauri::Position::Logical(tauri::LogicalPosition::new(
+            f64::from(fitted_physical.x) / scale_factor,
+            f64::from(fitted_physical.y) / scale_factor,
+        ))
+    } else {
+        tauri::Position::Physical(fitted_physical)
+    };
+    #[cfg(not(target_os = "macos"))]
+    let target_position = tauri::Position::Physical(fitted_physical);
+
+    (fitted_physical, target_position)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn window_outer_size_for_monitor<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
+    monitor: &tauri::Monitor,
+    expected_logical_size: Option<SavedWindowSize>,
+) -> tauri::PhysicalSize<u32> {
+    let target_scale = monitor.scale_factor();
+    if let (Ok(outer), Ok(window_scale)) = (window.outer_size(), window.scale_factor()) {
+        if window_scale.is_finite()
+            && window_scale > 0.0
+            && target_scale.is_finite()
+            && target_scale > 0.0
+        {
+            let logical_w = f64::from(outer.width) / window_scale;
+            let logical_h = f64::from(outer.height) / window_scale;
+            return tauri::PhysicalSize::new(
+                (logical_w * target_scale).round() as u32,
+                (logical_h * target_scale).round() as u32,
+            );
+        }
+    }
+    expected_logical_size
+        .map(|size| {
+            tauri::PhysicalSize::new(
+                (f64::from(size.width) * target_scale).round() as u32,
+                (f64::from(size.height) * target_scale).round() as u32,
+            )
+        })
+        .unwrap_or_else(|| window.outer_size().unwrap_or_default())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn window_outer_size_for_monitor<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
+    _monitor: &tauri::Monitor,
+    _expected_logical_size: Option<SavedWindowSize>,
+) -> tauri::PhysicalSize<u32> {
+    window.outer_size().unwrap_or_default()
+}
+
+pub(crate) fn sync_main_webview_bounds(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if let (Some(window), Some(webview)) = (main_window(app), app.get_webview("main")) {
+        let inner_size = window
+            .inner_size()
+            .map_err(|error| format!("Failed to read main window inner size: {error}"))?;
+        let scale_factor = window
+            .scale_factor()
+            .map_err(|error| format!("Failed to read main window scale factor: {error}"))?;
+        if scale_factor.is_finite() && scale_factor > 0.0 {
+            let logical_size = inner_size.to_logical::<f64>(scale_factor);
+            let bounds = tauri::Rect {
+                position: tauri::LogicalPosition::new(0.0, 0.0).into(),
+                size: tauri::LogicalSize::new(logical_size.width, logical_size.height).into(),
+            };
+            webview
+                .set_bounds(bounds)
+                .map_err(|error| format!("Failed to update main webview bounds: {error}"))?;
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+    Ok(())
+}
+
 pub(crate) fn logical_window_size_from_physical(
     physical_size: &tauri::PhysicalSize<u32>,
     scale_factor: f64,
@@ -1731,15 +1867,11 @@ pub(crate) fn logical_window_size_from_physical(
     Some(normalized_saved_window_size(width, height))
 }
 
-pub(crate) fn fit_window_size_to_current_monitor<R: tauri::Runtime>(
-    window: &tauri::WebviewWindow<R>,
+pub(crate) fn fit_window_size_to_monitor<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
     saved_size: SavedWindowSize,
+    monitor: Option<&tauri::Monitor>,
 ) -> SavedWindowSize {
-    let monitor = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| window.primary_monitor().ok().flatten());
     let Some(monitor) = monitor else {
         return saved_size;
     };
@@ -1774,27 +1906,96 @@ pub(crate) fn fit_window_size_to_current_monitor<R: tauri::Runtime>(
     }
 }
 
-pub(crate) fn restore_main_window_size(app: &tauri::AppHandle) -> Result<(), String> {
-    let window_size_state = app.state::<MainWindowSizeState>();
-    let Some(saved_size) = window_size_state.snapshot()? else {
-        return Ok(());
-    };
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "Main window does not exist; cannot restore window size".to_string())?;
-    let restored_size = fit_window_size_to_current_monitor(&window, saved_size);
+pub(crate) fn restore_main_window_geometry(app: &tauri::AppHandle) -> Result<(), String> {
+    let window_size_state = app.state::<MainWindowState>();
+    let saved_position = window_size_state.position()?;
+    let window = main_window(app)
+        .ok_or_else(|| "Main window does not exist; cannot restore window geometry".to_string())?;
+    let monitor = saved_position
+        .and_then(|position| {
+            window
+                .monitor_from_point(f64::from(position.x), f64::from(position.y))
+                .ok()
+                .flatten()
+        })
+        .or_else(|| {
+            if saved_position.is_some() {
+                window.primary_monitor().ok().flatten()
+            } else {
+                window.current_monitor().ok().flatten()
+            }
+        })
+        .or_else(|| window.primary_monitor().ok().flatten());
 
-    window
-        .set_size(LogicalSize::new(
-            f64::from(restored_size.width),
-            f64::from(restored_size.height),
-        ))
-        .map_err(|error| format!("Failed to restore main window size: {error}"))?;
-    window_size_state.replace(restored_size)
+    let restored_size = if let Some(saved_size) = window_size_state.snapshot()? {
+        let size = fit_window_size_to_monitor(&window, saved_size, monitor.as_ref());
+        window_size_state.replace(size)?;
+        Some(size)
+    } else {
+        None
+    };
+
+    // Move before resizing so logical dimensions use the destination display's scale.
+    if let (Some(position), Some(monitor)) = (saved_position, monitor.as_ref()) {
+        let scale_factor = monitor.scale_factor();
+        let outer_size = window_outer_size_for_monitor(&window, monitor, restored_size);
+        let (fitted_position, target_position) = restore_window_position_for_monitor(
+            position,
+            outer_size,
+            monitor.work_area(),
+            scale_factor,
+        );
+        window
+            .set_position(target_position)
+            .map_err(|e| format!("Failed to restore main window position: {e}"))?;
+        window_size_state.replace_position(fitted_position)?;
+    }
+
+    if let Some(restored_size) = restored_size {
+        window
+            .set_size(LogicalSize::new(
+                f64::from(restored_size.width),
+                f64::from(restored_size.height),
+            ))
+            .map_err(|error| format!("Failed to restore main window size: {error}"))?;
+    }
+    // Resizing (and a DPI change) can alter the outer bounds; clamp the final rectangle.
+    if let (Some(position), Some(monitor)) = (saved_position, monitor.as_ref()) {
+        let scale_factor = monitor.scale_factor();
+        let outer_size = window_outer_size_for_monitor(&window, monitor, restored_size);
+        let (fitted_position, target_position) = restore_window_position_for_monitor(
+            position,
+            outer_size,
+            monitor.work_area(),
+            scale_factor,
+        );
+        window
+            .set_position(target_position)
+            .map_err(|e| format!("Failed to restore main window position: {e}"))?;
+        window_size_state.replace_position(fitted_position)?;
+    }
+    // Also remember the first launch's default position if the user later exits from the tray.
+    if let Ok(position) = window.outer_position() {
+        window_size_state.replace_position(position)?;
+    }
+    sync_main_webview_bounds(app)?;
+    Ok(())
 }
 
-pub(crate) fn persist_main_window_size(app: &tauri::AppHandle) -> Result<(), String> {
-    let window_size_state = app.state::<MainWindowSizeState>();
+pub(crate) fn persist_main_window_geometry(app: &tauri::AppHandle) -> Result<(), String> {
+    let window_size_state = app.state::<MainWindowState>();
+    let window = main_window(app);
+    let position = match window.as_ref() {
+        Some(window)
+            if !window.is_minimized().unwrap_or(true) && !window.is_maximized().unwrap_or(true) =>
+        {
+            window
+                .outer_position()
+                .ok()
+                .or(window_size_state.position()?)
+        }
+        _ => window_size_state.position()?,
+    };
     let saved_size = match window_size_state.snapshot()? {
         Some(size) => size,
         None => {
@@ -1813,7 +2014,7 @@ pub(crate) fn persist_main_window_size(app: &tauri::AppHandle) -> Result<(), Str
     };
 
     app.state::<GuiConfigState>()
-        .set_window_size(saved_size)
+        .set_window_geometry(saved_size, position)
         .map(|_| ())
 }
 
@@ -1962,6 +2163,11 @@ pub(crate) fn sanitize_gui_config_at(
         config.window_height = normalized_height;
         changed = true;
     }
+    if config.window_x.is_some() != config.window_y.is_some() {
+        config.window_x = None;
+        config.window_y = None;
+        changed = true;
+    }
     Ok(changed)
 }
 
@@ -2073,6 +2279,13 @@ pub(crate) fn write_gui_config_to_path(
     ] {
         if let Some(dimension) = dimension {
             set_codex_table_item(root, key, value(i64::from(dimension)));
+        } else {
+            root.remove(key);
+        }
+    }
+    for (key, coordinate) in [("window-x", config.window_x), ("window-y", config.window_y)] {
+        if let Some(coordinate) = coordinate {
+            set_codex_table_item(root, key, value(i64::from(coordinate)));
         } else {
             root.remove(key);
         }

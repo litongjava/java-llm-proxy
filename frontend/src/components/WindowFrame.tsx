@@ -1,6 +1,6 @@
+import { Notice } from './Notice';
 import { useEffect, useState, type ReactNode } from 'react';
-import { isTauri } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { isTauri, getCurrentWindow } from '../services/platform';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import './WindowFrame.css';
@@ -82,7 +82,7 @@ export function WindowFrame({ children }: { children: ReactNode }) {
       <header className="window-titlebar">
         <div className="window-drag-region" data-tauri-drag-region={!preview ? true : undefined}
           onDoubleClick={preview ? () => void act('toggleMaximize') : undefined} />
-        {error ? <span className="window-error" role="alert">{t('app.window.error')}</span> : null}
+        {error ? <Notice className="window-error" tone="error" variant="text">{t('app.window.error')}</Notice> : null}
         <div className="window-controls">
           <button type="button" aria-label={t('app.window.minimize')} title={t('app.window.minimize')}
             onClick={() => void act('minimize')}><Minus aria-hidden="true" size={14} /></button>

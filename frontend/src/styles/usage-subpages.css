@@ -1,16 +1,10 @@
 /* Shared surfaces for usage subpages; the overview keeps its own chart palette. */
-.usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) {
-  --usage-page-surface: #ffffff;
-  --usage-page-soft: #fafafa;
-  --usage-page-hover: #f4f4f5;
-  --usage-page-text: #17212f;
-  --usage-page-muted: #526071;
-  --usage-page-border: #e4e7ec;
-  --bg-primary: var(--usage-page-surface);
-  --bg-card: var(--usage-page-surface);
-  --bg-secondary: var(--usage-page-soft);
-  --bg-tertiary: var(--usage-page-border);
-  --bg-hover: var(--usage-page-hover);
+.usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']),
+.usage-price-sync-dialog,
+.usage-column-dialog {
+  --usage-page-text: var(--theme-text-primary, #17212f);
+  --usage-page-muted: var(--theme-text-muted, #526071);
+  --usage-page-border: var(--theme-border, #e4e7ec);
   --text-primary: var(--usage-page-text);
   --text-secondary: var(--usage-page-text);
   --text-tertiary: var(--usage-page-muted);
@@ -32,21 +26,16 @@
   color: var(--usage-page-text);
 }
 
-:root[data-theme='dark'] .usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) {
-  --usage-page-surface: #222936;
-  --usage-page-soft: #2b3443;
-  --usage-page-hover: #333e4f;
-  --usage-page-text: #f4f7fb;
-  --usage-page-muted: #c0cbda;
-  --usage-page-border: #414d60;
+:root[data-theme='dark'] .usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']),
+:root[data-theme='dark'] .usage-price-sync-dialog,
+:root[data-theme='dark'] .usage-column-dialog {
+  --usage-page-text: var(--theme-text-primary, #f4f7fb);
+  --usage-page-muted: var(--theme-text-muted, #c0cbda);
+  --usage-page-border: var(--theme-border, #414d60);
 }
 
-.usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) :is(
-  .usage-analysis-card, .usage-analysis-context, .usage-pricing-panel,
-  .usage-data-management-panel, .usage-data-management-action,
-  .usage-data-management-result > div, .usage-price-editor, .usage-price-sync-dialog
-) {
-  background: var(--usage-page-surface);
+.usage-price-sync-dialog {
+  background: var(--bg-card);
   border-color: var(--usage-page-border);
   color: var(--usage-page-text);
   box-shadow: 0 1px 3px rgb(0 0 0 / 3%);
@@ -83,13 +72,17 @@
 .usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) :is(
   input:not([type='checkbox']):not([type='radio']), select,
   .usage-price-row-actions button, .secondary-button
-) {
-  background: var(--usage-page-surface);
+),
+:root .app-dialog.usage-price-sync-dialog :is(input:not([type='checkbox']):not([type='radio']), .secondary-button),
+:root .app-dialog.usage-column-dialog :is(input:not([type='checkbox']):not([type='radio']), select, .secondary-button) {
+  background: var(--bg-card);
   color: var(--usage-page-text);
   border-color: var(--usage-page-border);
 }
 
-.usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) input::placeholder {
+.usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) input::placeholder,
+.usage-price-sync-dialog input::placeholder,
+.usage-column-dialog input::placeholder {
   color: var(--usage-page-muted);
   opacity: 1;
 }
@@ -348,8 +341,7 @@ body.table-col-resizing .usage-records-page .usage-request-log .usage-events-tab
   margin-top: 2px;
 }
 
-.usage-records-page .usage-request-log.usage-events-compact .usage-cache-write,
-.usage-records-page .usage-request-log.usage-events-compact .tone-reasoning {
+.usage-records-page .usage-request-log.usage-events-compact .usage-cache-write {
   display: none;
 }
 
@@ -362,5 +354,5 @@ body.table-col-resizing .usage-records-page .usage-request-log .usage-events-tab
   font-size: 13px;
 }
 .usage-records-page .usage-context-filter input::placeholder { color: var(--text-secondary); opacity: 1; }
-.usage-records-page .usage-context-clear { width: 36px; height: 36px; padding: 0; justify-self: start; }
+.usage-records-page .usage-context-clear { width: 36px; padding: 0; justify-self: start; }
 .usage-records-page .usage-td-context span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 12px; }

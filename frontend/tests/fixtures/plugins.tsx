@@ -9,6 +9,8 @@ localStorage.setItem('easy-cli-proxy-api.locale', params.get('locale') ?? 'en');
 document.documentElement.dataset.theme = params.get('theme') ?? 'light';
 type Request = { method: string; path: string; query?: Record<string, string>; body?: unknown };
 const state = {
+  localSelection: '/downloads/local-demo-v1.0.0.dll' as string | null,
+  localInstallError: '',
   supported: !params.has('unsupported'),
   commands: [] as { command: string; args: unknown }[],
   requests: [] as Request[],
@@ -71,10 +73,24 @@ const storeEntries: Record<string, unknown>[] = [
   },
 ];
 
+if (params.has('external-repository')) storeEntries[0].repository = 'https://github.com/rensumo/cpa-plugin-zcode';
+
+if (params.has('foreign-source')) storeEntries.unshift({ ...storeEntries[0], source_id: 'foreign', source_name: 'Foreign source',
+  repository: 'foreign/sample', install_source_status: 'different',
+});
+
 mockIPC(async (command, args) => {
   state.commands.push({ command, args });
+  if (command === 'prepare_management_request') return `install-${state.commands.length}`;
+  if (command === 'cancel_management_request') return null;
   if (command === 'start_oauth_login') return { url: 'https://login.example.test/authorize?state=sample-state', state: 'sample-state' };
   if (command === 'get_oauth_status') return { status: 'wait' };
+  if (command === 'plugin:dialog|open') return state.localSelection;
+  if (command === 'install_local_plugin') {
+    if (state.localInstallError) throw new Error(state.localInstallError);
+    pluginEntries.push({ id: 'local-demo', path: '/plugins/windows/amd64/local-demo-v1.0.0.dll', configured: false, registered: false, metadata: null, menus: [], config_fields: [] });
+    return '/plugins/windows/amd64/local-demo-v1.0.0.dll';
+  }
   if (command === 'get_plugin_support') return state.supported;
   if (command === 'get_plugin_resource_url') {
     state.resourceRequests.push(args);
@@ -90,7 +106,7 @@ mockIPC(async (command, args) => {
     if (state.failNextList) { state.failNextList = false; throw new Error('Fixture list temporarily unavailable'); }
     return {
       plugins_enabled: state.settings.enabled, plugins_dir: state.settings.dir,
-      plugins: pluginEntries.map(entry => ({ ...entry,
+      plugins: (params.has('empty-installed') ? [] : pluginEntries).map(entry => ({ ...entry,
         enabled: state.settings.configs[String(entry.id)]?.enabled === true,
         effective_enabled: entry.registered === true && state.settings.enabled && state.settings.configs[String(entry.id)]?.enabled === true,
       })),

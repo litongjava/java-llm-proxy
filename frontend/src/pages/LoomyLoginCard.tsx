@@ -1,18 +1,18 @@
+import { Notice } from '../components/Notice';
 import { useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Check, LoaderCircle, MessageSquare, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { loomyText } from '../i18n/loomy';
 import { isRecord, managementApi, readString } from '../services/managementApi';
 import { notifyPluginResourcesChanged } from '../services/pluginResources';
-import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
+import { Dialog } from '../components/Dialog';
 import './LoomyLoginCard.css';
 
 export function LoomyLoginCard() {
   const { locale } = useI18n();
   const [open, setOpen] = useState(false);
   return <>
-    <section className="panel oauth-card">
+    <section className="panel surface-panel oauth-card">
       <div className="provider-title-row"><MessageSquare className="provider-logo" aria-hidden="true" /><h2>{loomyText('title', locale)}</h2></div>
       <div className="oauth-card-body"><p className="oauth-hint">{loomyText('hint', locale)}</p></div>
       <div className="button-row management-card-actions">
@@ -34,7 +34,6 @@ function LoomyLoginDialog({ onClose }: { onClose: () => void }) {
   const [success, setSuccess] = useState(false);
   const busy = useRef(false);
   const phoneInput = useRef<HTMLInputElement>(null);
-  const dialogRef = useDialogFocusTrap<HTMLElement>({ onEscape: loading ? undefined : onClose, preventEscape: loading, initialFocusRef: phoneInput });
 
   const request = async (login: boolean) => {
     if (busy.current) { return; }
@@ -68,10 +67,7 @@ function LoomyLoginDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  return createPortal(<div className="config-dialog-backdrop" onMouseDown={event => {
-    if (event.currentTarget === event.target && !busy.current) { onClose(); }
-  }}>
-    <section ref={dialogRef} className="config-dialog loomy-login-dialog" role="dialog" aria-modal="true" aria-labelledby="loomy-login-title" aria-busy={loading} tabIndex={-1}>
+  return <Dialog className="config-dialog loomy-login-dialog" labelledBy="loomy-login-title" busy={loading} closeDisabled={loading} initialFocusRef={phoneInput} onClose={onClose} dismissOnBackdrop tabIndex={-1}>
       <div className="config-dialog-heading"><h2 id="loomy-login-title">{text('title')}</h2>
         <button type="button" className="icon-button quiet" disabled={loading} onClick={onClose} aria-label={t('common.close')}><X size={18} aria-hidden="true" /></button>
       </div>
@@ -81,10 +77,10 @@ function LoomyLoginDialog({ onClose }: { onClose: () => void }) {
           setPhone(event.currentTarget.value); setChallenge(null); setCode(''); setError('');
         }} /></label>
         <button type="button" className="secondary-button" disabled={loading || success || !/^1[3-9]\d{9}$/.test(phone.trim())} onClick={() => void request(false)}>{text('send')}</button>
-        {challenge ? <p role="status">{text('sent')}</p> : null}
+        {challenge ? <Notice tone="info" variant="text">{text('sent')}</Notice> : null}
         <label>{text('code')}<input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={code} disabled={loading || success || !challenge} onChange={event => setCode(event.currentTarget.value)} /></label>
-        {error ? <p className="loomy-login-error" role="alert">{error}</p> : null}
-        {success ? <p role="status"><Check size={16} aria-hidden="true" /> {text('success')}</p> : null}
+        {error ? <Notice className="loomy-login-error" tone="error" variant="text">{error}</Notice> : null}
+        {success ? <Notice tone="info" variant="text"><Check size={16} aria-hidden="true" /> {text('success')}</Notice> : null}
         <div className="button-row loomy-login-actions">
           <button type="button" className="secondary-button" disabled={loading} onClick={onClose}>{t('common.close')}</button>
           <button type="submit" className="primary-button" disabled={loading || success || !challenge || !code.trim()}>
@@ -92,6 +88,5 @@ function LoomyLoginDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </form>
-    </section>
-  </div>, document.body);
+  </Dialog>;
 }

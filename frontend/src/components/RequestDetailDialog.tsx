@@ -1,9 +1,10 @@
+import { javaProxyText } from '../i18n/javaProxy';
+import { Notice } from './Notice';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
-import { createPortal } from 'react-dom';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../services/native';
 import { Copy, X } from 'lucide-react';
-import { useDialogFocusTrap } from './useDialogFocusTrap';
+import { Dialog } from './Dialog';
 import { getCurrentLocale } from '../i18n';
 import './requestDetail.css';
 import { RequestDetailText } from './RequestDetailText';
@@ -58,8 +59,8 @@ function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
     if (placeholder.current) observer.observe(placeholder.current);
     return () => { active = false; observer.disconnect(); };
   }, [src]);
-  if (!src || failed) return <span className="proxy-image-unavailable">{zh ? '图片无法加载' : 'Image unavailable'}</span>;
-  if (isStoredImage(src) && !resolved) return <span ref={placeholder} className="proxy-image-unavailable">{zh ? '加载图片…' : 'Loading image…'}</span>;
+  if (!src || failed) return <span className="proxy-image-unavailable">{javaProxyText('imageUnavailable')}</span>;
+  if (isStoredImage(src) && !resolved) return <span ref={placeholder} className="proxy-image-unavailable">{javaProxyText('imageLoading')}</span>;
   return <img src={resolved || src} alt={alt || 'Image'} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
 
@@ -104,7 +105,6 @@ function pretty(value: unknown): string {
 export function RequestDetailDialog({ requestId, onClose }: { requestId: string; onClose: () => void }) {
   const zh = getCurrentLocale().startsWith('zh');
   const label = (en: string, cn: string) => zh ? cn : en;
-  const dialogRef = useDialogFocusTrap<HTMLDivElement>({ onEscape: onClose });
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [formatted, setFormatted] = useState<FormattedRequest | null>(null);
   const [formatting, setFormatting] = useState(false);
@@ -193,8 +193,7 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
     return sections;
   }, [detail, formatted, prettyJson, zh]);
 
-  return createPortal(<div className="config-dialog-backdrop proxy-request-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { onClose(); } }}>
-    <div ref={dialogRef} className="config-dialog proxy-request-dialog" role="dialog" aria-modal="true" aria-labelledby="proxy-request-title">
+  return <Dialog className="config-dialog proxy-request-dialog" backdropClassName="proxy-request-backdrop" labelledBy="proxy-request-title" onClose={onClose} dismissOnBackdrop>
       <header className="proxy-request-toolbar">
         <div><h2 id="proxy-request-title">{label('Request Detail', '请求详情')}</h2><small>{requestId}</small></div>
         <button type="button" className="secondary-button" disabled={!detail || !!detail.localUsage || formatting} onClick={() => void format()}>
@@ -211,13 +210,13 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
             aria-label={`${label('Copy', '复制')} ${field}`} onClick={() => void copy(detail[field] || '')}><Copy size={14} /></button></div>
         </div>)}
       </div>}
-      {error && <p role="alert">{error}</p>}
-      {notice && <span role="status">{notice}</span>}
+      {error && <Notice tone="error" variant="text">{error}</Notice>}
+      {notice && <Notice tone="info" variant="text">{notice}</Notice>}
       {!detail && !error && <p>{label('Loading…', '加载中…')}</p>}
       {detail && (detail.requestTruncated || detail.responseTruncated) && <p>{label('Captured body reached the configured size limit.', '捕获内容已达到配置的大小上限。')}</p>}
       <div className="proxy-request-content">
         <nav className="proxy-request-nav" aria-label={label('Request sections', '请求详情导航')}>
-          {sections.map(section => <button type="button" key={section.id} aria-controls={`proxy-section-${section.id}`}
+          {sections.map(section => <button className="secondary-button ghost compact-button" type="button" key={section.id} aria-controls={`proxy-section-${section.id}`}
             aria-current={activeSection === section.id ? 'location' : undefined} onClick={() => navigate(section.id)}>{section.title}</button>)}
         </nav>
       <div className="proxy-request-sections" ref={sectionsRef} onScroll={trackSection}>
@@ -228,6 +227,5 @@ export function RequestDetailDialog({ requestId, onClose }: { requestId: string;
         </section>)}
       </div>
       </div>
-    </div>
-  </div>, document.body);
+  </Dialog>;
 }

@@ -9,9 +9,10 @@ mod codex_sessions;
 mod configuration_watcher;
 mod core_config;
 mod core_runtime;
+mod core_recovery;
 mod desktop_theme;
 mod instance_lock;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 mod linux_graphics;
 mod management_api;
 mod network_proxy;
@@ -23,6 +24,7 @@ mod network_proxy;
 mod native_i18n;
 mod oauth_browser;
 mod plugins;
+mod plugin_webview;
 mod privacy_mode;
 mod progress;
 mod provider_health;
@@ -35,6 +37,8 @@ mod tray;
 mod usage;
 #[cfg(target_os = "windows")]
 mod windows_frame;
+mod window_material;
+mod window_activity;
 
 #[cfg(test)]
 use configuration_watcher::nearest_existing_watch_directory;
@@ -299,6 +303,7 @@ struct AppUpdateInner {
 
 #[derive(Default)]
 struct CoreProcessState {
+    recovery: core_recovery::CoreRecovery,
     child: Mutex<Option<CoreChild>>,
     adopted_processes: Mutex<Vec<AdoptedCoreProcess>>,
     starting: AtomicBool,
@@ -341,8 +346,10 @@ struct SavedWindowSize {
     height: u32,
 }
 
-struct MainWindowSizeState {
+struct MainWindowState {
     inner: Mutex<Option<SavedWindowSize>>,
+    position: Mutex<Option<tauri::PhysicalPosition<i32>>>,
+    position_tracking: AtomicBool,
 }
 
 #[derive(Default)]
@@ -429,6 +436,8 @@ struct CoreStatus {
     install_dir: String,
     binary_path: Option<String>,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recovery: Option<core_recovery::RecoveryStatus>,
 }
 
 #[derive(Serialize)]
@@ -615,6 +624,8 @@ struct GuiConfigFile {
     default_terminal: String,
     window_width: Option<u32>,
     window_height: Option<u32>,
+    window_x: Option<i32>,
+    window_y: Option<i32>,
     auth_dir: String,
     auth_dir_user_selected: bool,
     #[serde(deserialize_with = "deserialize_gui_api_keys")]
@@ -924,6 +935,8 @@ impl Default for GuiConfigFile {
             default_terminal: DEFAULT_AGENT_TERMINAL.to_string(),
             window_width: Some(DEFAULT_MAIN_WINDOW_WIDTH),
             window_height: Some(DEFAULT_MAIN_WINDOW_HEIGHT),
+            window_x: None,
+            window_y: None,
             auth_dir: DEFAULT_AUTH_DIR.to_string(),
             auth_dir_user_selected: false,
             api_keys: vec![default_api_key_entry()],
@@ -1058,6 +1071,8 @@ struct AgentConfigStatus {
     current_model: Option<String>,
     oauth_configuration: bool,
     codex_native_oauth: bool,
+    codex_openai_provider: bool,
+    codex_remote_compaction: bool,
     modification_enabled: bool,
     modification_state: String,
     backup_available: bool,
@@ -1916,6 +1931,7 @@ impl AppUpdateState {
 impl CoreProcessState {
     fn new(starting: bool) -> Self {
         Self {
+            recovery: core_recovery::CoreRecovery::default(),
             child: Mutex::new(None),
             adopted_processes: Mutex::new(Vec::new()),
             starting: AtomicBool::new(starting),
@@ -1947,11 +1963,16 @@ impl CoreProcessState {
     fn managed_pid(&self) -> Option<u32> {
         if let Ok(mut child) = self.child.lock() {
             if let Some(process) = child.as_mut() {
-                if let Ok(None) = process.try_wait() {
-                    return Some(process.id());
+                match process.try_wait() {
+                    Ok(None) => return Some(process.id()),
+                    Ok(Some(exit)) => {
+                        self.recovery.exited(format!("PID {}: {exit}", process.id()));
+                        *child = None;
+                    }
+                    // A status-check error is not proof of exit. Dropping a live
+                    // CoreChild would terminate its Windows job and create an outage.
+                    Err(_) => return Some(process.id()),
                 }
-
-                *child = None;
             }
         }
 
@@ -1959,11 +1980,15 @@ impl CoreProcessState {
             .lock()
             .ok()
             .and_then(|mut processes| {
+                let had_processes = !processes.is_empty();
                 processes.retain(|process| {
                     process_executable_path(process.process_id)
                         .as_deref()
                         .is_some_and(|path| executable_paths_match(&process.binary_path, path))
                 });
+                if had_processes && processes.is_empty() {
+                    self.recovery.exited("Adopted kernel process exited".into());
+                }
                 processes.first().map(|process| process.process_id)
             })
     }
@@ -1987,6 +2012,9 @@ impl CoreProcessState {
             .collect();
         adopted.sort_unstable_by_key(|process| process.process_id);
         adopted.dedup_by_key(|process| process.process_id);
+        if !adopted.is_empty() {
+            self.recovery.running();
+        }
         Ok(())
     }
 
@@ -2013,15 +2041,34 @@ impl CoreProcessState {
             .lock()
             .map_err(|_| "Kernel process status lock is poisoned".to_string())?;
         *managed_child = Some(child);
+        self.recovery.running();
         Ok(pid)
     }
 }
 
-impl MainWindowSizeState {
-    fn new(size: Option<SavedWindowSize>) -> Self {
+impl MainWindowState {
+    fn new(size: Option<SavedWindowSize>, position: Option<tauri::PhysicalPosition<i32>>) -> Self {
         Self {
             inner: Mutex::new(size),
+            position: Mutex::new(position),
+            position_tracking: AtomicBool::new(false),
         }
+    }
+
+    fn position(&self) -> Result<Option<tauri::PhysicalPosition<i32>>, String> {
+        self.position
+            .lock()
+            .map(|position| *position)
+            .map_err(|_| "Main window position status lock is poisoned".to_string())
+    }
+
+    fn replace_position(&self, position: tauri::PhysicalPosition<i32>) -> Result<(), String> {
+        *self
+            .position
+            .lock()
+            .map_err(|_| "Main window position status lock is poisoned".to_string())? =
+            Some(position);
+        Ok(())
     }
 
     fn snapshot(&self) -> Result<Option<SavedWindowSize>, String> {
@@ -2228,10 +2275,16 @@ impl GuiConfigState {
         Ok(Some(config))
     }
 
-    fn set_window_size(&self, size: SavedWindowSize) -> Result<GuiConfigFile, String> {
+    fn set_window_geometry(
+        &self,
+        size: SavedWindowSize,
+        position: Option<tauri::PhysicalPosition<i32>>,
+    ) -> Result<GuiConfigFile, String> {
         self.update(|config| {
             config.window_width = Some(size.width);
             config.window_height = Some(size.height);
+            config.window_x = position.map(|position| position.x);
+            config.window_y = position.map(|position| position.y);
             Ok(())
         })
     }
@@ -2494,7 +2547,18 @@ fn main() {
         }
     };
     let initial_window_size = configured_window_size(&gui_config);
+    let initial_window_position = configured_window_position(&gui_config);
     let start_hidden = should_start_hidden(&gui_config);
+
+    let context = tauri::generate_context!();
+    #[cfg(target_os = "linux")]
+    let context = {
+        let mut context = context;
+        // Prevent #491's partial blank rendering on Linux (AMD and NVIDIA): disable native
+        // transparency before build creates the window, not later in setup.
+        linux_graphics::configure_main_window(context.config_mut());
+        context
+    };
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -2509,16 +2573,38 @@ fn main() {
         )
         .manage(CoreDownloadState::default())
         .manage(AppUpdateState::default())
+        .manage(window_activity::WindowActivity::default())
         .manage(CoreProcessState::new(gui_config.start_core_on_launch))
         .manage(DeepSeekHarnessProcessState::default())
         .manage(usage::UsageCollectorState::default())
         .manage(GuiConfigState::new(gui_config))
-        .manage(MainWindowSizeState::new(initial_window_size))
+        .manage(plugin_webview::PluginWebviewState::default())
+        .manage(MainWindowState::new(
+            initial_window_size,
+            initial_window_position,
+        ))
         .manage(AgentConfigStatusCache::default());
 
     let app = app.on_window_event(|window, event| {
         if window.label() != "main" {
             return;
+        }
+
+        if matches!(event, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_)) {
+            window_activity::sync(window.app_handle());
+        }
+
+        if let tauri::WindowEvent::Moved(position) = event {
+            let state = window.state::<MainWindowState>();
+            // Ignore startup placement and the OS's minimized/maximized coordinates.
+            if state.position_tracking.load(Ordering::Acquire)
+                && !window.is_minimized().unwrap_or(true)
+                && !window.is_maximized().unwrap_or(true)
+            {
+                if let Err(error) = state.replace_position(*position) {
+                    eprintln!("Failed to record main window position: {error}");
+                }
+            }
         }
 
         let observed_size = match event {
@@ -2536,7 +2622,7 @@ fn main() {
         };
 
         if let Some(observed_size) = observed_size {
-            let window_size_state = window.state::<MainWindowSizeState>();
+            let window_size_state = window.state::<MainWindowState>();
             if let Err(error) = window_size_state.replace(observed_size) {
                 eprintln!("Failed to record main window size: {error}");
             }
@@ -2549,7 +2635,7 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 set_macos_dock_visible(window.app_handle(), false);
-                if let Err(error) = window.hide() {
+                if let Err(error) = window_activity::hide(window) {
                     eprintln!("Failed to hide main window: {error}");
                     set_macos_dock_visible(window.app_handle(), true);
                 }
@@ -2571,15 +2657,14 @@ fn main() {
 
     let app = app
         .setup(move |app| {
-            // Configure before showing the initially hidden window to avoid a native titlebar flash.
-            // Other platforms retain their native window decorations. The frontend replacement
-            // (src/components/WindowFrame.tsx) uses the same platform condition synchronously.
-            // This stays a runtime call because tauri.windows.conf.json would replace the whole
-            // `app.windows` array (JSON Merge Patch) and duplicate the main window config.
+            // Match WindowFrame's Windows-only shell before showing the main window.
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
                 windows_frame::install(&window)?;
                 window.set_decorations(false)?;
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_background_color(Some(tauri::window::Color(255, 255, 255, 255)))?;
             }
             if let Err(error) = network_proxy::refresh(app.state::<GuiConfigState>().inner()) {
                 eprintln!("Failed to read startup proxy settings: {error}");
@@ -2599,9 +2684,12 @@ fn main() {
                     eprintln!("Failed to update Codex model catalog in the background; continuing with current catalog: {error}");
                 }
             });
-            if let Err(error) = restore_main_window_size(app.handle()) {
+            if let Err(error) = restore_main_window_geometry(app.handle()) {
                 eprintln!("{error}");
             }
+            app.state::<MainWindowState>()
+                .position_tracking
+                .store(true, Ordering::Release);
 
             #[cfg(target_os = "macos")]
             setup_macos_tray(app)?;
@@ -2625,6 +2713,7 @@ fn main() {
             }
 
             network_proxy::start_monitor(app.handle().clone());
+            core_recovery::start(app.handle().clone());
             start_codex_model_catalog_sync(app.handle().clone());
 
             let usage_app = app.handle().clone();
@@ -2718,9 +2807,14 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            window_activity::main_window_active,
             desktop_theme::get_linux_system_theme,
-            desktop_theme::get_theme_preference,
-            desktop_theme::save_theme_preference,
+            desktop_theme::list_custom_themes,
+            desktop_theme::open_custom_themes_directory,
+            desktop_theme::get_theme_selection,
+            desktop_theme::save_theme_selection,
+            window_material::detect_window_material,
+            window_material::set_window_material,
             privacy_mode::get_privacy_mode,
             privacy_mode::save_privacy_mode,
             health_check,
@@ -2769,6 +2863,8 @@ fn main() {
             apply_agent_config,
             clear_codex_config,
             restore_codex_official_config,
+            set_codex_openai_provider,
+            set_codex_remote_compaction,
             close_codex_config_modification,
             set_agent_config_enabled,
             update_agent_config,
@@ -2804,8 +2900,16 @@ fn main() {
             management_api::management_request,
             management_api::get_proxy_request_detail,
             management_api::get_proxy_request_image,
+            management_api::prepare_management_request,
+            management_api::cancel_management_request,
             plugins::get_plugin_support,
             plugins::get_plugin_resource_url,
+            plugins::local_install::install_local_plugin,
+            plugin_webview::show_plugin_webview,
+            plugin_webview::set_plugin_webview_bounds,
+            plugin_webview::hide_plugin_webview,
+            plugin_webview::close_plugin_webview,
+            plugins::get_plugin_latest_releases,
             provider_health::provider_health_probe,
             provider_health::get_core_models,
             provider_health::core_health_probe,
@@ -2865,7 +2969,7 @@ fn main() {
             codex_sessions::context::save_codex_session_context,
             codex_sessions::context::open_codex_session_rollout
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build app");
 
     app.run(|app_handle, event| match event {
@@ -2883,8 +2987,9 @@ fn main() {
             if process_state.shutting_down.swap(true, Ordering::AcqRel) {
                 return;
             }
-            if let Err(error) = persist_main_window_size(app_handle) {
-                eprintln!("Failed to save main window size: {error}");
+            process_state.recovery.cancel();
+            if let Err(error) = persist_main_window_geometry(app_handle) {
+                eprintln!("Failed to save main window geometry: {error}");
             }
             app_handle.state::<CoreDownloadState>().cancel();
             let app_handle = app_handle.clone();
@@ -2920,3 +3025,20 @@ fn main() {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) fn unique_test_temp_path(prefix: &str) -> PathBuf {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+
+
+pub(crate) fn main_window(app: &tauri::AppHandle) -> Option<tauri::Window> { app.get_window("main") }

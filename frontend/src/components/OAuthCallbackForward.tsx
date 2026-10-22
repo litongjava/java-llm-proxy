@@ -1,3 +1,5 @@
+import { javaProxyText } from '../i18n/javaProxy';
+import { Notice } from './Notice';
 import { useState, type FormEvent } from 'react';
 import { LoaderCircle, Send } from 'lucide-react';
 import { useI18n } from '../i18n';
@@ -28,10 +30,8 @@ export function OAuthCallbackForward() {
     } finally { setBusy(false); }
   };
   return <form className="panel oauth-callback-forward" onSubmit={(event) => void send(event)}>
-    <label htmlFor="oauth-forward-url">{zh ? '发送 HTTP 回调请求' : 'Send HTTP callback request'}</label>
-    <p id="oauth-forward-help">{zh
-      ? '程序运行在服务器上时，先开始授权；浏览器跳转到 127.0.0.1 后，复制完整地址到此处，由服务器发送给自己的 OAuth 回调端口。'
-      : 'Start authorization first. If the app runs on a server, copy the complete 127.0.0.1 callback URL from your browser here. The server will send it to its own OAuth callback port.'}</p>
+    <label htmlFor="oauth-forward-url">{javaProxyText('callbackTitle', locale)}</label>
+    <p id="oauth-forward-help">{javaProxyText('callbackHelp', locale)}</p>
     <div className="oauth-callback-forward-row">
       <input id="oauth-forward-url" type="url" value={url} onChange={(event) => setUrl(event.target.value)}
         placeholder="http://127.0.0.1:1455/auth/callback?code=...&state=..." required maxLength={32768}
@@ -41,6 +41,6 @@ export function OAuthCallbackForward() {
         {busy ? (zh ? '发送中…' : 'Sending…') : (zh ? '发送请求' : 'Send request')}
       </button>
     </div>
-    {message ? <p role={failed ? 'alert' : 'status'}>{message}</p> : null}
+    {message ? <Notice tone={failed ? "error" : "info"} variant="text">{message}</Notice> : null}
   </form>;
 }
