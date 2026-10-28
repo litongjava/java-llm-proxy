@@ -1,6 +1,6 @@
 import type { ModelOption } from './modelService';
 
-const normalized = (value: string) => value.trim().toLocaleLowerCase();
+const normalized = (value: string | null | undefined) => (value ?? '').trim().toLocaleLowerCase();
 
 const matchScore = (model: ModelOption, query: string) => {
   const name = normalized(model.name);
@@ -71,7 +71,7 @@ export function agentModelAlias(models: ModelOption[], value: string): string {
   return models.find((model) => normalized(model.name) === query)?.alias ?? '';
 }
 
-export function findAgentModel(models: ModelOption[], value: string): ModelOption | null {
+export function findAgentModel(models: ModelOption[], value: string | null | undefined): ModelOption | null {
   const query = normalized(value);
   if (!query) return null;
   return models.find((model) => normalized(model.name) === query) ?? null;

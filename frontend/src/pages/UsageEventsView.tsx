@@ -337,7 +337,8 @@ function UsageEventCell({
     case 'model': {
       const model = usageModelDetails(record.model, record.alias, record.response_model);
       const effort = record.reasoning_effort || 'auto';
-      const fast = ['priority', 'fast'].includes(record.service_tier?.trim().toLowerCase() ?? '');
+      const tier = record.service_tier?.trim().toLowerCase() ?? '';
+      const fast = ['priority', 'fast', 'ultrafast'].includes(tier);
       const modelTitle = [
         `${t('usage.model.request')}: ${model.requested}`,
         model.showResolved ? `${t('usage.model.upstream')}: ${model.resolved}` : '',
@@ -351,7 +352,7 @@ function UsageEventCell({
           <strong title={modelTitle}>{model.resolved || model.response || '—'}</strong>
           <span className="usage-model-badges">
             <small className="usage-model-effort" title={effort}>{effort}</small>
-            {fast ? <small className="usage-model-fast" title={record.service_tier}>{t('usage.speedMode.fast')}</small> : null}
+            {fast ? <small className="usage-model-fast" title={record.service_tier}>{t(tier === 'ultrafast' ? 'aliases.ultrafast.title' : 'usage.speedMode.fast')}</small> : null}
           </span>
           {model.mismatch ? (
             <small className="usage-response-model" title={modelTitle}>

@@ -15,3 +15,5 @@
 桌面自更新与内核更新指向本项目的 GitHub `litongjava/java-llm-proxy` 和 GitCode `ppnt/java-llm-proxy`。内核产物使用 Java JAR，下载后检查摘要与应用入口。打包脚本见 `scripts/package_release.py`，远端发行需要同时提供桌面清单、便携包与内核包。
 
 开发与验收说明见项目根目录的 [readme.md](../readme.md)。
+
+2026-10-28 对照 `6d37229` → `9bbf63b` 的桌面端变更，适配插件更新、Codex 子代理设置、速度别名、客户端配置与主题组件；保留 Java 内核和工具级路由。本次为按功能移植，未将上游内核或其全部行为视为已同步。

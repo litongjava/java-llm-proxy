@@ -23,6 +23,10 @@ const models = [
 ];
 
 describe('智能体模型选择器', () => {
+  test('缺少历史模型配置时保持空选择', () => {
+    expect(findAgentModel(models, undefined)).toBeNull();
+    expect(findAgentModel(models, null)).toBeNull();
+  });
   test('按名称和别名搜索且忽略大小写', () => {
     expect(filterAgentModels(models, 'SONNET').map((model) => model.name))
       .toEqual(['claude-sonnet-4-5']);

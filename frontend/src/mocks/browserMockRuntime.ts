@@ -22,6 +22,7 @@ export type BrowserMockRuntime = {
 const SCENARIOS = new Set<BrowserMockScenario>(['running', 'stopped', 'empty', 'error']);
 const BUNDLED_CORE = { version: '7.3.15', assetName: 'CLIProxyAPI_7.3.15_windows_amd64.zip' };
 const MOCK_CUSTOM_THEME = {
+  schemaVersion: 1,
   id: 'harbor-dark',
   name: { en: 'Harbor', 'zh-CN': '港湾', ja: 'ハーバー' },
   description: { en: 'Deep teal surfaces with a sea-glass accent', 'zh-CN': '深青底色与海玻璃色点缀', ja: '深い青緑とシーグラスのアクセント' },
@@ -973,6 +974,7 @@ export function createBrowserMockRuntime(
   onPluginWebview?: (state: PluginWebviewMockState) => void,
 ): BrowserMockRuntime {
   const state = createState(scenario);
+  let codexSubagentConfig = { enabled: false, maxConcurrentThreadsPerSession: null, defaultSubagentModel: null, defaultSubagentReasoningEffort: null, interruptMessage: false };
   const toolAliases = new Map<string, { thinking: typeof state.thinkingAliases; speed: typeof state.speedAliases }>();
   toolAliases.set('claude-desktop', { thinking: state.thinkingAliases, speed: state.speedAliases });
   const aliasesForTool = (tool: unknown) => {
@@ -1027,7 +1029,14 @@ export function createBrowserMockRuntime(
       case 'detect_core_platform': return { os: 'windows', arch: 'x86_64', assetOs: 'windows', assetArch: 'amd64', archiveKind: 'zip' };
       case 'get_linux_system_theme': return 'light';
       case 'detect_window_material': return null;
-      case 'list_custom_themes': return { files: [{ fileName: 'harbor-dark.json', content: JSON.stringify(MOCK_CUSTOM_THEME) }], omitted: 0 };
+      case 'list_custom_themes': return { files: [
+        { folder: 'harbor-dark', content: JSON.stringify(MOCK_CUSTOM_THEME) },
+        { folder: 'harbor-image-dark', content: JSON.stringify({
+          ...MOCK_CUSTOM_THEME, id: 'harbor-image-dark',
+          name: { en: 'Harbor Image', 'zh-CN': '港湾·图片', 'zh-TW': '港灣·圖片', ja: 'ハーバー・画像' },
+          assets: { backdropImage: 'assets/harbor.png' },
+        }), backdropImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=' },
+      ], omitted: 0 };
       case 'set_app_locale':
       case 'open_external_url':
       case 'open_oauth_url':
@@ -1425,6 +1434,11 @@ export function createBrowserMockRuntime(
       case 'check_pi_provider_update': return { installedVersion: '0.4.2', latestVersion: '0.4.3', updateAvailable: true };
       case 'clear_codex_config': return ['C:\\Users\\Mock\\.codex\\config.toml'];
       case 'preview_agent_config_template': return { revision: 'mock-template-r1', files: ['settings.json', 'models.json'] };
+      case 'get_codex_subagent_config': return clone(codexSubagentConfig);
+      case 'save_codex_subagent_config': {
+        codexSubagentConfig = { ...codexSubagentConfig, ...asObject(payload.config) };
+        return createActionResult(payload);
+      }
       case 'get_deepseek_harness_process_status': return clone(state.deepSeekStatus);
       case 'stop_deepseek_harness_process': {
         state.deepSeekStatus = { running: false, pid: null, mode: null };

@@ -62,6 +62,7 @@ import {
   ChevronDown,
   LoaderCircle,
   SlidersHorizontal,
+  Users,
   Trash2,
   X,
 } from 'lucide-react';
@@ -114,6 +115,7 @@ import { CodexApprovalModelControl } from './CodexApprovalModelControl';
 import { CodexRemoteCompactionSwitch } from './CodexRemoteCompactionSwitch';
 import { CodexProviderSwitch } from './CodexProviderSwitch';
 import { CodexModelCatalogDialog } from './CodexModelCatalogDialog';
+import { CodexSubagentConfigDialog } from './CodexSubagentConfigDialog';
 import { DeepSeekHarnessCatalogDialog } from './DeepSeekHarnessCatalogDialog';
 import { AgentConfigBackupDialog } from './AgentConfigBackupDialog';
 import { AgentClientList } from './AgentClientList';
@@ -592,6 +594,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [launchDirectoryDialogOpen, setLaunchDirectoryDialogOpen] = useState(false);
   const [codexCatalogDialogOpen, setCodexCatalogDialogOpen] = useState(false);
+  const [codexSubagentDialogOpen, setCodexSubagentDialogOpen] = useState(false);
   const [harnessCatalogDialogOpen, setHarnessCatalogDialogOpen] = useState(false);
   const [desktopHelpOpen, setDesktopHelpOpen] = useState(false);
   const [launchDirectory, setLaunchDirectory] = useState('');
@@ -771,6 +774,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     setClearError('');
     setClearConfirmOpen(false);
     setCodexCatalogDialogOpen(false);
+    setCodexSubagentDialogOpen(false);
     setDesktopHelpOpen(false);
     setLaunchDirectoryDialogOpen(false);
     setLaunchDirectoryTarget(null);
@@ -1549,7 +1553,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   };
 
   const restartDesktopApp = async () => {
-    if (!['codex', 'opencode', 'claude-desktop', 'zcode', 'workbuddy'].includes(selected)) return;
+    if (!['codex', 'opencode', 'deepseek-harness', 'claude-desktop', 'zcode', 'workbuddy'].includes(selected)) return;
     setBusyAction('restart-app');
     setLaunchError('');
     try {
@@ -1694,11 +1698,11 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   ) : oauthLoginRequiredAction ? t(`agents.oauthLoginRequired.${oauthLoginRequiredAction}Description`) : '';
 
   const codexCatalogButton = selected === 'codex' ? (
-    <button type="button" className="secondary-button agent-codex-catalog-button"
-      onClick={() => setCodexCatalogDialogOpen(true)} disabled={busy}>
-      <SlidersHorizontal size={16} />
-      {t('agents.catalog.button')}
-    </button>
+    <button type="button" className="secondary-button agent-codex-catalog-button" onClick={() => setCodexCatalogDialogOpen(true)} disabled={busy}><SlidersHorizontal size={16} />{t('agents.catalog.button')}</button>
+  ) : null;
+
+  const codexSubagentButton = selected === 'codex' ? (
+    <button type="button" className="secondary-button agent-codex-catalog-button" onClick={() => setCodexSubagentDialogOpen(true)} disabled={busy}><Users size={16} />{t('agents.subagents.button')}</button>
   ) : null;
 
   const harnessCatalogButton = isDeepSeekHarnessClient ? (
@@ -1733,7 +1737,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     editDesktopEntries(desktopEntries.map((entry, i) => i === index ? { ...entry, ...changes } : entry));
   };
   const desktopModelEditor = (
-    <section className="agent-core-setting-section agent-desktop-models">
+    <section className="agent-core-setting-section agent-desktop-models surface-section">
       <div className="agent-section-heading">
         <strong>{t('agents.claudeDesktopMapping.title')}</strong>
         <div className="agent-section-heading-actions">
@@ -1846,7 +1850,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
 
         <section className="panel surface-panel agent-config-panel">
           {availableSubpages.length > 1 ? (
-            <Tabs className="agent-subpage-tabs" aria-label={t('agents.tabs.label')} value={activeSubpage} onChange={setActiveSubpage} disabled={busy}
+            <Tabs variant="segmented" className="agent-subpage-tabs" aria-label={t('agents.tabs.label')} value={activeSubpage} onChange={setActiveSubpage} disabled={busy}
               items={availableSubpages.map(subpage => ({ value: subpage.id, id: `agent-subpage-tab-${subpage.id}`, panelId: `agent-subpage-panel-${subpage.id}`, label: t(subpage.labelKey) }))} />
           ) : null}
           <div className="agent-config-scroll-region">
@@ -1880,7 +1884,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
                   onChange={selectEmbeddedModel}
                   onRefresh={refreshModels}
                 />
-                {codexCatalogButton}{harnessCatalogButton}
+                {codexCatalogButton}{codexSubagentButton}{harnessCatalogButton}
                 {!isClaudeModelMappingClient && missingModelHint ? <span className="agent-model-hint" role="status">{missingModelHint}</span> : null}
               </div>}
 
@@ -1966,7 +1970,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
               {activeStatus && !activeStatus.installed ? <Notice tone="warn" variant="text" className="agent-detection-help" action={<button type="button" className="link-button" onClick={() => setActiveSubpage('management')}>{t('agents.executablePath.openManagement')}</button>}>{t('agents.executablePath.notDetected')}</Notice> : null}
 
               {!isClaudeModelMappingClient ? (
-                <section className="agent-core-setting-section agent-model-section">
+                <section className="agent-core-setting-section agent-model-section surface-section">
                   <div className="agent-section-heading">
                     <div><strong>{t(isDeepSeekHarnessClient ? 'agents.harness.defaultModel' : 'agents.useModel')}</strong></div>
                   </div>
@@ -2005,7 +2009,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
                           ]} />
                       </div>
 
-                      {codexCatalogButton}
+                      <div className="agent-codex-tool-buttons">{codexCatalogButton}{codexSubagentButton}</div>
                       <div id="agent-signin-hint" className="agent-signin-explanation" hidden={!connectionHelpOpen}>
                         <dl>
                           <div><dt>{t('agents.modify.authApiKey')}</dt><dd>{t('agents.modify.authApiKeyHint')}</dd></div>
@@ -2019,7 +2023,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
 
               {selected === 'claude-desktop' ? desktopModelEditor : null}
               {selected === 'claude-code' ? (
-                <section className="agent-core-setting-section agent-claude-desktop-mapping">
+                <section className="agent-core-setting-section agent-claude-desktop-mapping surface-section">
                   <div className="agent-section-heading">
                     <div>
                       <strong>{t(selected === 'claude-code'
@@ -2239,6 +2243,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
           onSaved={() => loadModels('codex', selectedModel)}
         />
       ) : null}
+      {codexSubagentDialogOpen ? <CodexSubagentConfigDialog onClose={() => setCodexSubagentDialogOpen(false)} onSaved={() => undefined} /> : null}
 
       {launchDirectoryDialogOpen ? (
         <Dialog
@@ -2264,7 +2269,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
             ? t('agents.deepseekLaunch.dialogDescription')
             : t('agents.launchDirectory.dialogDescription', { client: activeDefinition.name })}</p>
           {isDeepSeekHarnessClient ? (
-            <div className="deepseek-harness-launch-options">
+            <div className="deepseek-harness-launch-options surface-section surface-muted">
               <label className="config-dialog-field deepseek-harness-launch-field">
                 <span>{t('agents.deepseekLaunch.mode.label')}</span>
                 <Select

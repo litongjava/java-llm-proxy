@@ -599,6 +599,7 @@ pub(crate) async fn create_thinking_alias(
     alias: String,
     effort: String,
     fast: Option<bool>,
+    service_tier: Option<String>,
     original_alias: Option<String>,
     original_entry: Option<ThinkingAliasEntry>,
 ) -> Result<Vec<ThinkingAliasEntry>, String> {
@@ -622,7 +623,9 @@ pub(crate) async fn create_thinking_alias(
     } else {
         validate_thinking_alias_effort(&effort)?
     };
-    let fast = fast.unwrap_or(false);
+    let service_tier = service_tier.as_deref().or_else(|| fast.unwrap_or(false).then_some("priority"));
+    validate_alias_service_tier(service_tier)?;
+    let fast = service_tier.is_some();
     let content = fetch_tool_alias_yaml(&config, &tool).await?;
     let definitions = fetch_oauth_model_definitions(&config).await;
     let capability = if !effort.is_empty() {
@@ -666,8 +669,8 @@ pub(crate) async fn create_thinking_alias(
     }
 
     let updated = match original_alias.as_deref() {
-        Some(original) => edit_model_alias_in_yaml_for_mapping(&content, original, &source, &alias, &effort, fast, original_entry.as_ref())?,
-        None => add_model_alias_to_yaml(&content, &source, &alias, &effort, fast)?,
+        Some(original) => edit_model_alias_with_tier_in_yaml_for_mapping(&content, original, &source, &alias, &effort, service_tier, original_entry.as_ref())?,
+        None => add_model_alias_with_tier_to_yaml(&content, &source, &alias, &effort, service_tier)?,
     };
     commit_tool_alias_yaml(&config, &tool, &content, &updated, || Ok(())).await?;
     thinking_aliases_from_yaml(&updated)
@@ -729,6 +732,7 @@ pub(crate) async fn create_speed_alias(
     tool: String,
     source_id: String,
     alias: String,
+    service_tier: Option<String>,
 ) -> Result<Vec<SpeedAliasEntry>, String> {
     let config = gui_config_state.snapshot()?;
     let source_id = source_id.trim().to_string();
@@ -756,7 +760,13 @@ pub(crate) async fn create_speed_alias(
     if source.source.model.eq_ignore_ascii_case(&alias) {
         return Err("Alias model cannot be the same as the source model".to_string());
     }
-    let updated = add_speed_alias_to_yaml(&content, &source, &alias)?;
+    let tier = service_tier.as_deref().unwrap_or("priority");
+    validate_alias_service_tier(Some(tier))?;
+    let updated = if tier == "priority" {
+        add_speed_alias_to_yaml(&content, &source, &alias)?
+    } else {
+        add_model_alias_with_tier_to_yaml(&content, &source, &alias, "", Some(tier))?
+    };
     commit_tool_alias_yaml(&config, &tool, &content, &updated, || Ok(())).await?;
     speed_aliases_from_yaml(&updated)
 }

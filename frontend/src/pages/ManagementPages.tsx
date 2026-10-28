@@ -152,7 +152,7 @@ export function OAuthManagementPage() {
 
   return (
     <section className="page oauth-management-page">
-      <Tabs className="agent-subpage-tabs oauth-subpage-tabs" aria-label={t('oauth.tabs.label')} value={activeSubpage}
+      <Tabs className="oauth-subpage-tabs secondary-page-tabs" aria-label={t('oauth.tabs.label')} value={activeSubpage}
         onChange={subpage => { setAuthFilesProvider(undefined); setActiveSubpage(subpage); }}
         items={oauthSubpages.map(subpage => ({ value: subpage.id, id: `oauth-subpage-tab-${subpage.id}`, panelId: 'oauth-subpage-panel', label: t(subpage.labelKey) }))} />
 
@@ -562,19 +562,20 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
 
       <FloatingNotice key={feedback.revision} notice={feedback.notice} onDismiss={feedback.clearNotice} />
       <OAuthCallbackForward />
-      <aside className="oauth-intro" aria-label={t('oauth.intro.title')}>
-        <span className="oauth-intro-icon" aria-hidden="true"><Info size={18} /></span>
-        <div className="oauth-intro-text">
-          <strong>{t('oauth.intro.title')}</strong>
-          <p>{t('oauth.intro.body')}</p>
-        </div>
-        {onOpenAuthFiles ? (
+      <Notice
+        tone="info"
+        variant="box"
+        className="oauth-intro"
+        title={t('oauth.intro.title')}
+        action={onOpenAuthFiles ? (
           <button type="button" className="secondary-button compact-button oauth-intro-action" onClick={() => onOpenAuthFiles()}>
             <FileKey size={15} aria-hidden="true" />
             {t('oauth.intro.viewFiles')}
           </button>
         ) : null}
-      </aside>
+      >
+        <p>{t('oauth.intro.body')}</p>
+      </Notice>
       <div className="oauth-grid">
         {oauthProviders.map((provider) => {
           const state = states[provider.id] ?? { status: 'idle' as const };
@@ -649,7 +650,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                   ? (locale.startsWith('zh') ? '点击登录后，使用微信扫描二维码完成授权。' : 'Start login, then scan the QR code with WeChat to authorize.')
                   : t(provider.id === 'devin' ? 'oauth.devinHint' : provider.id === 'meta' ? 'oauth.metaHint' : 'oauth.hint')}</p>
                 {state.url ? (
-                  <div className="oauth-auth-url-box">
+                  <div className="oauth-auth-url-box surface-sunken">
                     {state.flow === 'qr' ? <div style={{ background: 'white', padding: 16, width: 'fit-content', margin: '8px auto' }}>
                       <QRCodeSVG value={state.url} size={192} title={javaProxyText('wechatScan', locale)} />
                     </div> : null}
