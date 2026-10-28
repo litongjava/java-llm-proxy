@@ -62,8 +62,14 @@ def run():
                     opcode, payload = frame(self.rfile)
                     if opcode == 8: break
                     received.append(json.loads(payload))
+                    if received[-1].get('input') == 'drop':
+                        return
                     send_frame(self.wfile, {'type':'response.output_text.delta', 'delta':'websocket answer'})
                     send_frame(self.wfile, {'type':'response.completed', 'response':{'id':'ws-response','usage':{'input_tokens':3,'output_tokens':5}}})
+                    if self.path == '/v1/responses':
+                        self.wfile.write(bytes([0x88, 2]) + struct.pack('!H', 1000))
+                        self.wfile.flush()
+                        break
             except (EOFError, ConnectionError): pass
     mock = ThreadingHTTPServer(('127.0.0.1', 0), Mock)
     threading.Thread(target=mock.serve_forever, daemon=True).start()
@@ -100,6 +106,12 @@ def run():
                 assert json.loads(frame(stream)[1])['type'] == 'response.completed'
                 time.sleep(.1)
             assert len(received) == 2
+            send_frame(stream, {'type':'response.create','model':'ws-model','input':'drop'}, True)
+            assert json.loads(frame(stream)[1])['type'] == 'error'
+            send_frame(stream, {'type':'response.create','input':'after drop'}, True)
+            assert json.loads(frame(stream)[1])['delta'] == 'websocket answer'
+            assert json.loads(frame(stream)[1])['type'] == 'response.completed'
+            assert len(received) == 4
             stream.close(); connection.close()
             connection, stream, status = connect('ws-client','/v1/realtime?model=ws-model')
             assert '101' in status
@@ -108,7 +120,7 @@ def run():
             assert json.loads(frame(stream)[1])['delta']=='websocket answer'
             assert json.loads(frame(stream)[1])['type']=='response.completed'
             stream.close(); connection.close()
-            print('PASS: WebSocket authentication, two Responses turns, terminal events, immediate Realtime connection and server-first session event')
+            print('PASS: WebSocket authentication, upstream reconnect between Responses turns, terminal events and immediate Realtime connection')
         finally:
             process.terminate(); process.wait(timeout=15); mock.shutdown()
 

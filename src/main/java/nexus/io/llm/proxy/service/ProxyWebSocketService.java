@@ -74,7 +74,9 @@ public class ProxyWebSocketService {
 
   private void connect(ProxyWebSocketSession session, Kv input) {
     Kv nested = ProxyJson.object(input.get("response"));
-    String model = ProxyJson.text(input, "model", ProxyJson.text(nested, "model", session.request.getParam("model")));
+    String queryModel = session.request.getParam("model");
+    String fallbackModel = queryModel == null || queryModel.isBlank() ? session.requestedModel : queryModel;
+    String model = ProxyJson.text(input, "model", ProxyJson.text(nested, "model", fallbackModel));
     model = ParameterValidator.text(model, "model", 256);
     SettingsService.Selection selected = Aop.get(SettingsService.class).select(model, "responses", null, null, null, Set.of(), Aop.get(ToolScopeService.class).tool(session.request));
     ParameterValidator.require("responses".equals(selected.provider().protocol) || "openai".equals(selected.provider().protocol), "WebSocket provider must support the Responses protocol");
@@ -126,9 +128,9 @@ public class ProxyWebSocketService {
       @Override public void onMessage(WebSocket socket, ByteString bytes) {
         Tio.send(session.channel, WebSocketResponse.fromBytes(bytes.toByteArray()));
       }
-      @Override public void onFailure(WebSocket socket, Throwable error, Response response) { fail(session, "Upstream WebSocket connection failed"); }
+      @Override public void onFailure(WebSocket socket, Throwable error, Response response) { upstreamLost(session, socket, "Upstream WebSocket connection failed"); }
       @Override public void onClosing(WebSocket socket, int code, String reason) { socket.close(code, reason); }
-      @Override public void onClosed(WebSocket socket, int code, String reason) { close(session.channel); Tio.remove(session.channel, "Upstream closed"); }
+      @Override public void onClosed(WebSocket socket, int code, String reason) { upstreamLost(session, socket, "Upstream WebSocket closed"); }
       @Override public void onOpen(WebSocket socket, Response response) {
         synchronized (session) {
           session.upstreamResponseHeaders = HeaderService.redact(response.headers().toMultimap());
@@ -178,6 +180,24 @@ public class ProxyWebSocketService {
       record.cost = (record.inputTokens * session.provider.inputPrice + record.outputTokens * session.provider.outputPrice) / 1000000;
       Aop.get(StorageService.class).record(record);
       Aop.get(PluginHookService.class).completed(record);
+    }
+  }
+
+  private void upstreamLost(ProxyWebSocketSession session, WebSocket socket, String message) {
+    synchronized (session) {
+      if (session.closed || session.upstream != socket) { return; }
+      if (session.request.getRequestURI().contains("realtime")) {
+        fail(session, message);
+        return;
+      }
+      session.upstream = null;
+      session.upstreamRequestHeaders = Kv.create();
+      session.upstreamResponseHeaders = Kv.create();
+      if (session.record != null) {
+        finish(session, message);
+        Tio.send(session.channel, WebSocketResponse.fromText(JsonUtils.toJsonWithLongAsNumber(
+            Kv.create().set("type", "error").set("error", Kv.create().set("message", message))), "UTF-8"));
+      }
     }
   }
 
