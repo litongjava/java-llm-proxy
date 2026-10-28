@@ -345,6 +345,10 @@ public class ProtocolConversionService {
           .set("usage", Kv.create().set("prompt_tokens", (int) in).set("completion_tokens", (int) out).set("total_tokens", (int) (in + out)));
       if ("gemini".equals(from)) {
         canonical.set("usage", geminiUsage.openAi(usage));
+      } else if ("anthropic".equals(from)) {
+        Kv canonicalUsage = ProxyJson.object(canonical.get("usage"));
+        copyClaudeThinkingTokens(usage, canonicalUsage);
+        canonical.set("usage", canonicalUsage);
       }
     }
     if ("openai".equals(to)) { return canonical; }
@@ -368,6 +372,13 @@ public class ProtocolConversionService {
     return ProtocolStopReason.response(Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
         .set("output", converted.get("input")).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
             : responsesUsage(usage, in, out)), finishReason);
+  }
+
+  static void copyClaudeThinkingTokens(Kv source, Kv target) {
+    Kv details = ProxyJson.object(source.get("output_tokens_details"));
+    if (details.containsKey("thinking_tokens")) {
+      target.set("completion_tokens_details", Kv.create().set("reasoning_tokens", details.get("thinking_tokens")));
+    }
   }
 
   static Kv responsesUsage(Kv usage, int input, int output) {

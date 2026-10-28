@@ -223,6 +223,8 @@ public class ProtocolEventStream extends InputStream {
     Kv usage = Kv.create().set(rawUsage).set("prompt_tokens", inputTokens).set("completion_tokens", outputTokens).set("total_tokens", inputTokens + outputTokens);
     if ("gemini".equals(from)) {
       usage = geminiUsage.openAi(geminiMetadata);
+    } else if ("anthropic".equals(from)) {
+      ProtocolConversionService.copyClaudeThinkingTokens(rawUsage, usage);
     }
     if ("anthropic".equals(to)) {
       result.append(event("content_block_stop", Kv.create().set("index", 0)));
