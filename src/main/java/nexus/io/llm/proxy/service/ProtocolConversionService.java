@@ -330,8 +330,18 @@ public class ProtocolConversionService {
       if ("gemini".equals(from)) { usage = ProxyJson.object(input.get("usageMetadata")); }
       long in = ProxyJson.number(usage, "input_tokens", ProxyJson.number(usage, "promptTokenCount", 0));
       long out = ProxyJson.number(usage, "output_tokens", ProxyJson.number(usage, "candidatesTokenCount", 0));
+      String sourceFinish = "anthropic".equals(from) ? input.getStr("stop_reason") : null;
+      if ("gemini".equals(from)) {
+        List<?> candidates = ProxyJson.list(input.get("candidates"));
+        if (!candidates.isEmpty()) { sourceFinish = ProxyJson.object(candidates.getFirst()).getStr("finishReason"); }
+        if (sourceFinish == null && ProxyJson.object(input.get("promptFeedback")).getStr("blockReason") != null) {
+          sourceFinish = "OTHER_BLOCKED";
+        }
+      }
+      String finish = sourceFinish == null || "STOP".equals(sourceFinish)
+          ? message.containsKey("tool_calls") ? "tool_calls" : "stop" : ProtocolStopReason.chat(sourceFinish);
       canonical = Kv.create().set("id", ProxyJson.text(input, "id", "chatcmpl-" + SnowflakeIdUtils.id())).set("object", "chat.completion").set("model", model)
-          .set("choices", List.of(Kv.create().set("index", 0).set("message", message).set("finish_reason", "anthropic".equals(from) ? ProtocolStopReason.chat(input.getStr("stop_reason")) : message.containsKey("tool_calls") ? "tool_calls" : "stop")))
+          .set("choices", List.of(Kv.create().set("index", 0).set("message", message).set("finish_reason", finish)))
           .set("usage", Kv.create().set("prompt_tokens", (int) in).set("completion_tokens", (int) out).set("total_tokens", (int) (in + out)));
       if ("gemini".equals(from)) {
         canonical.set("usage", geminiUsage.openAi(usage));
@@ -352,7 +362,7 @@ public class ProtocolConversionService {
           .set("usage", "gemini".equals(from) ? geminiUsage.anthropic(usage) : Kv.create().set("input_tokens", in).set("output_tokens", out));
     }
     if ("gemini".equals(to)) {
-      return Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", ProxyJson.list(converted.get("contents")).getFirst()).set("finishReason", "STOP")))
+      return Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", ProxyJson.list(converted.get("contents")).getFirst()).set("finishReason", ProtocolStopReason.gemini(finishReason))))
           .set("usageMetadata", Kv.create().set("promptTokenCount", in).set("candidatesTokenCount", out).set("totalTokenCount", in + out)).set("modelVersion", model);
     }
     return ProtocolStopReason.response(Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)

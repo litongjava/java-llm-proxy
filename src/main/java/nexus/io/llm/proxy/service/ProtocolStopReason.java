@@ -9,9 +9,16 @@ final class ProtocolStopReason {
     if (reason == null) { return "stop"; }
     return switch (reason) {
       case "tool_use", "tool_calls" -> "tool_calls";
-      case "max_tokens", "length" -> "length";
-      case "refusal", "sensitive", "content_filter" -> "content_filter";
+      case "max_tokens", "length", "MAX_TOKENS" -> "length";
+      case "refusal", "sensitive", "content_filter", "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "OTHER_BLOCKED" -> "content_filter";
       default -> reason.equals("model_context_window_exceeded") ? reason : "stop";
+    };
+  }
+  static String gemini(String reason) {
+    return switch (chat(reason)) {
+      case "length" -> "MAX_TOKENS";
+      case "content_filter" -> "SAFETY";
+      default -> "STOP";
     };
   }
   static String anthropic(String reason, boolean tools) {

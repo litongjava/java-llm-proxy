@@ -132,8 +132,16 @@ public class ProtocolEventStream extends InputStream {
     } else {
       geminiMetadata.set(ProxyJson.object(event.get("usageMetadata")));
       usage(geminiUsage.openAi(geminiMetadata), "prompt_tokens", "completion_tokens");
+      if (ProxyJson.object(event.get("promptFeedback")).getStr("blockReason") != null) {
+        terminal = true;
+        finishReason = "OTHER_BLOCKED";
+      }
       for (Object candidate : ProxyJson.list(event.get("candidates"))) {
-        if (ProxyJson.object(candidate).get("finishReason") != null) { terminal = true; }
+        String reason = ProxyJson.object(candidate).getStr("finishReason");
+        if (reason != null) {
+          terminal = true;
+          finishReason = "STOP".equals(reason) ? null : reason;
+        }
         Kv content = ProxyJson.object(ProxyJson.object(candidate).get("content"));
         for (Object value : ProxyJson.list(content.get("parts"))) {
           Kv part = ProxyJson.object(value);
@@ -237,7 +245,7 @@ public class ProtocolEventStream extends InputStream {
         if (call.getStr("thoughtSignature") != null) { part.set("thoughtSignature", call.get("thoughtSignature")); }
         parts.add(part);
       }
-      result.append(event(null, Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", Kv.create().set("role", "model").set("parts", parts)).set("finishReason", "STOP")))
+      result.append(event(null, Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", Kv.create().set("role", "model").set("parts", parts)).set("finishReason", ProtocolStopReason.gemini(finishReason))))
           .set("usageMetadata", Kv.create().set("promptTokenCount", inputTokens).set("candidatesTokenCount", outputTokens).set("totalTokenCount", inputTokens + outputTokens))));
     } else if ("responses".equals(to)) {
       Kv part = Kv.create().set("type", "output_text").set("text", text.toString()).set("annotations", List.of());
