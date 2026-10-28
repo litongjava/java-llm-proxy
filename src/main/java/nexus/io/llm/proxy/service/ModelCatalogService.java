@@ -7,20 +7,90 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.jfinal.kit.Kv;
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.validation.ManagementParameterValidator;
 import nexus.io.tio.utils.json.JsonUtils;
 
 public class ModelCatalogService {
-  private final Kv catalog;
+  private static final Logger log = LoggerFactory.getLogger(ModelCatalogService.class);
+  private static volatile Kv catalog;
+  private static final Object CATALOG_LOCK = new Object();
   public ModelCatalogService() {
-    try (InputStream source = getClass().getResourceAsStream("/catalog/models.json")) {
-      catalog = ProxyJson.parse(new String(source.readAllBytes(), StandardCharsets.UTF_8));
-      try (InputStream devin = getClass().getResourceAsStream("/catalog/devin_models.json")) {
-        catalog.set(ProxyJson.parse(new String(devin.readAllBytes(), StandardCharsets.UTF_8)));
+    ensureCatalog();
+  }
+
+  private static void ensureCatalog() {
+    if (catalog != null) { return; }
+    synchronized (CATALOG_LOCK) {
+      if (catalog != null) { return; }
+      try (InputStream source = ModelCatalogService.class.getResourceAsStream("/catalog/models.json");
+          InputStream devin = ModelCatalogService.class.getResourceAsStream("/catalog/devin_models.json")) {
+        Kv initial = ProxyJson.parse(new String(source.readAllBytes(), StandardCharsets.UTF_8));
+        initial.set(ProxyJson.parse(new String(devin.readAllBytes(), StandardCharsets.UTF_8)));
+        catalog = initial;
+      } catch (Exception error) { throw new IllegalStateException("Cannot load model catalog", error); }
+      Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "model-catalog-refresh");
+        thread.setDaemon(true);
+        return thread;
+      }).scheduleWithFixedDelay(ModelCatalogService::refreshRemote, 0, 3, TimeUnit.HOURS);
+    }
+  }
+
+  static boolean installCatalog(String json) {
+    try {
+      Kv replacement = ProxyJson.parse(json);
+      for (String plan : List.of("free", "team", "plus", "pro")) {
+        List<?> models = ProxyJson.list(replacement.get("codex-" + plan));
+        if (models.isEmpty()) { return false; }
       }
-    } catch (Exception error) { throw new IllegalStateException("Cannot load model catalog", error); }
+      for (Object key : replacement.keySet()) {
+        Object value = replacement.get(key);
+        if (!(value instanceof List<?>)) { return false; }
+        for (Object model : (List<?>) value) {
+          if (ProxyJson.object(model).getStr("id") == null) { return false; }
+        }
+      }
+      synchronized (CATALOG_LOCK) {
+        Kv previous = catalog;
+        // The Devin catalog is maintained independently of models.json.
+        if (previous != null && previous.containsKey("devin")) { replacement.set("devin", previous.get("devin")); }
+        catalog = replacement;
+      }
+      return true;
+    } catch (RuntimeException error) { return false; }
+  }
+
+  private static void refreshRemote() {
+    OkHttpClient client = new OkHttpClient.Builder()
+        .callTimeout(20, TimeUnit.SECONDS).build();
+    if (!refreshFromUrls(client, List.of("https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/models.json",
+        "https://models.router-for.me/models.json"))) {
+      log.warn("Model catalog refresh failed; keeping the last valid catalog");
+    }
+  }
+
+  static boolean refreshFromUrls(OkHttpClient client, List<String> urls) {
+    for (String url : urls) {
+      try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
+        if (!response.isSuccessful() || response.body() == null) { continue; }
+        try (InputStream input = response.body().byteStream()) {
+          byte[] data = input.readNBytes(4 * 1024 * 1024 + 1);
+          if (data.length <= 4 * 1024 * 1024 && installCatalog(new String(data, StandardCharsets.UTF_8))) { return true; }
+        }
+      } catch (Exception error) {
+        log.debug("Model catalog refresh failed from {}", url, error);
+      }
+    }
+    return false;
   }
   public List<?> definitions(String provider) throws Exception {
     ManagementParameterValidator.identifier(provider);
@@ -29,6 +99,7 @@ public class ModelCatalogService {
     if (Aop.get(NativeChannelService.class).supports(provider)) {
       return Aop.get(NativeChannelService.class).models(provider, null);
     }
+    Kv catalog = ModelCatalogService.catalog;
     String channel = switch (provider) { case "vertex" -> "gemini"; case "kimi-ai" -> "kimi"; default -> provider; };
     // Codex's bundled catalog is split by plan, while OAuth credentials use type "codex".
     if ("codex".equals(channel) && ProxyJson.list(catalog.get(channel)).isEmpty()) {

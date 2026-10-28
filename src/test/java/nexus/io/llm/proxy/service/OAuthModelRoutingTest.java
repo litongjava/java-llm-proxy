@@ -48,6 +48,8 @@ public class OAuthModelRoutingTest {
       Provider codex = providers.stream().filter(p -> "codex".equals(p.upstreamType)).findFirst().orElseThrow();
       Provider antigravity = providers.stream().filter(p -> "antigravity".equals(p.upstreamType)).findFirst().orElseThrow();
       ModelRoutingService routing = new ModelRoutingService();
+      assertTrue(codex.models.contains("gpt-6.1-terra"));
+      assertEquals("gpt-6.1-terra", routing.resolve(codex, "gpt-6.1-terra"));
       assertFalse(codex.models.isEmpty());
       assertEquals(codex.models.size(), codex.models.stream().distinct().count());
       assertNull(routing.resolve(codex, "claude-sonnet-4-6"));
@@ -61,6 +63,7 @@ public class OAuthModelRoutingTest {
       }
       List<?> listed = ProxyJson.list(catalog.credentialModels("codex.json").get("models"));
       assertEquals(codex.models.size(), listed.size());
+      assertTrue(listed.stream().anyMatch(item -> "gpt-6.1-terra".equals(ProxyJson.object(item).getStr("id"))));
 
       codex.models.clear();
       assertNull(routing.resolve(codex, "claude-sonnet-4-6"));
