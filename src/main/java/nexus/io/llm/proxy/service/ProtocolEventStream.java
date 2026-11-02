@@ -122,7 +122,9 @@ public class ProtocolEventStream extends InputStream {
       usage(ProxyJson.object(event.get("usage")), "input_tokens", "output_tokens");
     } else if ("responses".equals(from)) {
       String type = event.getStr("type");
-      if ("response.output_text.delta".equals(type)) { events.append(text(ProxyJson.text(event, "delta", ""))); }
+      // Whitespace-only deltas carry Markdown boundaries and command spaces.
+      // Configuration fallback helpers intentionally treat blank text as absent.
+      if ("response.output_text.delta".equals(type) && event.get("delta") instanceof String delta) { events.append(text(delta)); }
       if ("response.output_item.added".equals(type)) {
         Kv item = ProxyJson.object(event.get("item"));
         if ("function_call".equals(item.getStr("type"))) { events.append(tool((int) ProxyJson.number(event, "output_index", 0), item.getStr("call_id"), item.getStr("name"), item.getStr("arguments"))); }

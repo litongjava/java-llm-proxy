@@ -33,6 +33,17 @@ request's protocol. Explicit multi-protocol settings take precedence over the
 DeepSeek compatibility shortcut. Existing DeepSeek settings are not migrated.
 An upstream error does not trigger a switch to a different protocol.
 
+Streaming conversion preserves text deltas exactly, including standalone spaces,
+newlines, CRLF, tabs and Unicode text. Responses `response.output_text.delta`
+events carry content even when the entire delta is whitespace. This keeps Markdown
+headings, fenced code and command arguments intact in Anthropic, OpenAI and Gemini
+clients. HTTP chunk boundaries may split a UTF-8 character or an SSE frame without
+changing the delivered text.
+
+Run `mvn test -Dtest=ProtocolWhitespaceTest -Dgpg.skip` to verify whitespace and
+single-byte stream fragmentation across these output protocols. After packaging,
+run `python scripts/protocol_matrix_test.py` for the local HTTP conversion matrix.
+
 The management config node is `api-keys/multi-protocol`. Runtime provider JSON
 uses `protocolEndpoints`, with `protocol` and `baseUrl` holding the default.
 
