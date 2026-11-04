@@ -13,6 +13,18 @@ public class CodexReasoningContentTest {
   private final OAuthTransportService transport = new OAuthTransportService();
 
   @Test
+  public void preservesTheCompleteCanonicalCompactionWindow() {
+    Kv reasoning = Kv.create().set("type", "reasoning").set("encrypted_content", "signed-opaque");
+    Kv compact = Kv.create().set("type", "compaction").set("encrypted_content", "opaque-state");
+    Kv user = Kv.create().set("role", "user").set("content", "Continue");
+    Kv body = Kv.create().set("input", List.of(reasoning, compact, reasoning, user));
+    List<?> original = ProxyJson.list(body.get("input"));
+    Kv outbound = transport.payload(codex("oauth"), body, "gpt-6-astra", "/responses");
+    assertEquals(original, outbound.get("input"));
+    assertFalse(outbound.containsKey("messages"));
+  }
+
+  @Test
   public void removesEveryReasoningItemFromStreamedAndNonStreamedPayloads() {
     for (boolean clientStream : new boolean[]{false, true}) {
       Kv body = reasoningRequest();

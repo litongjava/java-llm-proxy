@@ -1,13 +1,13 @@
 package nexus.io.llm.proxy.handler;
 
 import nexus.io.jfinal.aop.Aop;
-import nexus.io.llm.proxy.service.ProxyService;
+import nexus.io.llm.proxy.service.NativeEndpointService;
 import nexus.io.tio.http.common.HttpRequest;
 import nexus.io.tio.http.common.HttpResponse;
 
 public class ImageGenerationsHandler {
   public HttpResponse handle(HttpRequest request) throws Exception {
-    return Aop.get(ProxyService.class).forward(request, "openai", "/images/generations");
+    return Aop.get(NativeEndpointService.class).forward(request, "openai", "/images/generations", "gpt-image-2", false);
   }
 }
 

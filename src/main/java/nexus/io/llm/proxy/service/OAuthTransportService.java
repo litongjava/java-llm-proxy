@@ -52,9 +52,15 @@ public class OAuthTransportService {
       body.putIfAbsent("instructions", "");
       for (String field : List.of("previous_response_id", "generate", "prompt_cache_retention", "safety_identifier", "stream_options")) { body.remove(field); }
       if ("gpt-6-astra".equals(model) && body.get("input") instanceof List<?> input) {
+        // The canonical compact window must be replayed verbatim, including signed reasoning.
+        boolean compactWindow = input.stream().anyMatch(value -> {
+          Kv item = ProxyJson.object(value);
+          return "compaction".equals(item.getStr("type")) && item.getStr("encrypted_content") != null;
+        });
         List<Object> sanitized = new ArrayList<>(input.size());
-        for (Object item : input) {
-          if (item instanceof Map<?, ?> entry && "reasoning".equals(entry.get("type"))) {
+        for (int index = 0; index < input.size(); index++) {
+          Object item = input.get(index);
+          if (!compactWindow && item instanceof Map<?, ?> entry && "reasoning".equals(entry.get("type"))) {
             continue;
           }
           sanitized.add(item);

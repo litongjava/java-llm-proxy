@@ -165,10 +165,13 @@ public class ProxyService {
     payload = hooks.thinking(payload, provider, selection.model());
     OAuthTransportService oauthTransport = Aop.get(OAuthTransportService.class);
     Kv outboundPayload = oauthTransport.payload(provider, payload, selection.model(), endpoint);
+    boolean codexCompaction = CodexCompactionService.supports(provider, endpoint);
+    Object compactInput = codexCompaction ? outboundPayload.get("input") : null;
+    if (codexCompaction) { outboundPayload = CodexCompactionService.request(outboundPayload); }
     String upstreamBody = JsonUtils.toJsonWithLongAsNumber(outboundPayload);
     record.upstreamRequestBody = settings.captureBodies ? truncate(Aop.get(RequestImageService.class).externalize(upstreamBody), captureLimit) : null;
     String url = UpstreamUrlService.endpoint(provider.baseUrl, upstreamProtocol,
-        ("gemini".equals(upstreamProtocol) ? "/" + selection.model() : "") + endpoint);
+        ("gemini".equals(upstreamProtocol) ? "/" + selection.model() : "") + (codexCompaction ? "/responses" : endpoint));
     if (record.stream && "gemini".equals(upstreamProtocol)) {
       url += "?alt=sse";
     }
@@ -292,6 +295,7 @@ public class ProxyService {
       }
       Response normalized = oauthTransport.response(provider,
           UpstreamResponseService.normalizeContentType(rawResponse), record.stream);
+      if (codexCompaction) { normalized = CodexCompactionService.response(normalized, compactInput); }
       if (normalized.isSuccessful() && normalized.body() != null
           && normalized.header("Content-Type", "").contains("text/event-stream")) {
         int eventLimit = EnvUtils.getInt("proxy.stream.max-event-bytes", 16777216);

@@ -50,11 +50,11 @@ def run():
                 except OSError: time.sleep(.1)
             settings={'providers':[{'id':'native','name':'Native','protocol':'openai','baseUrl':f'http://127.0.0.1:{mock.server_port}/v1','apiKey':'media-key','models':['gpt-image-1','grok-imagine-video','grok-tts','sora-2']},
                 {'id':'gemini','name':'Gemini','protocol':'gemini','baseUrl':f'http://127.0.0.1:{mock.server_port}/v1beta/models','apiKey':'gemini-key','models':['gemini-test']}],
-                'aliases':[{'name':'image-alias','model':'gpt-image-1','providerId':'native'}]}
+                'aliases':[{'tool':'codex','name':'image-alias','model':'gpt-image-1','providerId':'native'}]}
             call('/api/settings',settings)
             multipart=(b'--native-boundary\r\nContent-Disposition: form-data; name="model"\r\n\r\nimage-alias\r\n'
                 b'--native-boundary\r\nContent-Disposition: form-data; name="image"; filename="test.png"\r\nContent-Type: image/png\r\n\r\n'+binary+b'\r\n--native-boundary--\r\n')
-            call('/v1/images/edits',multipart,'multipart/form-data; boundary=native-boundary','native-client')
+            call('/tools/codex/v1/images/edits',multipart,'multipart/form-data; boundary=native-boundary','native-client')
             assert binary in seen[-1][1] and b'gpt-image-1' in seen[-1][1] and b'image-alias' not in seen[-1][1],seen[-1]
             assert seen[-1][2]=='Bearer media-key'
             for endpoint in ('/v1/videos','/v1/videos/generations','/v1/videos/edits','/v1/videos/extensions','/openai/v1/videos'):

@@ -49,9 +49,12 @@ public class NativeEndpointService {
     Kv input = json && !"GET".equals(method) ? request.getBodyObject(Kv.class) : Kv.create();
     String model = task == null ? NativeRequestValidator.model(request, input, fallback) : task.model;
     SettingsService settings = Aop.get(SettingsService.class);
-    SettingsService.Selection selected = settings.select(model, protocol, protocol, task == null ? null : task.providerId, null);
+    boolean image = "/images/generations".equals(endpoint) || "/images/edits".equals(endpoint);
+    SettingsService.Selection selected = settings.select(model, protocol, image ? null : protocol,
+        task == null ? null : task.providerId, null, java.util.Set.of(), Aop.get(ToolScopeService.class).tool(request));
     Provider provider = selected.provider();
-    BusinessException.require(protocol.equals(provider.protocol), 400, "NATIVE_PROTOCOL", "This endpoint requires a provider with the same protocol");
+    boolean codexImage = image && "codex".equals(provider.upstreamType) && "oauth".equals(provider.authType);
+    BusinessException.require(protocol.equals(provider.protocol) || codexImage, 400, "NATIVE_PROTOCOL", "This endpoint requires a provider with the same protocol");
     ProxySettings configuration = settings.snapshot();
     RequestRecord record = new RequestRecord();
     record.id = String.valueOf(SnowflakeIdUtils.id()); record.timestamp = System.currentTimeMillis();
@@ -101,6 +104,13 @@ public class NativeEndpointService {
     }
     provider.headers.forEach((name, value) -> { if (!HeaderService.transport(name.toString())) { outbound.header(name.toString(), value.toString()); } });
     Aop.get(OAuthTransportService.class).headers(provider, outbound);
+    if (codexImage) {
+      outbound.header("Accept", "application/json");
+      outbound.header("x-codex-image-turn-id", java.util.UUID.randomUUID().toString());
+    }
+    if (codexImage && provider.metadata.getStr("account_id") != null) {
+      outbound.header("ChatGPT-Account-Id", provider.metadata.getStr("account_id"));
+    }
     Request upstream = outbound.build();
     record.upstreamRequestHeaders = HeaderService.redact(upstream.headers().toMultimap());
     if (body != null && configuration.captureBodies) {

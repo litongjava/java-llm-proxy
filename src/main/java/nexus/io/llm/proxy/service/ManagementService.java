@@ -2,8 +2,8 @@ package nexus.io.llm.proxy.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import com.jfinal.kit.Kv;
 import nexus.io.chat.UniChatClient;
 import nexus.io.jfinal.aop.Aop;
@@ -42,27 +42,57 @@ public class ManagementService {
 
   public Kv models(String tool) throws Exception {
     ProxySettings settings = Aop.get(SettingsService.class).snapshot();
-    Set<String> names = new LinkedHashSet<>();
+    Map<String, Kv> models = new LinkedHashMap<>();
     ModelRoutingService modelRouting = Aop.get(ModelRoutingService.class);
-    settings.providers.stream().filter(p -> p.enabled).forEach(p -> names.addAll(modelRouting.visible(p, p.models, tool)));
-    settings.aliases.stream().filter(alias -> tool.equals(alias.tool)).forEach(alias -> names.add(alias.name));
-    Aop.get(PluginService.class).staticProviders().forEach(provider -> names.addAll(provider.models));
-    CredentialService credentials = Aop.get(CredentialService.class);
     ModelCatalogService catalog = Aop.get(ModelCatalogService.class);
-    for (Provider provider : Aop.get(CredentialProviderService.class).providers()) {
-      Kv credential = credentials.read(provider.credentialName);
-      List<String> originals = new ArrayList<>();
-      for (Object value : ProxyJson.list(catalog.credentialModels(provider.credentialName).get("models"))) {
-        String id = ProxyJson.object(value).getStr("id");
-        if (id != null) { originals.add(id); }
+    List<Provider> providers = new ArrayList<>(settings.providers);
+    providers.addAll(Aop.get(PluginService.class).staticProviders());
+    providers.addAll(Aop.get(CredentialProviderService.class).providers());
+    for (Provider provider : providers) {
+      if (!provider.enabled) { continue; }
+      Map<String, Kv> details = new LinkedHashMap<>();
+      List<?> definitions = provider.credentialName == null ? ProxyJson.list(provider.metadata.get("models"))
+          : ProxyJson.list(catalog.credentialModels(provider.credentialName).get("models"));
+      for (Object value : definitions) {
+        Kv item = value instanceof String ? Kv.create().set("id", value) : ProxyJson.object(value);
+        String id = ProxyJson.text(item, "id", item.getStr("name"));
+        if (id != null) { details.put(id, item); }
       }
-      names.addAll(modelRouting.visible(provider, originals, tool));
+      for (String name : modelRouting.visible(provider, provider.models, tool)) {
+        String actual = modelRouting.resolve(provider, name, tool);
+        if (actual != null) { addModel(models, name, actual, provider, details.get(actual)); }
+      }
+      for (var alias : settings.aliases) {
+        if (!tool.equals(alias.tool) || (alias.providerId != null && !alias.providerId.isBlank() && !alias.providerId.equals(provider.id))) { continue; }
+        String actual = modelRouting.resolve(provider, alias.model, tool);
+        if (actual != null) { addModel(models, alias.name, actual, provider, details.get(actual)); }
+      }
     }
-    List<Kv> models = new ArrayList<>();
-    for (String name : names) {
-      models.add(Kv.create().set("id", name).set("object", "model").set("created", 0).set("owned_by", "java-llm-proxy"));
+    return Kv.create().set("object", "list").set("data", new ArrayList<>(models.values()));
+  }
+
+  static void addModel(Map<String, Kv> models, String name, String actual, Provider provider, Kv details) {
+    String owner = details == null ? null : details.getStr("owned_by");
+    if (owner == null || owner.isBlank()) {
+      owner = switch (provider.upstreamType == null ? "" : provider.upstreamType) {
+        case "codex", "openai" -> "openai";
+        case "claude", "anthropic" -> "anthropic";
+        case "gemini", "vertex" -> "google";
+        case "deepseek" -> "deepseek";
+        default -> "unknown";
+      };
     }
-    return Kv.create().set("object", "list").set("data", models);
+    String source = provider.upstreamType == null || provider.upstreamType.isBlank()
+        ? provider.credentialName == null && provider.name != null ? provider.name : "custom"
+        : provider.upstreamType;
+    Kv entry = models.computeIfAbsent(name, key -> Kv.create().set("id", key).set("object", "model")
+        .set("created", 0).set("owners", new ArrayList<String>()).set("sources", new ArrayList<Kv>()));
+    @SuppressWarnings("unchecked") List<String> owners = (List<String>) entry.get("owners");
+    if (!owners.contains(owner)) { owners.add(owner); }
+    entry.set("owned_by", owners.size() == 1 ? owners.getFirst() : "multiple");
+    @SuppressWarnings("unchecked") List<Kv> sources = (List<Kv>) entry.get("sources");
+    Kv origin = Kv.create().set("provider", source).set("model", actual).set("owned_by", owner);
+    if (!sources.contains(origin)) { sources.add(origin); }
   }
 
   public Kv health(String id) throws Exception {

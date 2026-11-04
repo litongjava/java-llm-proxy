@@ -98,6 +98,10 @@ public class CredentialProviderService {
             provider.models.add(model);
           }
         }
+        // Codex image generation uses an independent image model, absent from the chat catalog.
+        if ("codex".equals(info.type) && !provider.models.contains("gpt-image-2")) {
+          provider.models.add("gpt-image-2");
+        }
         providers.add(provider);
       }
       return providers;

@@ -111,6 +111,7 @@ public class ModelCatalogService {
         }
       }
       models.putIfAbsent("gpt-live-1-codex", Kv.create().set("id", "gpt-live-1-codex").set("object", "model").set("owned_by", "openai"));
+      models.putIfAbsent("gpt-image-2", imageModel());
       return new ArrayList<>(models.values());
     }
     return ProxyJson.list(catalog.get(channel));
@@ -140,7 +141,14 @@ public class ModelCatalogService {
       if (!item.containsKey("id")) { item.set("id", ProxyJson.text(item, "ID", item.getStr("name"))); }
       result.add(item);
     }
+    if ("codex".equals(provider) && result.stream().noneMatch(item -> "gpt-image-2".equals(item.getStr("id")))) {
+      result.add(imageModel());
+    }
     return Kv.create().set("models", result);
+  }
+
+  private static Kv imageModel() {
+    return Kv.create().set("id", "gpt-image-2").set("object", "model").set("owned_by", "openai");
   }
 
   public boolean allowed(Kv credential, String model) {
