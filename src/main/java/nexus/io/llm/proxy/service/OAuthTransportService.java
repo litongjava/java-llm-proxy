@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import com.jfinal.kit.Kv;
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.Provider;
@@ -50,6 +51,11 @@ public class OAuthTransportService {
     if ("codex".equals(provider.upstreamType) && !endpoint.endsWith("compact")) {
       body.set("stream", true).set("store", false);
       body.putIfAbsent("instructions", "");
+      // Responses accepts shorthand text; Codex requires a message list.
+      if (body.get("input") instanceof String input) {
+        body.set("input", List.of(Kv.create().set("role", "user").set("content",
+            List.of(Kv.create().set("type", "input_text").set("text", input)))));
+      }
       for (String field : List.of("previous_response_id", "generate", "prompt_cache_retention", "safety_identifier", "stream_options")) { body.remove(field); }
       if ("gpt-6-astra".equals(model) && body.get("input") instanceof List<?> input) {
         // The canonical compact window must be replayed verbatim, including signed reasoning.
@@ -142,6 +148,7 @@ public class OAuthTransportService {
     String type = response.header("Content-Type", "");
     if ("codex".equals(provider.upstreamType) && !clientStream && type.contains("text/event-stream")) {
       String completed = null;
+      Map<Integer, Object> items = new TreeMap<>();
       try (response; BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
         String line;
         int total = 0;
@@ -152,7 +159,22 @@ public class OAuthTransportService {
           String data = line.substring(5).trim();
           if (data.equals("[DONE]") || data.isBlank()) { continue; }
           Kv event = ProxyJson.parse(data);
-          if ("response.completed".equals(event.getStr("type"))) { completed = JsonUtils.toJsonWithLongAsNumber(event.get("response")); break; }
+          if ("response.output_item.done".equals(event.getStr("type"))) {
+            Object index = event.get("output_index");
+            if (index instanceof Number number && event.get("item") instanceof Map<?, ?>) {
+              items.put(number.intValue(), event.get("item"));
+            }
+          }
+          if ("response.completed".equals(event.getStr("type"))) {
+            Kv result = ProxyJson.object(event.get("response"));
+            // Some Codex streams deliver output only in item.done events.
+            // Preserve the terminal output when it is already complete.
+            if (ProxyJson.list(result.get("output")).isEmpty() && !items.isEmpty()) {
+              result.set("output", new ArrayList<>(items.values()));
+            }
+            completed = JsonUtils.toJsonWithLongAsNumber(result);
+            break;
+          }
           BusinessException.require(!"response.failed".equals(event.getStr("type")) && !"error".equals(event.getStr("type")), 502, "CODEX_RESPONSE_FAILED", "Codex response failed");
         }
       }

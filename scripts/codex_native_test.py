@@ -15,6 +15,17 @@ def run():
     seen = []
     opaque = {'type': 'compaction', 'id': 'cmp-fixture', 'encrypted_content': 'opaque-exact-payload'}
     reasoning = {'type':'reasoning','id':'reasoning-fixture','encrypted_content':'signed-content'}
+    search = {'id':'search-fixture','type':'web_search_call','status':'completed',
+              'action':{'type':'search','sources':[{'url':'https://example.com/docs','title':'Search source'}]}}
+    answer = {'type':'message','role':'assistant','content':[{'type':'output_text','text':'Search answer',
+              'annotations':[{'type':'url_citation','url':'https://example.com/docs','title':'Search source'}]}]}
+    search_events = [
+        {'type':'response.output_item.done','output_index':1,'item':answer},
+        {'type':'response.output_item.done','output_index':0,'item':search},
+        {'type':'response.output_item.done','output_index':0,'item':search},
+        {'type':'response.completed','response':{'id':'resp-search','status':'completed','output':[],
+          'usage':{'input_tokens':13,'output_tokens':7,'total_tokens':20}}},
+    ]
 
     class Upstream(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
@@ -34,13 +45,22 @@ def run():
             if self.path.endswith('/responses'):
                 assert body['stream'] is True and body['store'] is False
                 assert 'messages' not in body
-                if body['input'][-1] == {'type': 'compaction_trigger'}:
+                if body.get('tools') == [{'type':'web_search'}]:
+                    assert isinstance(body['input'], list), 'Codex requires a message list'
+                    assert body['input'][0]['content'][0]['text'] == '搜索官方文档'
+                    assert body['include'] == ['web_search_call.action.sources']
+                    assert body['tool_choice'] == 'required'
+                    output = None
+                elif body['input'][-1] == {'type': 'compaction_trigger'}:
                     output = [reasoning, opaque, reasoning]
                 else:
                     assert body['input'][1:4] == [reasoning, opaque, reasoning]
                     output = [{'type':'message','role':'assistant','content':[{'type':'output_text','text':'continued'}]}]
                 response = {'id':'resp-test','status':'completed','created_at':1,'output':output, 'usage':{'input_tokens':13,'output_tokens':7,'total_tokens':20}}
                 wire = ('event: response.completed\ndata: ' + json.dumps({'type':'response.completed','response':response}) + '\n\n').encode()
+                if output is None:
+                    wire = ''.join('event: ' + event['type'] + '\ndata: ' + json.dumps(event) + '\n\n'
+                                   for event in search_events).encode()
                 media = 'text/event-stream'
             else:
                 assert self.path in ('/v1/images/generations','/v1/images/edits')
@@ -64,6 +84,10 @@ def run():
     def call(path, body=None):
         request = urllib.request.Request(f'http://127.0.0.1:{port}'+path, data=None if body is None else json.dumps(body).encode(), headers={'Authorization':'Bearer fixture-client','Content-Type':'application/json'})
         with urllib.request.urlopen(request, timeout=15) as response:
+            if body and body.get('stream'):
+                assert 'text/event-stream' in response.headers['Content-Type']
+                return [json.loads(line[5:]) for line in response.read().decode().splitlines()
+                        if line.startswith('data:') and line[5:].strip() != '[DONE]']
             return json.load(response)
     with (data/'server.log').open('wb') as log:
         process = subprocess.Popen(['java','-jar',str(root/'target/java-llm-proxy-1.0.0.jar'),f'--server.port={port}',f'--proxy.data-dir={data}',f'--proxy.auth-dir={auth}',f'--proxy.config={data}/config.yaml','--proxy.api-key=fixture-client',f'--proxy.oauth.codex.api-base-url=http://127.0.0.1:{mock.server_port}/v1'], cwd=data, stdout=log, stderr=log, creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
@@ -83,6 +107,21 @@ def run():
             assert result['usage']['total_tokens'] == 20
             continued = call('/tools/codex/v1/responses', {'model':'gpt-6-astra','stream':False,'input':result['output']+[{'role':'user','content':'Continue'}]})
             assert continued['output'][0]['content'][0]['text'] == 'continued'
+            for endpoint in ('/v1/responses', '/tools/codex/v1/responses'):
+                for shorthand in (False, True):
+                    for stream in (False, True):
+                        query = '搜索官方文档'
+                        body = {'model':'gpt-6-astra','stream':stream,
+                                'input':query if shorthand else [{'role':'user','content':[{'type':'input_text','text':query}]}],
+                                'tools':[{'type':'web_search'}], 'tool_choice':'required',
+                                'include':['web_search_call.action.sources']}
+                        result = call(endpoint, body)
+                        if stream:
+                            assert result == search_events, result
+                        else:
+                            assert result['output'] == [search, answer], result
+                            assert result['usage'] == {'input_tokens':13,'output_tokens':7,'total_tokens':20}
+                        print(f'PASS search HTTP: {endpoint}, input={"text" if shorthand else "list"}, stream={stream}')
             for endpoint in ('generations','edits'):
                 body = {'model':'gpt-image-2','prompt':'Draw a small icon','n':1,'background':'transparent'}
                 if endpoint == 'edits': body['images'] = [{'image_url':'data:image/png;base64,fixture'}]

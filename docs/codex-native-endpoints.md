@@ -11,6 +11,12 @@ Codex OAuth 使用 `/responses` 中的原生 `compaction_trigger` 完成压缩�
 
 调用方必须完整保存并重放返回的 `output`，包括加密压缩项和其他原生项目。代理在后续 Astra 请求中完整保留含压缩项的输入，不对其 reasoning 项做历史清理。响应保留上游 usage；压缩不是零 token 操作。请求输入需要符合所选模型的窗口限制。
 
+## 原生搜索与普通 JSON 响应
+
+Responses 请求可携带 `tools: [{"type":"web_search"}]` 和 `include: ["web_search_call.action.sources"]`。代理将字符串形式的 `input` 规范化为用户消息数组，便于客户端接入 Codex OAuth。
+
+客户端选择 `stream: false` 时，代理将上游事件流聚合为普通 JSON。如果完成事件的 `output` 为空，使用已完成的 `response.output_item.done` 项，按 `output_index` 排序、去重，完整保留搜索来源、文本引用、函数调用及其他原生结果。完成事件已包含输出时优先保留该输出，usage 保持上游值。流式客户端继续接收原始事件；失败或没有完成事件的流不会被转换成成功响应。
+
 ## 图片
 
 - `POST /tools/codex/v1/images/generations`
@@ -28,4 +34,4 @@ Codex 图片模型为 `gpt-image-2`，独立于对话模型。代理使用已配
 
 ## 验证
 
-`scripts/codex_native_test.py` 启动隔离代理和本地 OAuth 上游，验证实际 HTTP 路由、完整压缩窗口的继续请求、模型归属及图片 JSON。`scripts/native_endpoint_test.py` 验证原有 multipart 和其他原生端点。它们使用本地测试数据，不代表真实上游权限验证。
+`scripts/codex_native_test.py` 启动隔离代理和本地 OAuth 上游，验证实际 HTTP 路由、完整压缩窗口的继续请求、模型归属及图片 JSON。搜索覆盖 `/v1/responses` 与 `/tools/codex/v1/responses`，分别组合字符串或数组输入、流式或普通响应，共八种场景；检查搜索参数、来源、文本引用、用量，以及完成项乱序和重复时的聚合结果。`scripts/native_endpoint_test.py` 验证原有 multipart 和其他原生端点。它们使用本地测试数据，不代表真实上游权限验证。

@@ -137,7 +137,7 @@ public class CodexReasoningContentTest {
 
     Kv stringBody = Kv.create().set("input", "Synthetic plain input").set("stream", false);
     Kv stringOutbound = transport.payload(codex("oauth"), stringBody, "gpt-6-astra", "/responses");
-    assertEquals("Synthetic plain input", stringOutbound.getStr("input"));
+    assertEquals("Synthetic plain input", messageText(ProxyJson.object(ProxyJson.list(stringOutbound.get("input")).get(0))));
 
     List<Object> empty = new ArrayList<>();
     Kv emptyBody = Kv.create().set("input", empty).set("stream", false);
