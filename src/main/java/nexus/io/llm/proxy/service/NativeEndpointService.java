@@ -103,7 +103,7 @@ public class NativeEndpointService {
       outbound.header(auth, "Authorization".equals(auth) ? "Bearer " + provider.apiKey : provider.apiKey);
     }
     provider.headers.forEach((name, value) -> { if (!HeaderService.transport(name.toString())) { outbound.header(name.toString(), value.toString()); } });
-    Aop.get(OAuthTransportService.class).headers(provider, outbound);
+    Aop.get(OAuthTransportService.class).httpHeaders(provider, outbound);
     if (codexImage) {
       outbound.header("Accept", "application/json");
       outbound.header("x-codex-image-turn-id", java.util.UUID.randomUUID().toString());

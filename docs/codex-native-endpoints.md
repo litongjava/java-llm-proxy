@@ -4,7 +4,7 @@
 
 ## 对话与压缩
 
-- `POST /tools/codex/v1/responses`：Responses 请求发送到 Responses 上游，不经过 Chat Completions 或 Anthropic 的通用协议转换。仍应用配置的路由、Payload 规则及 OAuth 参数兼容处理。
+- `POST /tools/codex/v1/responses`：Responses 请求发送到 Responses 上游，不经过 Chat Completions 或 Anthropic 的通用协议转换。仍应用配置的路由、Payload 规则及 OAuth 参数兼容处理。Codex OAuth 的 HTTP 请求会为缺失的 `session-id`、`thread-id`、`x-client-request-id`、`x-codex-beta-features` 补充默认值，并统一使用按运行平台生成的 `user-agent`（客户端已有 UA 也会被覆盖）；其余同名头客户端已有值时保持不变，同时移除客户端的 `x-dcl-*` 标识头。WebSocket 与 Live 路径不注入。
 - `POST /tools/codex/v1/responses/compact`：返回 `response.compaction` 和完整 `output` 数组。
 
 Codex OAuth 使用 `/responses` 中的原生 `compaction_trigger` 完成压缩，代理把结果适配为独立压缩接口的返回格式。此流程不使用普通提示词摘要。其他支持独立压缩接口的 Responses 提供商继续使用各自的 `/responses/compact`。

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import com.jfinal.kit.Kv;
 import nexus.io.jfinal.aop.Aop;
 import nexus.io.llm.proxy.model.Provider;
@@ -127,6 +128,38 @@ public class OAuthTransportService {
       request.header("User-Agent", EnvUtils.get("proxy.oauth.antigravity.user-agent", "antigravity/hub/2.9.1 darwin/arm64 google-api-nodejs-client/10.3.0"))
           .header("X-Goog-Api-Client", "gl-node/22.21.1");
     }
+  }
+  public void httpHeaders(Provider provider, Request.Builder request) {
+    headers(provider, request);
+    if (!"codex".equals(provider.upstreamType) || !"oauth".equals(provider.authType)) { return; }
+    Request current = request.build();
+    request.header("User-Agent", codexUserAgent());
+    request.removeHeader("x-dcl-arch");
+    request.removeHeader("x-dcl-os");
+    request.removeHeader("x-dcl-retry-count");
+    request.removeHeader("x-dcl-runtime");
+    if (current.header("x-codex-beta-features") == null) { request.header("x-codex-beta-features", "remote_compaction_v2"); }
+    String session = current.header("session-id");
+    if (session == null) { session = current.header("thread-id"); }
+    if (session == null) { session = UUID.randomUUID().toString(); }
+    if (current.header("session-id") == null) { request.header("session-id", session); }
+    if (current.header("thread-id") == null) { request.header("thread-id", session); }
+    if (current.header("x-client-request-id") == null) { request.header("x-client-request-id", UUID.randomUUID().toString()); }
+  }
+  private static String codexUserAgent() {
+    String name = System.getProperty("os.name", "");
+    String version = System.getProperty("os.version", "");
+    String system = name.startsWith("Windows") ? "Windows " + version
+        : name.startsWith("Mac") ? "Mac OS " + version
+        : name.startsWith("Linux") ? "Linux " + version
+        : name + " " + version;
+    String architecture = System.getProperty("os.arch", "");
+    String arch = switch (architecture) {
+    case "amd64", "x86_64" -> "x86_64";
+    case "aarch64", "arm64" -> "arm64";
+    default -> architecture;
+    };
+    return "codex-tui/0.166.0 (" + system + "; " + arch + ") xterm-256color (codex-tui; 0.167.0)";
   }
   public Response response(Provider provider, Response response, boolean clientStream) throws Exception {
     if (QoderTransportService.supports(provider.upstreamType)) { return Aop.get(QoderTransportService.class).response(response, clientStream); }
