@@ -141,6 +141,10 @@ public class OAuthTransportService {
     if (current.header("x-codex-beta-features") == null) { request.header("x-codex-beta-features", "remote_compaction_v2"); }
     String session = current.header("session-id");
     if (session == null) { session = current.header("thread-id"); }
+    if (session == null) {
+      String dclSession = current.header("x-dcl-session-id");
+      if (dclSession != null && !dclSession.isBlank()) { session = dclSession; }
+    }
     if (session == null) { session = UUID.randomUUID().toString(); }
     if (current.header("session-id") == null) { request.header("session-id", session); }
     if (current.header("thread-id") == null) { request.header("thread-id", session); }

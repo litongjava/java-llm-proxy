@@ -42,6 +42,18 @@ public class CodexHeaderDefaultsTest {
   }
 
   @Test
+  public void reusesDclSessionAcrossRequests() {
+    Provider codex = provider("codex", "oauth");
+    Request first = build(codex, request().header("x-dcl-session-id", "dcl-session"));
+    Request second = build(codex, request().header("x-dcl-session-id", "dcl-session"));
+    for (Request request : new Request[] { first, second }) {
+      assertEquals("dcl-session", request.header("session-id"));
+      assertEquals("dcl-session", request.header("thread-id"));
+    }
+    assertNotEquals(first.header("x-client-request-id"), second.header("x-client-request-id"));
+  }
+
+  @Test
   public void generatesUserAgentForCurrentPlatform() {
     String userAgent = build(provider("codex", "oauth"), request()).header("user-agent");
     String osName = System.getProperty("os.name", "");
@@ -62,6 +74,7 @@ public class CodexHeaderDefaultsTest {
     Request request = build(provider("codex", "oauth"), request()
         .header("user-agent", "custom-agent")
         .header("session-id", "client-session")
+        .header("x-dcl-session-id", "dcl-session")
         .header("thread-id", "client-thread")
         .header("x-client-request-id", "client-request")
         .header("x-codex-beta-features", "client-features"));
@@ -75,7 +88,7 @@ public class CodexHeaderDefaultsTest {
 
   @Test
   public void reusesThreadIdForSessionId() {
-    Request request = build(provider("codex", "oauth"), request().header("thread-id", "client-thread"));
+    Request request = build(provider("codex", "oauth"), request().header("thread-id", "client-thread").header("x-dcl-session-id", "dcl-session"));
     assertEquals("client-thread", request.header("session-id"));
     assertEquals("client-thread", request.header("thread-id"));
     assertNotEquals("client-thread", request.header("x-client-request-id"));
