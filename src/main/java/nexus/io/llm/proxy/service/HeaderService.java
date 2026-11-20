@@ -22,6 +22,15 @@ public final class HeaderService {
       record.session_id = contextHeader(record.requestHeaders, "x-claude-code-session-id");
     }
     record.thread_id = contextHeader(record.requestHeaders, "thread-id");
+    fillDclSessionIds(record);
+  }
+
+  static void fillDclSessionIds(nexus.io.llm.proxy.model.RequestRecord record) {
+    if (record.requestHeaders == null) return;
+    String session = contextHeader(record.requestHeaders, "x-dcl-session-id");
+    if (session == null) return;
+    if (record.session_id == null || record.session_id.isBlank()) record.session_id = session;
+    if (record.thread_id == null || record.thread_id.isBlank()) record.thread_id = session;
   }
 
   private static String contextHeader(Map<?, ?> headers, String name) {

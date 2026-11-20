@@ -7,6 +7,22 @@ import static org.junit.Assert.*;
 
 public class ClientContextTest {
   @Test
+  public void fillsOnlyMissingIdsFromDclSession() {
+    RequestRecord record = new RequestRecord();
+    record.requestHeaders = Kv.create().set("X-Dcl-Session-Id", " dcl-session ");
+    HeaderService.captureClientContext(record);
+    assertEquals("dcl-session", record.session_id);
+    assertEquals("dcl-session", record.thread_id);
+    record.requestHeaders.set("thread-id", "explicit-thread");
+    HeaderService.captureClientContext(record);
+    assertEquals("dcl-session", record.session_id);
+    assertEquals("explicit-thread", record.thread_id);
+    record.requestHeaders.set("session-id", "explicit-session");
+    HeaderService.captureClientContext(record);
+    assertEquals("explicit-session", record.session_id);
+  }
+
+  @Test
   public void recognizesClaudeCliAcrossVersions() {
     RequestRecord record = new RequestRecord();
     for (String agent : new String[] {"claude-cli/2.1.292 (external, cli)", "claude-cli/3.0.0 (cli)"}) {
@@ -80,6 +96,16 @@ public class ClientContextTest {
         assertEquals("session-1", row.getString(2));
         assertEquals("thread-1", row.getString(3));
       }
+      try (var connection = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("proxy.db"));
+          var statement = connection.createStatement()) {
+        statement.executeUpdate("""
+            INSERT INTO requests(id,timestamp,summary,body) VALUES ('legacy-dcl',1,'{}',
+            '{"requestHeaders":{"x-dcl-session-id":"legacy-session"}}')
+            """);
+      }
+      RequestRecord legacy = storage.detail("legacy-dcl");
+      assertEquals("legacy-session", legacy.session_id);
+      assertEquals("legacy-session", legacy.thread_id);
     } finally {
       nexus.io.tio.utils.environment.EnvUtils.set("proxy.data-dir", previous);
       try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(directory)) {

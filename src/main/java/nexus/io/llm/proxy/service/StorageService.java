@@ -222,7 +222,10 @@ public class StorageService {
         PreparedStatement statement = connection.prepareStatement("SELECT body FROM requests WHERE id=?")) {
       statement.setString(1, id);
       try (ResultSet result = statement.executeQuery()) {
-        return result.next() ? JsonUtils.parse(result.getString(1), RequestRecord.class) : null;
+        if (!result.next()) return null;
+        RequestRecord record = JsonUtils.parse(result.getString(1), RequestRecord.class);
+        HeaderService.fillDclSessionIds(record);
+        return record;
       }
     } catch (Exception e) {
       throw new IllegalStateException("Cannot read request", e);
