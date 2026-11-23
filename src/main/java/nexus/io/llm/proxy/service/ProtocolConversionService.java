@@ -374,10 +374,11 @@ public class ProtocolConversionService {
           .set("usageMetadata", Kv.create().set("promptTokenCount", in).set("candidatesTokenCount", out).set("totalTokenCount", in + out)).set("modelVersion", model);
     }
     List<Kv> output = new ArrayList<>(ProxyJson.list(converted.get("input")).stream().map(ProxyJson::object).toList());
-    // Chat upstreams stream their thinking outside the message text; keep it as a Responses item.
+    // Chat upstreams stream their thinking outside the message text; keep it as a Responses
+    // item without plaintext, which is display-only and must not become replayable state.
     if ("openai".equals(from) && message.get("reasoning_content") instanceof String thinking && !thinking.isBlank()) {
       output.add(0, Kv.create().set("id", "rs-" + SnowflakeIdUtils.id()).set("type", "reasoning")
-          .set("summary", List.of(Kv.create().set("type", "summary_text").set("text", thinking))));
+          .set("summary", List.of()));
     }
     return ProtocolStopReason.response(Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
         .set("output", output).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)

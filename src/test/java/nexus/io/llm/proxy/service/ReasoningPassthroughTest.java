@@ -68,6 +68,16 @@ public class ReasoningPassthroughTest {
     return indexes;
   }
 
+  private static String reasoningDeltas(String sse) {
+    StringBuilder text = new StringBuilder();
+    for (Kv event : events(sse)) {
+      if ("response.reasoning_summary_text.delta".equals(event.getStr("type"))) {
+        text.append(ProxyJson.text(event, "delta", ""));
+      }
+    }
+    return text.toString();
+  }
+
   @Test
   public void toolOnlyTurnStreamsReasoningWithoutAnEmptyMessage() throws Exception {
     String sse = chunk(Kv.create().set("role", "assistant").set("content", ""), null)
@@ -80,7 +90,8 @@ public class ReasoningPassthroughTest {
     List<?> items = ProxyJson.list(completed(converted).get("output"));
     assertEquals(2, items.size());
     assertEquals("reasoning", ProxyJson.object(items.get(0)).getStr("type"));
-    assertEquals("thinking", ProxyJson.object(ProxyJson.list(ProxyJson.object(items.get(0)).get("summary")).getFirst()).getStr("text"));
+    assertEquals("thinking", reasoningDeltas(converted));
+    assertTrue(ProxyJson.list(ProxyJson.object(items.get(0)).get("summary")).isEmpty());
     assertEquals("function_call", ProxyJson.object(items.get(1)).getStr("type"));
     assertEquals("call_1", ProxyJson.object(items.get(1)).getStr("call_id"));
     assertEquals("{\"cmd\":\"ls\"}", ProxyJson.object(items.get(1)).getStr("arguments"));
@@ -146,7 +157,7 @@ public class ReasoningPassthroughTest {
   }
 
   @Test
-  public void nonStreamResponseCarriesReasoningBeforeTheMessage() {
+  public void nonStreamResponseKeepsReasoningWithoutPlaintextState() {
     Kv chat = ProxyJson.parse("""
         {"id":"chatcmpl-1","object":"chat.completion","model":"fixture","choices":[{"index":0,"finish_reason":"stop",
           "message":{"role":"assistant","content":"done","reasoning_content":"pondering"}}],
@@ -156,7 +167,7 @@ public class ReasoningPassthroughTest {
     List<?> items = ProxyJson.list(response.get("output"));
     assertEquals(2, items.size());
     assertEquals("reasoning", ProxyJson.object(items.get(0)).getStr("type"));
-    assertEquals("pondering", ProxyJson.object(ProxyJson.list(ProxyJson.object(items.get(0)).get("summary")).getFirst()).getStr("text"));
+    assertTrue(ProxyJson.list(ProxyJson.object(items.get(0)).get("summary")).isEmpty());
     assertEquals("message", ProxyJson.object(items.get(1)).getStr("type"));
     assertEquals("done", ProxyJson.object(ProxyJson.list(ProxyJson.object(items.get(1)).get("content")).getFirst()).getStr("text"));
   }

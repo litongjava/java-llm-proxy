@@ -84,6 +84,11 @@ public class ProxyService {
     if (session == null) {
       session = ProxyJson.object(payload.get("metadata")).getStr("session_id");
     }
+    // Reasoning ownership is tracked per conversation; every client family spells the header
+    // differently, and a missing key only makes us strip foreign state, never replay it.
+    String issuerSession = firstNonBlank(request.getHeader("x-session-id"), request.getHeader("session-id"),
+        request.getHeader("session_id"), request.getHeader("x-dcl-session-id"),
+        request.getHeader("x-opencode-session"), session);
     PluginHookService hooks = Aop.get(PluginHookService.class);
     RequestRecord record = new RequestRecord();
     record.id = retry.requestId;
@@ -140,6 +145,8 @@ public class ProxyService {
     record.provider = provider.name;
     record.model = selection.model();
     String upstreamProtocol = provider.protocol;
+    String issuerIdentity = Aop.get(ReasoningIssuerService.class).issuer(provider, selection.model());
+    Aop.get(ReasoningIssuerService.class).filter(payload, protocol, issuerSession, provider, selection.model());
     ResponsesToolMapping responseTools = "responses".equals(protocol) && !protocol.equals(upstreamProtocol)
         ? new ResponsesToolMapping(payload)
         : null;
@@ -383,6 +390,10 @@ public class ProxyService {
               frame -> hooks.responsePhase(frame, upstreamProtocol, record, originalForResponse, translatedForResponse,
                   "response_after_translator", "response.normalize_after"));
         }
+        events = new SseFrameInputStream(events, eventLimit, frame -> {
+          Aop.get(ReasoningIssuerService.class).observe(issuerSession, issuerIdentity, frame);
+          return frame;
+        });
         BufferedSource source = Okio.buffer(Okio.source(events));
         ResponseBody translated = new ResponseBody() {
           public MediaType contentType() {
@@ -398,6 +409,9 @@ public class ProxyService {
           }
         };
         upstream = normalized.newBuilder().removeHeader("Content-Length").body(translated).build();
+      } else if (normalized.isSuccessful() && "responses".equals(protocol) && normalized.body() != null
+          && normalized.header("Content-Type", "").contains("application/json")) {
+        upstream = Aop.get(ReasoningIssuerService.class).observeResponse(normalized, issuerSession, issuerIdentity);
       } else {
         upstream = normalized;
       }
@@ -614,5 +628,12 @@ public class ProxyService {
 
   private String truncate(String value, int limit) {
     return Utf8Capture.prefix(value, limit);
+  }
+
+  private static String firstNonBlank(String... values) {
+    for (String value : values) {
+      if (value != null && !value.isBlank()) { return value; }
+    }
+    return null;
   }
 }

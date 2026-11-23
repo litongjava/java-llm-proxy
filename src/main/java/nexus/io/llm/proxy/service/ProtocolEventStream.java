@@ -307,8 +307,9 @@ public class ProtocolEventStream extends InputStream {
           .set("usageMetadata", Kv.create().set("promptTokenCount", inputTokens).set("candidatesTokenCount", outputTokens).set("totalTokenCount", inputTokens + outputTokens))));
     } else if ("responses".equals(to)) {
       if (reasoningIndex >= 0) {
-        Kv summary = Kv.create().set("type", "summary_text").set("text", reasoning.toString());
-        items.get(reasoningIndex).set("summary", List.of(summary));
+        // Plain thinking is display-only: the stream already carried the text, so the
+        // replayable item stays contentless and stateless clients cannot resend it.
+        items.get(reasoningIndex).set("summary", List.of());
         result.append(event("response.reasoning_summary_text.done", Kv.create().set("item_id", id + "-reasoning")
             .set("output_index", reasoningIndex).set("summary_index", 0).set("text", reasoning.toString())));
         result.append(event("response.reasoning_summary_part.done", Kv.create().set("item_id", id + "-reasoning")
