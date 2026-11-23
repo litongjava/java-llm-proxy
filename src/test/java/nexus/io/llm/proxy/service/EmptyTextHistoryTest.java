@@ -44,6 +44,35 @@ public class EmptyTextHistoryTest {
   }
 
   @Test
+  public void responsesToOpenaiDropsBlankAssistantTurns() {
+    Kv input = ProxyJson.parse("""
+        {"input":[
+          {"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},
+          {"type":"message","role":"assistant","content":[{"type":"output_text","text":""}]},
+          {"type":"message","role":"assistant","content":[]},
+          {"type":"message","role":"assistant","content":[{"type":"output_text","text":"  \\n"}]},
+          {"type":"function_call","call_id":"call_1","name":"run","arguments":"{}"},
+          {"type":"function_call_output","call_id":"call_1","output":"ok"},
+          {"type":"message","role":"assistant","content":[{"type":"output_text","text":""},{"type":"output_text","text":" done "}]}
+        ]}
+        """);
+    Kv converted = converter.request(input, "responses", "openai", "test", true);
+    List<?> messages = ProxyJson.list(converted.get("messages"));
+    assertEquals(4, messages.size());
+    assertEquals("user", ProxyJson.object(messages.get(0)).getStr("role"));
+    assertEquals("call_1", ProxyJson.object(ProxyJson.list(ProxyJson.object(messages.get(1)).get("tool_calls")).getFirst()).getStr("id"));
+    assertEquals("tool", ProxyJson.object(messages.get(2)).getStr("role"));
+    assertEquals("call_1", ProxyJson.object(messages.get(2)).getStr("tool_call_id"));
+    assertEquals(" done ", ProxyJson.object(ProxyJson.list(ProxyJson.object(messages.get(3)).get("content")).getFirst()).getStr("text"));
+    for (Object message : messages) {
+      for (Object part : ProxyJson.list(ProxyJson.object(message).get("content"))) {
+        Object text = ProxyJson.object(part).get("text");
+        if (text instanceof String value) { assertFalse(value.isBlank()); }
+      }
+    }
+  }
+
+  @Test
   public void replayLocalFailureWhenProvided() throws Exception {
     String file = System.getProperty("emptyTextReplayLog");
     if (file == null) { return; }

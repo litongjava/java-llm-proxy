@@ -242,10 +242,14 @@ public class ProtocolConversionService {
         else if ("message".equals(type)) {
           List<Kv> blocks = new ArrayList<>();
           for (Kv part : parts(item.get("content"))) {
+            Object text = part.get("text");
             if ("input_image".equals(part.getStr("type"))) { blocks.add(Kv.create().set("type", "image_url").set("image_url", Kv.create().set("url", imageUrl(part)))); }
-            else if (part.get("text") != null) { blocks.add(Kv.create().set("type", "text").set("text", part.get("text"))); }
+            else if (text instanceof String content && !content.isBlank()) { blocks.add(Kv.create().set("type", "text").set("text", content)); }
+            else if (text != null && !(text instanceof String)) { blocks.add(Kv.create().set("type", "text").set("text", text)); }
           }
-          messages.add(Kv.create().set("role", item.get("role")).set("content", blocks));
+          // Responses history carries an empty assistant message for tool-call turns; chat
+          // upstreams reject or misread a blank turn, so only real content becomes a message.
+          if (!blocks.isEmpty()) { messages.add(Kv.create().set("role", item.get("role")).set("content", blocks)); }
         }
       }
       tools.addAll(new ResponsesToolMapping(body).tools());
@@ -369,8 +373,14 @@ public class ProtocolConversionService {
       return Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", ProxyJson.list(converted.get("contents")).getFirst()).set("finishReason", ProtocolStopReason.gemini(finishReason))))
           .set("usageMetadata", Kv.create().set("promptTokenCount", in).set("candidatesTokenCount", out).set("totalTokenCount", in + out)).set("modelVersion", model);
     }
+    List<Kv> output = new ArrayList<>(ProxyJson.list(converted.get("input")).stream().map(ProxyJson::object).toList());
+    // Chat upstreams stream their thinking outside the message text; keep it as a Responses item.
+    if ("openai".equals(from) && message.get("reasoning_content") instanceof String thinking && !thinking.isBlank()) {
+      output.add(0, Kv.create().set("id", "rs-" + SnowflakeIdUtils.id()).set("type", "reasoning")
+          .set("summary", List.of(Kv.create().set("type", "summary_text").set("text", thinking))));
+    }
     return ProtocolStopReason.response(Kv.create().set("id", canonical.get("id")).set("object", "response").set("status", "completed").set("model", model)
-        .set("output", converted.get("input")).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
+        .set("output", output).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
             : responsesUsage(usage, in, out)), finishReason);
   }
 

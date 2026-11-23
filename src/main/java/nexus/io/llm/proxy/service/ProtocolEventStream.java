@@ -34,6 +34,13 @@ public class ProtocolEventStream extends InputStream {
   private final Kv geminiMetadata = Kv.create();
   private int sequence;
   private final StringBuilder text = new StringBuilder();
+  private final StringBuilder reasoning = new StringBuilder();
+  // Leading blank deltas are held until real text opens the Responses message item.
+  private final StringBuilder pendingText = new StringBuilder();
+  // Responses output items in the order they were announced; the position is their output_index.
+  private final List<Kv> items = new ArrayList<>();
+  private int reasoningIndex = -1;
+  private int messageIndex = -1;
 
   public ProtocolEventStream(InputStream input, String from, String to, String model) {
     this(input, from, to, model, null);
@@ -94,6 +101,8 @@ public class ProtocolEventStream extends InputStream {
         Kv choice = ProxyJson.object(value);
         if (choice.get("finish_reason") != null) { terminal = true; finishReason = choice.getStr("finish_reason"); }
         Kv delta = ProxyJson.object(choice.get("delta"));
+        // DeepSeek-style providers stream their thinking next to the visible text.
+        if (delta.getStr("reasoning_content") != null) { events.append(reasoning(delta.getStr("reasoning_content"))); }
         if (delta.getStr("content") != null) { events.append(text(delta.getStr("content"))); }
         for (Object call : ProxyJson.list(delta.get("tool_calls"))) {
           Kv tool = ProxyJson.object(call);
@@ -175,19 +184,57 @@ public class ProtocolEventStream extends InputStream {
       case "anthropic" -> event("message_start", Kv.create().set("message", Kv.create().set("id", id).set("type", "message").set("role", "assistant").set("model", model)
           .set("content", List.of()).set("usage", Kv.create().set("input_tokens", 0).set("output_tokens", 0))))
           + event("content_block_start", Kv.create().set("index", 0).set("content_block", Kv.create().set("type", "text").set("text", "")));
-      case "responses" -> event("response.created", Kv.create().set("response", Kv.create().set("id", id).set("object", "response").set("status", "in_progress").set("model", model).set("output", List.of())))
-          + event("response.output_item.added", Kv.create().set("output_index", 0).set("item", Kv.create().set("id", id + "-message").set("type", "message").set("role", "assistant").set("content", List.of())))
-          + event("response.content_part.added", Kv.create().set("output_index", 0).set("item_id", id + "-message").set("content_index", 0)
-              .set("part", Kv.create().set("type", "output_text").set("text", "").set("annotations", List.of())));
+      // Responses items are announced when they receive content: a tool-only turn must not
+      // invent an empty assistant message that clients replay on every later request.
+      case "responses" -> event("response.created", Kv.create().set("response", Kv.create().set("id", id).set("object", "response").set("status", "in_progress").set("model", model).set("output", List.of())));
       default -> "";
     };
   }
+  private int announce(Kv item) {
+    items.add(item);
+    return items.size() - 1;
+  }
+  private String reasoning(String delta) throws IOException {
+    if (delta.isEmpty()) { return ""; }
+    reasoning.append(delta);
+    if (reasoning.length() > 32 * 1024 * 1024) { throw new IOException("Stream response exceeds size limit"); }
+    if (!"responses".equals(to)) { return ""; }
+    StringBuilder events = new StringBuilder();
+    if (reasoningIndex < 0) {
+      reasoningIndex = announce(Kv.create().set("id", id + "-reasoning").set("type", "reasoning").set("summary", List.of()));
+      events.append(event("response.output_item.added", Kv.create().set("output_index", reasoningIndex)
+          .set("item", Kv.create().set("id", id + "-reasoning").set("type", "reasoning").set("summary", List.of()))));
+      events.append(event("response.reasoning_summary_part.added", Kv.create().set("item_id", id + "-reasoning")
+          .set("output_index", reasoningIndex).set("summary_index", 0)
+          .set("part", Kv.create().set("type", "summary_text").set("text", ""))));
+    }
+    events.append(event("response.reasoning_summary_text.delta", Kv.create().set("item_id", id + "-reasoning")
+        .set("output_index", reasoningIndex).set("summary_index", 0).set("delta", delta)));
+    return events.toString();
+  }
   private String text(String delta) throws IOException {
+    if ("responses".equals(to)) {
+      StringBuilder events = new StringBuilder();
+      String value = delta;
+      if (messageIndex < 0) {
+        // Whitespace-only leading deltas carry no message; drop them unless real text follows.
+        if (value.isBlank()) { pendingText.append(value); return ""; }
+        if (!pendingText.isEmpty()) { value = pendingText.append(value).toString(); pendingText.setLength(0); }
+        messageIndex = announce(Kv.create().set("id", id + "-message").set("type", "message").set("role", "assistant").set("status", "in_progress").set("content", List.of()));
+        events.append(event("response.output_item.added", Kv.create().set("output_index", messageIndex)
+            .set("item", Kv.create().set("id", id + "-message").set("type", "message").set("role", "assistant").set("content", List.of()))));
+        events.append(event("response.content_part.added", Kv.create().set("output_index", messageIndex).set("item_id", id + "-message").set("content_index", 0)
+            .set("part", Kv.create().set("type", "output_text").set("text", "").set("annotations", List.of()))));
+      }
+      text.append(value);
+      if (text.length() > 32 * 1024 * 1024) { throw new IOException("Stream response exceeds size limit"); }
+      events.append(event("response.output_text.delta", Kv.create().set("item_id", id + "-message").set("output_index", messageIndex).set("content_index", 0).set("delta", value)));
+      return events.toString();
+    }
     text.append(delta);
     if (text.length() > 32 * 1024 * 1024) { throw new IOException("Stream response exceeds size limit"); }
     return switch (to) {
       case "anthropic" -> event("content_block_delta", Kv.create().set("index", 0).set("delta", Kv.create().set("type", "text_delta").set("text", delta)));
-      case "responses" -> event("response.output_text.delta", Kv.create().set("item_id", id + "-message").set("output_index", 0).set("content_index", 0).set("delta", delta));
       case "gemini" -> event(null, Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", Kv.create().set("role", "model").set("parts", List.of(Kv.create().set("text", delta)))))));
       default -> openai(Kv.create().set("content", delta), null, null);
     };
@@ -197,6 +244,10 @@ public class ProtocolEventStream extends InputStream {
     boolean first = existing.isEmpty();
     if (first) {
       existing.set("id", callId == null ? "call-" + SnowflakeIdUtils.id() : callId).set("name", name == null ? "" : name).set("arguments", "").set("index", tools.size() + 1);
+      if ("responses".equals(to)) {
+        existing.set("output_index", announce(Kv.create().set("type", "function_call").set("call_id", existing.get("id"))
+            .set("name", existing.get("name")).set("arguments", "")));
+      }
     }
     if (name != null) { existing.set("name", name); }
     String fragment = arguments == null ? "" : arguments;
@@ -210,8 +261,11 @@ public class ProtocolEventStream extends InputStream {
       return "";
     }
     if ("responses".equals(to)) {
-      if (first) { prefix = event("response.output_item.added", Kv.create().set("output_index", targetIndex).set("item", Kv.create().set("id", existing.get("id")).set("call_id", existing.get("id")).set("type", "function_call").set("name", existing.get("name")).set("arguments", ""))); }
-      return prefix + event("response.function_call_arguments.delta", Kv.create().set("item_id", existing.get("id")).set("output_index", targetIndex).set("delta", fragment));
+      int outputIndex = existing.getInt("output_index");
+      Kv item = items.get(outputIndex);
+      item.set("name", existing.get("name")).set("arguments", existing.get("arguments"));
+      if (first) { prefix = event("response.output_item.added", Kv.create().set("output_index", outputIndex).set("item", Kv.create().set("id", existing.get("id")).set("call_id", existing.get("id")).set("type", "function_call").set("name", existing.get("name")).set("arguments", ""))); }
+      return prefix + event("response.function_call_arguments.delta", Kv.create().set("item_id", existing.get("id")).set("output_index", outputIndex).set("delta", fragment));
     }
     if ("gemini".equals(to)) { return ""; }
     Kv function = Kv.create().set("arguments", fragment);
@@ -252,20 +306,28 @@ public class ProtocolEventStream extends InputStream {
       result.append(event(null, Kv.create().set("candidates", List.of(Kv.create().set("index", 0).set("content", Kv.create().set("role", "model").set("parts", parts)).set("finishReason", ProtocolStopReason.gemini(finishReason))))
           .set("usageMetadata", Kv.create().set("promptTokenCount", inputTokens).set("candidatesTokenCount", outputTokens).set("totalTokenCount", inputTokens + outputTokens))));
     } else if ("responses".equals(to)) {
-      Kv part = Kv.create().set("type", "output_text").set("text", text.toString()).set("annotations", List.of());
-      result.append(event("response.output_text.done", Kv.create().set("item_id", id + "-message").set("output_index", 0).set("content_index", 0).set("text", text.toString())));
-      result.append(event("response.content_part.done", Kv.create().set("item_id", id + "-message").set("output_index", 0).set("content_index", 0).set("part", part)));
-      List<Kv> outputs = new ArrayList<>();
-      outputs.add(Kv.create().set("id", id + "-message").set("type", "message").set("role", "assistant").set("status", "completed")
-          .set("content", List.of(Kv.create().set("type", "output_text").set("text", text.toString()).set("annotations", List.of()))));
+      if (reasoningIndex >= 0) {
+        Kv summary = Kv.create().set("type", "summary_text").set("text", reasoning.toString());
+        items.get(reasoningIndex).set("summary", List.of(summary));
+        result.append(event("response.reasoning_summary_text.done", Kv.create().set("item_id", id + "-reasoning")
+            .set("output_index", reasoningIndex).set("summary_index", 0).set("text", reasoning.toString())));
+        result.append(event("response.reasoning_summary_part.done", Kv.create().set("item_id", id + "-reasoning")
+            .set("output_index", reasoningIndex).set("summary_index", 0)
+            .set("part", Kv.create().set("type", "summary_text").set("text", reasoning.toString()))));
+      }
+      if (messageIndex >= 0) {
+        Kv part = Kv.create().set("type", "output_text").set("text", text.toString()).set("annotations", List.of());
+        items.get(messageIndex).set("status", "completed").set("content", List.of(part));
+        result.append(event("response.output_text.done", Kv.create().set("item_id", id + "-message").set("output_index", messageIndex).set("content_index", 0).set("text", text.toString())));
+        result.append(event("response.content_part.done", Kv.create().set("item_id", id + "-message").set("output_index", messageIndex).set("content_index", 0).set("part", part)));
+      }
       for (Object value : tools.values()) {
         Kv call = ProxyJson.object(value);
-        outputs.add(Kv.create().set("type", "function_call").set("call_id", call.get("id")).set("name", call.get("name")).set("arguments", call.get("arguments")));
-        result.append(event("response.function_call_arguments.done", Kv.create().set("item_id", call.get("id")).set("output_index", call.get("index")).set("arguments", call.get("arguments"))));
+        result.append(event("response.function_call_arguments.done", Kv.create().set("item_id", call.get("id")).set("output_index", call.get("output_index")).set("arguments", call.get("arguments"))));
       }
-      for (int index = 0; index < outputs.size(); index++) { result.append(event("response.output_item.done", Kv.create().set("output_index", index).set("item", outputs.get(index)))); }
+      for (int index = 0; index < items.size(); index++) { result.append(event("response.output_item.done", Kv.create().set("output_index", index).set("item", items.get(index)))); }
       Kv response = ProtocolStopReason.response(Kv.create().set("id", id).set("object", "response").set("status", "completed")
-          .set("model", model).set("output", outputs).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
+          .set("model", model).set("output", new ArrayList<>(items)).set("usage", "gemini".equals(from) ? geminiUsage.responses(usage)
               : ProtocolConversionService.responsesUsage(usage, inputTokens, outputTokens)), finishReason);
       result.append(event("response." + response.getStr("status"), Kv.create().set("response", response)));
     } else { result.append(openai(Kv.create(), finishReason == null ? tools.isEmpty() ? "stop" : "tool_calls" : ProtocolStopReason.chat(finishReason), usage)).append("data: [DONE]\n\n"); }
