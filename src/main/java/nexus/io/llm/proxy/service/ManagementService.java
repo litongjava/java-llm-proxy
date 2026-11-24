@@ -132,7 +132,7 @@ public class ManagementService {
         }
       }
       return Kv.create().set("healthy", response.isSuccessful()).set("status", response.code())
-          .set("latencyMs", System.currentTimeMillis() - start).set("catalog", catalog);
+          .set("latencyMs", (int) (System.currentTimeMillis() - start)).set("catalog", catalog);
     }
   }
 
@@ -172,7 +172,7 @@ public class ManagementService {
     try (Response response = UniChatClient.execute(client, builder.build())) {
       if (response.body() != null) { response.body().string(); }
       return Kv.create().set("healthy", response.isSuccessful()).set("status", response.code())
-          .set("latencyMs", System.currentTimeMillis() - start);
+          .set("latencyMs", (int) (System.currentTimeMillis() - start));
     }
   }
 }
