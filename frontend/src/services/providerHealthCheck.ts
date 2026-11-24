@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { managementApi } from './managementApi';
 import { defaultProviderBaseUrl, providerDefaultHeaders, normalizeBaseUrl, type ModelOption, type ModelProvider } from './modelService';
 
 export const PROVIDER_HEALTH_TIMEOUT_MS = 15_000;
@@ -221,32 +221,21 @@ export async function checkProviderHealthProbe(
         errorCode: 'missing-direct-key',
       };
     }
-    const response = await invoke<{
-      firstTokenLatencyMs?: number;
-      responseLatencyMs: number;
-    }>('provider_health_probe', {
-      request: {
-        ...(['interactions', 'vertex', 'xai', 'meta'].includes(provider) ? { sourceProvider: provider } : {}),
-        protocol: probe.protocol,
-        timeoutMs,
-        data: probe.data,
-        header: probe.header,
-        url: probe.url,
-        model: probe.model,
-        source: probe.source,
-        authIndex: probe.authIndex,
-        proxyUrl: proxyUrl?.trim() || undefined,
-      },
+    const response = await managementApi.post<{
+      healthy: boolean;
+      status: number;
+      latencyMs: number;
+    }>('/providers/probe', {
+      url: probe.url,
+      header: probe.header,
+      data: probe.data,
+      timeoutMs,
     });
-    const firstTokenLatencyMs = Number.isFinite(response.firstTokenLatencyMs)
-      ? Math.max(1, Math.round(response.firstTokenLatencyMs as number))
+    const responseLatencyMs = Number.isFinite(response.latencyMs)
+      ? Math.max(1, Math.round(response.latencyMs))
       : undefined;
-    const responseLatencyMs = Number.isFinite(response.responseLatencyMs)
-      ? Math.max(1, Math.round(response.responseLatencyMs))
-      : firstTokenLatencyMs;
     return {
-      success: true,
-      ...(firstTokenLatencyMs === undefined ? {} : { firstTokenLatencyMs }),
+      success: Boolean(response.healthy),
       ...(responseLatencyMs === undefined ? {} : { responseLatencyMs }),
     };
   } catch (error) {

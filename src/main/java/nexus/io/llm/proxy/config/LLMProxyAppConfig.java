@@ -80,6 +80,7 @@ public class LLMProxyAppConfig {
     router.post("/api/providers/save", new ProviderSaveHandler()::handle);
     router.post("/api/providers/delete", new ProviderDeleteHandler()::handle);
     router.post("/api/providers/health", new ProviderHealthHandler()::handle);
+    router.post("/api/providers/probe", new ProviderProbeHandler()::handle);
     router.post("/api/keys/create", new ApiKeyCreateHandler()::handle);
     router.get("/api/usage", new UsageListHandler()::handle);
     router.get("/api/usage/detail", new RequestDetailHandler()::handle);
