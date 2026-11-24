@@ -10,7 +10,7 @@ Java 21、tio-boot 和 UniChatClient 实现的模型代理，桌面端名称为 
 
 ```powershell
 mvn clean install '-DskipTests' '-Dgpg.skip'
-mvn package '-DskipTests' '-Dgpg.skip' -Pproduction
+mvn clean package '-DskipTests' '-Dgpg.skip' -Pproduction
 cd frontend
 npm.cmd ci
 npm.cmd run tauri -- dev
@@ -19,7 +19,7 @@ npm.cmd run tauri -- dev
 `tauri dev` 模式的桌面窗口从 `http://localhost:1420` 加载页面，需要保持 Vite 开发服务运行。
 直接重新打开该模式生成的 `cpa-gui.exe` 不会自动启动 Vite；如果出现 `localhost refused to connect`，
 请先在 `frontend` 目录执行 `npm.cmd run dev`，再刷新或重新打开桌面窗口。Java 内核的 `8318` 端口正常并不代表前端服务已启动。
-普通浏览器访问开发地址会使用 Mock 数据，只用于验证页面渲染；真实账号和内核状态请在桌面窗口中查看。
+开发模式下普通浏览器访问开发地址默认使用 Mock 数据。需要连接真实 Java 服务时，先在 `frontend` 执行 `npm.cmd run dev`，再访问 `http://localhost:1420/?mock=off`；Vite 会把 `/api`、`/v8`、`/v1`、`/v0` 代理到 `127.0.0.1:8318`。
 
 生成可运行的调试桌面程序：
 
@@ -32,6 +32,45 @@ npm.cmd run tauri -- build --debug --no-bundle
 Tauri 构建脚本把 Java JAR 放入桌面资源目录。启动内核时使用 `java -jar`，优先读取 `JAVA_HOME`。端口、管理密钥、客户端密钥、认证目录和代理设置沿用原桌面配置界面。
 
 默认监听端口为 **8318**，首页 **Connect to CPA** 的 OpenAI 接入地址为 `http://127.0.0.1:8318/v1`。已有桌面配置会保留保存的端口；如仍显示 8317，请在内核或配置页面将端口改为 8318，保存并重启内核。连接地址随实际配置更新。
+
+## Web 模式（服务端部署）
+
+同一份前端按运行时自动分流：Tauri 桌面窗口继续使用原生命令；普通浏览器访问 Java 服务时使用 HTTP 管理接口。Web 模式包含首页概览、Usage（概览/分析/请求明细/详情/CSV 导出）、OAuth（授权链接、设备码、轮询、粘贴回调）和 Quota（只读查询）。价格统计、数据管理、配置、版本、Agents 和插件管理仍为桌面端功能；Quota 的重置额度按钮在 Web 模式隐藏。
+
+构建时先打包前端，再构建 `production` profile，`frontend/dist` 会被放入 JAR 的 `pages/` 并由 tio-boot 静态托管：
+
+```powershell
+cd frontend
+npm.cmd ci
+npm.cmd run build
+cd ..
+mvn clean package '-DskipTests' '-Dgpg.skip' -Pproduction
+java -jar target/java-llm-proxy-1.0.0.jar --server.address=0.0.0.0 --server.port=8318 `
+  --proxy.management-token=<token> --proxy.data-dir=/var/lib/java-llm-proxy `
+  --proxy.auth-dir=/var/lib/java-llm-proxy/auth
+```
+
+浏览器打开 `http://<server>:8318/`，输入管理密钥（即 `proxy.management-token`）登录。静态页面公开，所有 `/api`、`/v8/management` 数据接口仍要求 `Authorization: Bearer <token>`。公网部署请使用 HTTPS 反向代理，不要直接暴露明文 HTTP。
+
+OAuth 提供方若只登记了回环回调地址，服务器上的回调地址对管理员浏览器不可达；此时把浏览器地址栏中的回调 URL 粘贴到 OAuth 页面即可完成授权。也可以把 `proxy.oauth.<provider>.redirect-uri` 配成公网地址（例如 `https://proxy.example.com/v8/management/oauth/callback`），该 GET 回调接口无需管理密钥，但会校验 OAuth state。
+
+Web 模式界面（无头 Chrome 实测）：
+
+![Web 模式首页](docs/assets/webui-home.png)
+
+![Usage 概览](docs/assets/webui-usage-overview.png)
+
+![请求详情](docs/assets/webui-request-detail.png)
+
+![OAuth 登录](docs/assets/webui-oauth.png)
+
+![Quota 只读查询](docs/assets/webui-quota.png)
+
+如果希望使用外部构建产物而不是 JAR 内的 `pages/`，可指定：
+
+```powershell
+java -jar target/java-llm-proxy-1.0.0.jar --server.resources.static-locations=file:/opt/java-llm-proxy/dist
+```
 
 ## 后端功能
 
@@ -109,7 +148,7 @@ python scripts/package_release.py --version 1.0.0 --jar target/java-llm-proxy-1.
 
 ```powershell
 mvn test '-Dgpg.skip'
-mvn package '-DskipTests' '-Dgpg.skip' -Pproduction
+mvn clean package '-DskipTests' '-Dgpg.skip' -Pproduction
 python scripts/backend_smoke_test.py
 python scripts/oauth_integration_test.py
 python scripts/plugin_integration_test.py
