@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Locale;
 import java.net.URI;
 import com.jfinal.kit.Kv;
 import nexus.io.chat.UniChatClient;
@@ -157,19 +158,27 @@ public class ManagementService {
           "Credential-index probes must run on the desktop client");
     }
     long timeout = Math.min(120_000, Math.max(1_000, ProxyJson.number(input, "timeoutMs", 15_000)));
+    URI uri = URI.create(url);
     Request.Builder builder = new Request.Builder().url(url)
         .post(RequestBody.create(data, MediaType.get("application/json")));
     Kv outboundHeaders = Kv.create();
     String session = null;
+    boolean hasUserAgent = false;
     for (Object key : headers.keySet()) {
       String name = String.valueOf(key);
       Object value = headers.get(name);
       if (name.equalsIgnoreCase("x-opencode-session")) { session = String.valueOf(value); }
+      if (name.equalsIgnoreCase("user-agent")) { hasUserAgent = true; }
       if (HeaderService.transport(name) || name.equalsIgnoreCase("host") || name.equalsIgnoreCase("content-length")) { continue; }
       builder.header(name, String.valueOf(value));
       outboundHeaders.set(name, String.valueOf(value));
     }
-    if ("opencode.ai".equalsIgnoreCase(URI.create(url).getHost()) && session == null) {
+    if (!hasUserAgent) {
+      String userAgent = probeUserAgent(uri.getHost(), input.getStr("protocol"));
+      builder.header("User-Agent", userAgent);
+      outboundHeaders.set("User-Agent", userAgent);
+    }
+    if ("opencode.ai".equalsIgnoreCase(uri.getHost()) && session == null) {
       session = "desktop-health-" + UUID.randomUUID();
       builder.header("x-opencode-session", session);
       outboundHeaders.set("x-opencode-session", session);
@@ -234,6 +243,30 @@ public class ManagementService {
     record.requestBody = data;
     record.upstreamRequestBody = data;
     return record;
+  }
+
+  private static String probeUserAgent(String host, String protocol) {
+    String normalizedHost = host == null ? "" : host.toLowerCase(Locale.ROOT);
+    if (normalizedHost.equals("opencode.ai") || normalizedHost.endsWith(".opencode.ai")) {
+      return "atomcode/5.2.8";
+    }
+    if (normalizedHost.equals("api.anthropic.com") || normalizedHost.endsWith(".anthropic.com")) {
+      return "claude-cli/2.1.302 (external, cli)";
+    }
+    if (normalizedHost.equals("chatgpt.com") || normalizedHost.endsWith(".chatgpt.com")
+        || normalizedHost.equals("api.openai.com")) {
+      return "codex-tui/0.166.0 (Windows 10.0.26300; x86_64) xterm-256color (codex-tui; 0.167.0)";
+    }
+    if ("claude".equals(protocol)) {
+      return "claude-cli/2.1.302 (external, cli)";
+    }
+    if ("codex".equals(protocol) || "openai-responses".equals(protocol)) {
+      return "codex-tui/0.166.0 (Windows 10.0.26300; x86_64) xterm-256color (codex-tui; 0.167.0)";
+    }
+    if ("gemini".equals(protocol) || "interactions".equals(protocol)) {
+      return "GeminiCLI/0.1.0 (Windows; x86_64)";
+    }
+    return "LLMPoroxyUI/1.0.0 (+https://github.com/litongjava/java-llm-proxy)";
   }
 
   private static String probeProtocol(String protocol, String path) {

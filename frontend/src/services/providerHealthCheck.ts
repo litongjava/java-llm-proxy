@@ -91,6 +91,34 @@ export function mergeProviderHealthModels(
   );
 }
 
+const CLAUDE_HEALTH_USER_AGENT = 'claude-cli/2.1.302 (external, cli)';
+const CODEX_HEALTH_USER_AGENT = 'codex-tui/0.166.0 (Windows 10.0.26300; x86_64) xterm-256color (codex-tui; 0.167.0)';
+const GEMINI_HEALTH_USER_AGENT = 'GeminiCLI/0.1.0 (Windows; x86_64)';
+const OPENCODE_HEALTH_USER_AGENT = 'atomcode/5.2.8';
+const GENERIC_HEALTH_USER_AGENT = 'LLMPoroxyUI/1.0.0 (+https://github.com/litongjava/java-llm-proxy)';
+
+const healthProbeHost = (provider: ModelProvider, baseUrl: string) => {
+  try {
+    const normalized = normalizeBaseUrl(baseUrl.trim() || defaultBaseUrl(provider));
+    return normalized ? new URL(normalized).hostname.toLowerCase() : '';
+  } catch {
+    return '';
+  }
+};
+
+const healthProbeUserAgent = (provider: ModelProvider, baseUrl: string): string => {
+  const host = healthProbeHost(provider, baseUrl);
+  if (host === 'opencode.ai' || host.endsWith('.opencode.ai')) return OPENCODE_HEALTH_USER_AGENT;
+  if (host === 'api.anthropic.com' || host.endsWith('.anthropic.com')) return CLAUDE_HEALTH_USER_AGENT;
+  if (host === 'chatgpt.com' || host.endsWith('.chatgpt.com') || host === 'api.openai.com') {
+    return CODEX_HEALTH_USER_AGENT;
+  }
+  if (provider === 'claude') return CLAUDE_HEALTH_USER_AGENT;
+  if (provider === 'codex') return CODEX_HEALTH_USER_AGENT;
+  if (['gemini', 'interactions', 'vertex'].includes(provider)) return GEMINI_HEALTH_USER_AGENT;
+  return GENERIC_HEALTH_USER_AGENT;
+};
+
 export function buildProviderHealthProbe(
   provider: ModelProvider,
   baseUrl: string,
@@ -112,6 +140,7 @@ export function buildProviderHealthProbe(
   };
   setHeaderIfMissing(headers, 'Content-Type', 'application/json');
   for (const [name, value] of Object.entries(providerDefaultHeaders(provider))) setHeaderIfMissing(headers, name, value);
+  setHeaderIfMissing(headers, 'User-Agent', healthProbeUserAgent(provider, baseUrl));
 
   if (provider === 'interactions') {
     if (key) setHeaderIfMissing(headers, 'x-goog-api-key', key);

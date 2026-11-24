@@ -2852,7 +2852,12 @@ pub(crate) fn ensure_java_update_source() -> Result<(), String> {
 }
 
 pub(crate) fn should_start_hidden(config: &GuiConfigFile) -> bool {
+    // Silent start belongs to the autostart entry. A manual double-click must
+    // always surface the main window, even when the saved preference is on.
+    let launched_for_autostart = std::env::args()
+        .any(|arg| matches!(arg.as_str(), "--autostart" | "--silent" | "--hidden"));
     config.silent_start
+        && launched_for_autostart
         && cfg!(any(
             target_os = "linux",
             target_os = "macos",

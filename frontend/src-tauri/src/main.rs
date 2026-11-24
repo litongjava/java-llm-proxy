@@ -2564,7 +2564,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--autostart"]),
         ))
         .plugin(
             tauri_plugin_opener::Builder::new()
@@ -2701,6 +2701,14 @@ fn main() {
             }
             #[cfg(target_os = "windows")]
             setup_windows_tray(app)?;
+
+            // Entries created by older builds did not carry the flag that
+            // distinguishes a login launch from a manual double-click.
+            if app.autolaunch().is_enabled().unwrap_or(false) {
+                if let Err(error) = app.autolaunch().enable() {
+                    eprintln!("Failed to refresh autostart arguments: {error}");
+                }
+            }
 
             if let Err(error) = configure_initial_main_window(app.handle(), start_hidden) {
                 eprintln!("Failed to configure startup window state: {error}");
