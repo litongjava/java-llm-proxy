@@ -540,6 +540,19 @@ async fn execute_health_probe(
             reqwest::header::HeaderValue::from_static(APP_USER_AGENT),
         );
     }
+    // opencode requires a routing session on both the chat and Responses endpoints.
+    if url.host_str() == Some("opencode.ai")
+        && !headers.contains_key("x-opencode-session")
+    {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or_default();
+        let session = format!("desktop-health-{}-{millis}", std::process::id());
+        if let Ok(value) = reqwest::header::HeaderValue::from_str(&session) {
+            headers.insert("x-opencode-session", value);
+        }
+    }
 
     let started_at = Instant::now();
     let mut received = Vec::new();
