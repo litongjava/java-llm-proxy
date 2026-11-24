@@ -131,8 +131,16 @@ public class OAuthTransportService {
   }
   public void httpHeaders(Provider provider, Request.Builder request) {
     headers(provider, request);
-    if (!"codex".equals(provider.upstreamType) || !"oauth".equals(provider.authType)) { return; }
     Request current = request.build();
+    if ("opencode.ai".equals(current.url().host())) {
+      String session = current.header("x-opencode-session");
+      if (session == null || session.isBlank()) {
+        String dclSession = current.header("x-dcl-session-id");
+        request.header("x-opencode-session", dclSession == null || dclSession.isBlank() ? UUID.randomUUID().toString() : dclSession);
+      }
+      request.removeHeader("x-dcl-session-id");
+    }
+    if (!"codex".equals(provider.upstreamType) || !"oauth".equals(provider.authType)) { return; }
     request.header("User-Agent", codexUserAgent());
     request.removeHeader("x-dcl-arch");
     request.removeHeader("x-dcl-os");
