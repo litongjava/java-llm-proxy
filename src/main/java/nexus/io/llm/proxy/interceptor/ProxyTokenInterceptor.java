@@ -12,6 +12,7 @@ import nexus.io.tio.http.server.intf.HttpRequestInterceptor;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.Locale;
 
 public class ProxyTokenInterceptor implements HttpRequestInterceptor {
   @Override
@@ -19,6 +20,12 @@ public class ProxyTokenInterceptor implements HttpRequestInterceptor {
     if (request.getRequestURI().startsWith("/v0/resource/plugins/")
         || (line.getMethod() == HttpMethod.GET && request.getRequestURI().equals("/v8/management/oauth/callback"))) {
       response.addHeader("Cache-Control", "no-store");
+      return null;
+    }
+    if (isPublicWebUi(request, line)) {
+      if ("/".equals(request.getRequestURI()) || "/index.html".equals(request.getRequestURI())) {
+        response.addHeader("Cache-Control", "no-store");
+      }
       return null;
     }
     boolean management = request.getRequestURI().startsWith("/api/")
@@ -49,6 +56,22 @@ public class ProxyTokenInterceptor implements HttpRequestInterceptor {
       request.setLocalAttribute("proxy.owner", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(owner.getBytes(StandardCharsets.UTF_8))));
     } catch (Exception error) { throw new IllegalStateException("Cannot identify API key", error); }
     return null;
+  }
+
+  private boolean isPublicWebUi(HttpRequest request, RequestLine line) {
+    if (line.getMethod() != HttpMethod.GET && line.getMethod() != HttpMethod.HEAD) {
+      return false;
+    }
+    String path = request.getRequestURI();
+    if (path == null || path.contains("..") || path.indexOf('\\') >= 0) {
+      return false;
+    }
+    String encoded = path.toLowerCase(Locale.ROOT);
+    if (encoded.contains("%2e") || encoded.contains("%2f") || encoded.contains("%5c")) {
+      return false;
+    }
+    return "/".equals(path) || "/index.html".equals(path) || "/favicon.ico".equals(path)
+        || path.startsWith("/assets/");
   }
 
   @Override

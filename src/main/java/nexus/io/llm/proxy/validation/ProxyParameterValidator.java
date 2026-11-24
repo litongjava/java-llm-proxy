@@ -1,12 +1,16 @@
 package nexus.io.llm.proxy.validation;
 
 import java.net.URI;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import nexus.io.llm.proxy.model.Provider;
 import nexus.io.llm.proxy.model.ProxySettings;
 import nexus.io.llm.proxy.model.UsageQuery;
 import nexus.io.llm.proxy.model.UsageAcknowledgement;
 import nexus.io.llm.proxy.model.DesktopConfigMutation;
+import nexus.io.llm.proxy.model.WebUsageQuery;
 import nexus.io.tio.http.common.HttpRequest;
 import nexus.io.tio.utils.validator.ParameterValidator;
 
@@ -93,5 +97,61 @@ public final class ProxyParameterValidator {
 
     query.result = ParameterValidator.choice(request.getParam("result"), "result", "all", "all", "success", "error");
     return query;
+  }
+
+  public static WebUsageQuery webUsageQuery(HttpRequest request) {
+    WebUsageQuery query = new WebUsageQuery();
+    query.start = timestamp(request, "start");
+    query.end = timestamp(request, "end");
+    query.model = request.getParam("model");
+    query.provider = request.getParam("provider");
+    query.source = request.getParam("source");
+    query.upstream = request.getParam("upstream");
+    query.originator = request.getParam("originator");
+    query.sessionId = request.getParam("session_id");
+    query.threadId = request.getParam("thread_id");
+    query.apiKey = request.getParam("api_key_hash");
+    query.failed = bool(request, "failed");
+    query.canceled = bool(request, "canceled");
+    query.page = (int) ParameterValidator.longValue(request.getParam("page"), "page", 1, 1000000, 1L);
+    query.pageSize = (int) ParameterValidator.longValue(request.getParam("page_size"), "page_size", 1, 5000, 50L);
+    return query;
+  }
+
+  private static Long timestamp(HttpRequest request, String name) {
+    String raw = request.getParam(name);
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    String value = raw.trim();
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException ignored) {
+    }
+    try {
+      return OffsetDateTime.parse(value).toInstant().toEpochMilli();
+    } catch (DateTimeParseException ignored) {
+    }
+    try {
+      return Instant.parse(value).toEpochMilli();
+    } catch (DateTimeParseException ignored) {
+    }
+    ParameterValidator.require(false, "Invalid " + name);
+    return null;
+  }
+
+  private static Boolean bool(HttpRequest request, String name) {
+    String raw = request.getParam(name);
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    if ("true".equalsIgnoreCase(raw.trim())) {
+      return true;
+    }
+    if ("false".equalsIgnoreCase(raw.trim())) {
+      return false;
+    }
+    ParameterValidator.require(false, "Invalid " + name);
+    return null;
   }
 }

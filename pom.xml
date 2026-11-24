@@ -141,6 +141,18 @@
     <profile>
       <id>production</id>
       <build>
+        <resources>
+          <resource>
+            <directory>src/main/resources</directory>
+          </resource>
+          <!-- Serve the built browser UI from classpath:/pages. Maven only warns
+               when the directory is absent, so backend-only builds still work. -->
+          <resource>
+            <directory>frontend/dist</directory>
+            <targetPath>pages</targetPath>
+            <filtering>false</filtering>
+          </resource>
+        </resources>
         <plugins>
           <!-- Spring Boot Maven 插件 -->
           <plugin>
