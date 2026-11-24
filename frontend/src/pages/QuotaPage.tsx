@@ -23,6 +23,7 @@ import { OAuthPageToolbar } from '../components/OAuthPageToolbar';
 import { QuotaActionFeedback } from '../components/QuotaActionFeedback';
 import { canResetQuota, hasPendingClaudeReset } from '../services/quotaActions';
 import { useQuotaReset } from '../components/useQuotaReset';
+import { isWebMode } from '../services/platform';
 import antigravityIcon from '../assets/icons/antigravity.svg';
 import claudeIcon from '../assets/icons/claude.svg';
 import codexIcon from '../assets/icons/codex.svg';
@@ -82,6 +83,7 @@ const providerOrder: QuotaDisplayProvider[] = ['claude', 'antigravity', 'codex',
 const REFRESH_CONCURRENCY = 4;
 
 export function QuotaPage() {
+  const webMode = isWebMode();
   const { t } = useI18n();
   const { askConfirmation, confirmationDialog } = useConfirmation();
   const [files, setFiles] = useState<AuthFile[]>([]);
@@ -189,6 +191,7 @@ export function QuotaPage() {
           <RefreshCw size={16} className={refreshing ? 'spin' : ''} />{t('quota.refreshAll')}
         </button>
       </OAuthPageToolbar>
+      {webMode ? <Notice className="quota-readonly-note" tone="info" variant="text">{t('web.quota.readOnly')}</Notice> : null}
       {loading ? (
         <div className="management-loading"><LoaderCircle size={20} className="spin" />{t('quota.loadingFiles')}</div>
       ) : grouped.length === 0 ? (
@@ -203,7 +206,7 @@ export function QuotaPage() {
                 <span>{label}</span><span className="quota-filter-count">{count}</span>
               </> };
             })} />
-          <div className="real-quota-grid">{visibleItems.map(({ provider, file, quota }) => <QuotaCard key={quotaKey(file)} file={file} quota={quota} onRefresh={() => void refreshOne(file)} onReset={provider === 'codex' || provider === 'claude' ? () => void resetQuota(file, quota) : undefined} />)}</div>
+          <div className="real-quota-grid">{visibleItems.map(({ provider, file, quota }) => <QuotaCard key={quotaKey(file)} file={file} quota={quota} onRefresh={() => void refreshOne(file)} onReset={!webMode && (provider === 'codex' || provider === 'claude') ? () => void resetQuota(file, quota) : undefined} />)}</div>
         </>
       )}
     </section>

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './native';
 import { isRecord, managementApi } from './managementApi';
 
 export type PluginConfigFieldType =

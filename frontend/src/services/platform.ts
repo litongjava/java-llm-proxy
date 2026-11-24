@@ -5,12 +5,15 @@ import { getCurrentWebview as nativeWebview } from '@tauri-apps/api/webview';
 import { open as nativeOpen, save as nativeSave } from '@tauri-apps/plugin-dialog';
 
 export const isTauri = (): boolean => nativeIsTauri();
-export const getVersion = (): Promise<string> => nativeGetVersion();
+export const isWebMode = (): boolean => !nativeIsTauri();
+export const getVersion = (): Promise<string> => isTauri() ? nativeGetVersion() : Promise.resolve('web');
 
 type FileFilter = { name: string; extensions: string[] };
 type FileDialogOptions = { title?: string; defaultPath?: string; filters?: FileFilter[] };
-export const open = (options: FileDialogOptions & { directory?: boolean; multiple?: false }): Promise<string | null> => nativeOpen(options);
-export const save = (options: FileDialogOptions): Promise<string | null> => nativeSave(options);
+export const open = (options: FileDialogOptions & { directory?: boolean; multiple?: false }): Promise<string | null> =>
+  isTauri() ? nativeOpen(options) : Promise.resolve(null);
+export const save = (options: FileDialogOptions): Promise<string | null> =>
+  isTauri() ? nativeSave(options) : Promise.resolve(options.defaultPath ?? 'export.csv');
 
 export function getCurrentWindow() {
   const window = nativeWindow();

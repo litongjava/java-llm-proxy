@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './native';
 import type { ClaudeDesktopModelMapping } from './claudeDesktopModels';
 import type { ModelOption } from './modelService';
 import type { DeepSeekHarnessLaunchOptions } from './deepSeekHarnessLaunch';

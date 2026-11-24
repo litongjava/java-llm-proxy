@@ -9,6 +9,7 @@ import { QuotaActionFeedback } from '../components/QuotaActionFeedback';
 import { AuthFileQuotaPanel } from '../components/AuthFileQuotaPanel';
 import { AuthFileSettingsDialog } from '../components/AuthFileSettingsDialog';
 import { useQuotaReset } from '../components/useQuotaReset';
+import { isWebMode } from '../services/platform';
 import './AuthFileManagementPage.css';
 import { MessageNotice, FloatingNotice, useAppNotice } from '../appNotice';
 import { AuthFileModelsDialog } from '../components/AuthFileModelsDialog';
@@ -174,6 +175,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
   const [cooldownResetting, setCooldownResetting] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState('');
   const resetQuota = useQuotaReset(askConfirmation, setError);
+  const webMode = isWebMode();
   const feedback = useAppNotice();
   const { showNotice } = feedback;
   const [copied, setCopied] = useState('');
@@ -519,7 +521,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
           const provider = oauthModelProviders.find((item) => item.label === providerFilter) ?? oauthModelProviders[0];
           if (provider) void openOauthModelSettings({ ...provider, scope: 'provider' });
         }}><Settings2 size={15} />{t('authFiles.models.toolbarButton')}</button>
-        <button type="button" className="secondary-button small-button ghost" disabled={busy} onClick={() => void openAuthFilesDirectory()}><FolderOpen size={15} />{t('authFiles.openDirectory')}</button>
+        {!webMode ? <button type="button" className="secondary-button small-button ghost" disabled={busy} onClick={() => void openAuthFilesDirectory()}><FolderOpen size={15} />{t('authFiles.openDirectory')}</button> : null}
         <button type="button" className="secondary-button small-button" onClick={() => void loadFiles()} disabled={loading || busy}>
           <RefreshCw size={16} className={loading ? 'spin' : ''} />{t('authFiles.toolbar.refreshList')}
         </button>
@@ -618,7 +620,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
                   <div className="auth-list-cell auth-list-recent" data-label={t('authFiles.list.recent')}><AuthFileRequestStatus file={file} compact /></div>
                   <div className="auth-list-cell auth-list-usage" data-label={t('authFiles.usage.title')}><AuthFileUsageSummary file={file} /></div>
                   <div className="auth-list-cell auth-list-quota" data-label={t('authFiles.list.quota')}>
-                    {quotaProvider ? <AuthFileQuotaPanel compact dense quota={quota} file={file} disabled={busy || disabled} onRefresh={() => void refreshQuota(file)} onReset={quotaProvider === 'codex' || quotaProvider === 'claude' ? () => void resetQuota(file, quota) : undefined} /> : <span className="auth-list-muted">{t('authFiles.list.noQuota')}</span>}
+                    {quotaProvider ? <AuthFileQuotaPanel compact dense quota={quota} file={file} disabled={busy || disabled} onRefresh={() => void refreshQuota(file)} onReset={!webMode && (quotaProvider === 'codex' || quotaProvider === 'claude') ? () => void resetQuota(file, quota) : undefined} /> : <span className="auth-list-muted">{t('authFiles.list.noQuota')}</span>}
                     <QuotaActionFeedback quota={quota} name={displayName} />
                   </div>
                   <footer className="auth-card-actions auth-list-cell" data-label={t('authFiles.list.actions')}>

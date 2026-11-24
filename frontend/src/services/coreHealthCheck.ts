@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './native';
 import {
   PROVIDER_HEALTH_CONCURRENCY,
   PROVIDER_HEALTH_TIMEOUT_MS,

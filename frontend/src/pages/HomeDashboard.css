@@ -15,6 +15,7 @@
 
 
 .home-top-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: stretch; gap: 20px; }
+.home-dashboard.web-mode .home-top-grid { grid-template-columns: minmax(0, 1fr); }
 .home-dashboard .home-top-grid > :is(.control-panel, .home-access-panel) {
   display: flex;
   flex-direction: column;

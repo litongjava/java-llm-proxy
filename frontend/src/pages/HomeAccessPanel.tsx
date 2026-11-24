@@ -14,11 +14,12 @@ type Props = {
   ready: boolean;
   copiedField: string;
   onCopy: (value: string, field: string) => Promise<void>;
+  showManage?: boolean;
 };
 
 const icons = { openai: openaiIcon, claude: claudeIcon, gemini: geminiIcon };
 
-export function HomeAccessPanel({ profiles, apiKey, keyError, ready, copiedField, onCopy }: Props) {
+export function HomeAccessPanel({ profiles, apiKey, keyError, ready, copiedField, onCopy, showManage = true }: Props) {
   const { t } = useI18n();
   const [active, setActive] = useState<ClientApiProfile['id']>('openai');
   const [showKey, setShowKey] = useState(false);
@@ -51,9 +52,11 @@ export function HomeAccessPanel({ profiles, apiKey, keyError, ready, copiedField
       <div className="home-access-key">
         <div className="home-field-label">
           <span>{t('home.access.key')}</span>
-          <button type="button" className="link-button home-inline-link" onClick={() => window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'config' }))}>
-            {t('home.access.manage')}<ArrowUpRight size={13} aria-hidden="true" />
-          </button>
+          {showManage ? (
+            <button type="button" className="link-button home-inline-link" onClick={() => window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'config' }))}>
+              {t('home.access.manage')}<ArrowUpRight size={13} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
         <div className="home-copy-field">
           {apiKey && !keyError ? <>

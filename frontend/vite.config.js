@@ -7,6 +7,12 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8318', changeOrigin: false },
+      '/v8': { target: 'http://127.0.0.1:8318', changeOrigin: false },
+      '/v1': { target: 'http://127.0.0.1:8318', changeOrigin: false, ws: true },
+      '/v0': { target: 'http://127.0.0.1:8318', changeOrigin: false, ws: true },
+    },
   },
   build: {
     target: 'es2020',

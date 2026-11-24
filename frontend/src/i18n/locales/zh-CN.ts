@@ -2198,6 +2198,19 @@ export const zhCN = {
   'app.theme.sakura.description': '淡樱粉渐变至奶油白，搭配轻透面板与灰黑文字',
   'agents.launch.restartingCli': '等待任务结束',
   'agents.launch.restartingCliDetail': 'Codex 会先等待进行中的任务结束再重启后台服务，可能需要约一分钟，期间可继续使用其他功能。',
+  'web.auth.title': '登录 Web 管理端',
+  'web.auth.description': '输入服务端配置的管理密钥（proxy.management-token）以查看首页与 Usage 数据。静态页面无需登录，数据接口始终需要密钥。',
+  'web.auth.token': '管理密钥',
+  'web.auth.tokenPlaceholder': '输入 management token',
+  'web.auth.tokenRequired': '请输入管理密钥。',
+  'web.auth.invalid': '密钥无效，或服务端未配置 proxy.management-token。',
+  'web.auth.failed': '登录失败（HTTP {status}）。',
+  'web.auth.network': '无法连接服务端，请检查地址和网络。',
+  'web.auth.checking': '正在验证保存的密钥…',
+  'web.auth.signIn': '登录',
+  'web.auth.signingIn': '登录中…',
+  'web.auth.logout': '退出登录',
+  'web.quota.readOnly': 'Web 模式仅支持查看配额状态；重置额度操作请在桌面端执行。',
 } as const;
 
 export type MessageKey = keyof typeof zhCN;

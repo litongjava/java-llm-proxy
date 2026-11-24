@@ -1,5 +1,5 @@
 import { buildRepositoryURL, getPluginRepositorySlug } from './pluginResources';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './native';
 import type { PluginStoreResponse } from './plugins';
 import { compareSemanticVersions } from './semanticVersion';
 

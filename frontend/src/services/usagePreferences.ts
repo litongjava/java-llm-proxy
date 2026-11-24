@@ -1,4 +1,5 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { invoke } from './native';
+import { isTauri } from './platform';
 
 type Preferences = Record<string, string>;
 type Backend = {

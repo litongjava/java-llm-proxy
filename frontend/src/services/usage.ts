@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './native';
 import type { UsageTimelinePoint } from './usageTrend';
 
 export type UsageEventPage = {

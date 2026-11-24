@@ -4,7 +4,7 @@ import { restartCoreProcess, startCoreProcess, stopCoreProcess } from '../servic
 import { getCoreConfigSettings, getCoreTlsSettings } from '../services/coreSettings';
 import { getGuiSettings } from '../services/appSettings';
 import { useEffect, useRef, useState } from 'react';
-import { getVersion } from '../services/platform';
+import { getVersion, isWebMode } from '../services/platform';
 import { LoaderCircle, Play, RefreshCw, RotateCw, Square } from 'lucide-react';
 import { useCoreRuntime } from '../coreRuntime';
 import { clientApiProfiles } from '../services/clientAccess';
@@ -27,6 +27,7 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
     return <VersionManagementPage />;
   }
 
+  const webMode = isWebMode();
   const { t } = useI18n();
   const { info: appUpdate } = useAppUpdate();
   const {
@@ -207,15 +208,15 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
   const overview = useHomeOverview(coreReady, healthContext);
 
   return (
-    <section className="page kernel-page home-page home-dashboard" aria-label={t('app.nav.home')}>
-      <HomeOverviewCards snapshot={overview.snapshot} loading={overview.loading} coreReady={coreReady} onRefresh={overview.refresh} actions={<CoreHealthPanel compact
+    <section className={`page kernel-page home-page home-dashboard${webMode ? ' web-mode' : ''}`} aria-label={t('app.nav.home')}>
+      <HomeOverviewCards snapshot={overview.snapshot} loading={overview.loading} coreReady={coreReady} onRefresh={overview.refresh} actions={webMode ? undefined : <CoreHealthPanel compact
         coreReady={coreReady} models={overview.snapshot?.models ?? []}
         modelsLoading={overview.loading}
         modelsError={overview.snapshot?.errors.models ?? ''}
         onRefreshModels={overview.refresh} contextKey={healthContext}
       />} />
       <div className="home-top-grid">
-        <div className="panel surface-panel control-panel">
+        {!webMode ? <div className="panel surface-panel control-panel">
           <div className="panel-heading home-panel-heading">
             <div>
               <h2>{t('kernel.control.title')}</h2>
@@ -290,10 +291,11 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
             </button>
           </div>
           <FloatingNotice key={processFeedback.revision} notice={processFeedback.notice} onDismiss={processFeedback.clearNotice} />
-        </div>
+        </div> : null}
         <HomeAccessPanel
           profiles={apiProfiles} apiKey={homeApiKey} keyError={homeApiKeyError}
           ready={coreReady} copiedField={copiedApiField} onCopy={copyApiValue}
+          showManage={!webMode}
         />
       </div>
       <FloatingNotice key={copyFeedback.revision} notice={copyFeedback.notice} onDismiss={copyFeedback.clearNotice} />

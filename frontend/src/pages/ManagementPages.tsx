@@ -56,6 +56,7 @@ import { notifyPluginResourcesChanged, PLUGIN_RESOURCES_REFRESH_EVENT } from '..
 import { VertexLoginCard } from './VertexLoginCard';
 import { LoomyLoginCard } from './LoomyLoginCard';
 import { Select } from '../components/Select';
+import { isWebMode } from '../services/platform';
 
 type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta' | 'cline'
   | 'minimax' | 'buddy' | 'workbuddy' | 'workbuddycn' | 'lobsterai' | 'trae' | 'raccoon' | 'codearts' | 'zcode' | 'qoder' | 'qodercn';
@@ -172,6 +173,7 @@ export function OAuthManagementPage() {
 }
 
 export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
+  const webMode = isWebMode();
   const { t, locale } = useI18n();
   const privacy = usePrivacyMask();
   const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
@@ -409,7 +411,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
       });
       startPolling(provider, result.state);
 
-      if (!result.opened && result.flow !== 'qr') {
+      if (!webMode && !result.opened && result.flow !== 'qr') {
         showNotice(
           result.openError
             ? t('oauth.openFailedDetail', { error: result.openError })
@@ -538,23 +540,25 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
   return (
     <section className="page management-page oauth-login-page">
       <header className="management-header">
-        <label className="oauth-browser-picker">
-          <span>{t('oauth.browser.label')}</span>
-          <Select
-            value={selectedBrowser}
-            onChange={(event) => setSelectedBrowser(event.currentTarget.value)}
-            aria-label={t('oauth.browser.label')}
-            disabled={browsersLoading}
-          >
-            {browsersLoading ? <option value="">{t('oauth.browser.detecting')}</option> : null}
-            {browsers.map((browser) => (
-              <option value={browser.id} key={browser.id}>
-                {browser.id === 'default' ? t('oauth.browser.systemDefault') : browser.label}
-              </option>
-            ))}
-            <option value={NO_AUTO_OPEN_BROWSER_ID}>{t('oauth.browser.noAutoOpen')}</option>
-          </Select>
-        </label>
+        {!webMode ? (
+          <label className="oauth-browser-picker">
+            <span>{t('oauth.browser.label')}</span>
+            <Select
+              value={selectedBrowser}
+              onChange={(event) => setSelectedBrowser(event.currentTarget.value)}
+              aria-label={t('oauth.browser.label')}
+              disabled={browsersLoading}
+            >
+              {browsersLoading ? <option value="">{t('oauth.browser.detecting')}</option> : null}
+              {browsers.map((browser) => (
+                <option value={browser.id} key={browser.id}>
+                  {browser.id === 'default' ? t('oauth.browser.systemDefault') : browser.label}
+                </option>
+              ))}
+              <option value={NO_AUTO_OPEN_BROWSER_ID}>{t('oauth.browser.noAutoOpen')}</option>
+            </Select>
+          </label>
+        ) : null}
         <button type="button" className="secondary-button" onClick={notifyPluginResourcesChanged}>
           <RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}
         </button>

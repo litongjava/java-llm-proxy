@@ -5,6 +5,7 @@ import { isTauri } from './services/platform';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import App from './App';
 import { I18nProvider } from './i18n';
+import { WebAuthGate } from './webAuth';
 import { initializeTheme, initializeThemePreferences, reloadCustomThemes } from './theme';
 import { initializeUsagePreferences } from './services/usagePreferences';
 import { initializePrivacyMode } from './privacy';
@@ -25,9 +26,11 @@ async function bootstrap() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <I18nProvider>
-        <AppErrorBoundary>
-          <App />
-        </AppErrorBoundary>
+        <WebAuthGate>
+          <AppErrorBoundary>
+            <App />
+          </AppErrorBoundary>
+        </WebAuthGate>
       </I18nProvider>
     </StrictMode>,
   );

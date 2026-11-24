@@ -1,4 +1,5 @@
 import { getPluginSupport, pluginsApi } from './services/plugins';
+import { isWebMode } from './services/platform';
 import { useEffect, useState } from 'react';
 import { collectPluginResourceEntries, PLUGIN_RESOURCES_REFRESH_EVENT } from './services/pluginResources';
 import {
@@ -9,8 +10,9 @@ import {
 } from './services/pluginNavigation';
 
 export function usePluginNavEntries(coreReady: boolean) {
-  const [entries, setEntries] = useState<PluginNavEntry[]>(readCachedPluginNavEntries);
-  const [fetched, setFetched] = useState(false);
+  const webMode = isWebMode();
+  const [entries, setEntries] = useState<PluginNavEntry[]>(() => webMode ? [] : readCachedPluginNavEntries());
+  const [fetched, setFetched] = useState(webMode);
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
@@ -20,6 +22,11 @@ export function usePluginNavEntries(coreReady: boolean) {
   }, []);
 
   useEffect(() => {
+    if (webMode) {
+      setEntries([]);
+      setFetched(true);
+      return undefined;
+    }
     if (!coreReady) {
       setFetched(false);
       return undefined;
@@ -39,7 +46,7 @@ export function usePluginNavEntries(coreReady: boolean) {
       }
     })();
     return () => { cancelled = true; };
-  }, [coreReady, revision]);
+  }, [coreReady, revision, webMode]);
 
   return { entries, fetched };
 }

@@ -1,4 +1,5 @@
 import { onAppUpdateProgress } from './services/events';
+import { isWebMode } from './services/platform';
 import { checkAppUpdate, getAppUpdateTask, startAppUpdate, cancelAppUpdate } from './services/appUpdates';
 import type { AppUpdateInfo, AppUpdateTask } from './services/appUpdates';
 import { MessageNotice } from './appNotice';
@@ -83,6 +84,7 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isWebMode()) return undefined;
     let disposed = false;
     let stopListening: (() => void) | undefined;
 

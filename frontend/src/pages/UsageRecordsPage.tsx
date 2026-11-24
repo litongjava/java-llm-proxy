@@ -30,6 +30,7 @@ import type {
   ModelPriceSyncPreview,
 } from '../services/usage';
 import { usagePreferences } from '../services/usagePreferences';
+import { isWebMode } from '../services/platform';
 import { useConfirmation } from '../components/ConfirmationDialog';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
@@ -111,9 +112,10 @@ const emptyAnalysis: UsageAnalysis = { models: [], providers: [], sources: [], a
 const loadTab = (): UsageTab => {
   try {
     const saved = usagePreferences.getItem(TAB_KEY);
-    return saved === 'analysis' || saved === 'events' || saved === 'pricing' || saved === 'data-management'
-      ? saved
-      : 'overview';
+    if (saved === 'pricing' || saved === 'data-management') {
+      return isWebMode() ? 'overview' : saved;
+    }
+    return saved === 'analysis' || saved === 'events' ? saved : 'overview';
   } catch {
     return 'overview';
   }
@@ -183,6 +185,10 @@ const formatUsd = (amount: number) => {
 const filterOptions = (items: UsageCategory[]) => items.filter((item) => item.key && item.label);
 
 export function UsageRecordsPage() {
+  const webMode = isWebMode();
+  const usageTabs = webMode
+    ? USAGE_TABS.filter((tab) => tab.value !== 'pricing' && tab.value !== 'data-management')
+    : USAGE_TABS;
   const { t } = useI18n();
   const privacy = usePrivacyMask();
   const [activeTab, setActiveTab] = useState<UsageTab>(loadTab);
@@ -504,7 +510,7 @@ export function UsageRecordsPage() {
         <div className="usage-page-navigation">
           <h1 className="sr-only">{t('usage.title')}</h1>
           <Tabs className="usage-tabs secondary-page-tabs" aria-label={t('usage.pageLabel')} value={activeTab} onChange={setActiveTab}
-            items={USAGE_TABS.map(({ value, labelKey }) => ({ value, id: `usage-tab-${value}`, panelId: 'usage-tab-panel', label: <span>{t(labelKey)}</span> }))} />
+            items={usageTabs.map(({ value, labelKey }) => ({ value, id: `usage-tab-${value}`, panelId: 'usage-tab-panel', label: <span>{t(labelKey)}</span> }))} />
         </div>
 
         <div className="usage-topbar-actions">

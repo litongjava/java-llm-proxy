@@ -24,6 +24,7 @@ import {
   Languages,
   Lock,
   LogIn,
+  LogOut,
   MessageCircle,
   Network,
   PackageOpen,
@@ -60,6 +61,8 @@ import { languageOptions, useI18n } from './i18n';
 import { AppUpdateDialog, AppUpdateProvider, useAppUpdate } from './appUpdate';
 import { appUpdateIndicatorState } from './appUpdateModel';
 import { canOpenAppPage, requestAppNavigation } from './navigation';
+import { isWebMode } from './services/platform';
+import { clearWebToken } from './services/webToken';
 import { useThemePreference } from './theme';
 import { usePrivacyMode } from './privacy';
 import { Dialog } from './components/Dialog';
@@ -134,6 +137,10 @@ const pages = [
 type PageId = (typeof pages)[number]['id'];
 type AppPageId = PageId | `/plugin-pages/${string}`;
 
+// Data, OAuth and quota views are backed by management HTTP endpoints; the rest
+// stay desktop-only until their native commands have server equivalents.
+const WEB_NAV_PAGE_IDS = new Set<string>(['home', 'oauth', 'quota', 'usage-records']);
+
 type WindowsClosePrompt = {
   resolvingAction: WindowsCloseAction | null;
   rememberChoice: boolean;
@@ -161,6 +168,7 @@ function App() {
 }
 
 function AppContent() {
+  const webMode = isWebMode();
   const { locale, setLocale, t } = useI18n();
   const { info: appUpdateInfo, hasUpdate, processing: appUpdateProcessing } = useAppUpdate();
   const { latest: coreLatest, hasUpdate: coreHasUpdate } = useCoreUpdate();
@@ -177,7 +185,8 @@ function AppContent() {
   const [navElement, setNavElement] = useState<HTMLElement | null>(null);
   const { entries: pluginEntries, fetched: pluginEntriesFetched } = usePluginNavEntries(coreReady);
   const pluginEntry = findPluginNavEntry(pluginEntries, active);
-  const navPages = pages.filter((page) => page.id !== 'easy');
+  const navPages = pages.filter((page) => page.id !== 'easy'
+    && (!webMode || WEB_NAV_PAGE_IDS.has(page.id)));
   const { layout: autoPluginLayout, compact: navCompact } = usePluginNavLayout(navElement, navPages.length, pluginEntries.length);
   const [pluginReload, setPluginReload] = useState(0);
   const [pluginNavOverride, setPluginNavOverride] = useState<PluginNavOverride | null>(null);
@@ -187,7 +196,8 @@ function AppContent() {
     : resolvePluginNavLayout(autoPluginLayout, pluginEntries.length, pluginNavOverride);
   const pluginNavExpanded = pluginNavLayout === 'expanded';
   const pluginChildActive = pluginEntries.some((entry) => entry.route === active);
-  const activePage = pages.find((page) => page.id === active);
+  const activeAllowed = !webMode || WEB_NAV_PAGE_IDS.has(active);
+  const activePage = activeAllowed ? pages.find((page) => page.id === active) : undefined;
   const ActivePage = activePage?.component;
   const selectedLanguage = languageOptions.find((option) => option.value === locale)
     ?? languageOptions[0];
@@ -200,20 +210,25 @@ function AppContent() {
       : '',
   ].filter(Boolean).join(' · ');
   useEffect(() => {
+    if (webMode) {
+      if (!WEB_NAV_PAGE_IDS.has(active)) setActive('home');
+      return;
+    }
     if (!canOpenAppPage(active, coreReady)) {
       setActive('home');
     }
-  }, [active, coreReady]);
+  }, [active, coreReady, webMode]);
 
   useEffect(() => {
     if (!coreReady) void closePluginWebview().catch(() => undefined);
   }, [coreReady]);
 
   useEffect(() => {
+    if (webMode) return;
     if (pluginEntriesFetched && isPluginRoute(active) && !pluginEntry) {
       setActive('plugins');
     }
-  }, [active, pluginEntry, pluginEntriesFetched]);
+  }, [active, pluginEntry, pluginEntriesFetched, webMode]);
 
   useEffect(() => {
     if (!languageMenuOpen) return undefined;
@@ -296,12 +311,15 @@ function AppContent() {
   };
 
   const select = useCallback((pageId: AppPageId) => {
+    if (webMode && !WEB_NAV_PAGE_IDS.has(pageId)) {
+      return;
+    }
     if (!canOpenAppPage(pageId, coreReady)) {
       return;
     }
     if (pageId !== active) requestAppNavigation(() => setActive(pageId));
     else if (isPluginRoute(pageId)) setPluginReload((value) => value + 1);
-  }, [active, coreReady]);
+  }, [active, coreReady, webMode]);
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
@@ -447,14 +465,16 @@ function AppContent() {
 
             <div className="sidebar-bottom">
               <div className="sidebar-links">
-                <button
-                  type="button"
-                  className="sidebar-link sidebar-easy-entry"
-                  onClick={() => select('easy')}
-                >
-                  <Sprout size={16} strokeWidth={1.75} aria-hidden="true" />
-                  <span>{t('app.nav.easy')}</span>
-                </button>
+                {!webMode ? (
+                  <button
+                    type="button"
+                    className="sidebar-link sidebar-easy-entry"
+                    onClick={() => select('easy')}
+                  >
+                    <Sprout size={16} strokeWidth={1.75} aria-hidden="true" />
+                    <span>{t('app.nav.easy')}</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="sidebar-link sidebar-contact"
@@ -465,6 +485,19 @@ function AppContent() {
                   <span>{t('app.contact.label')}</span>
                   <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
+                {webMode ? (
+                  <button
+                    type="button"
+                    className="sidebar-link sidebar-logout"
+                    onClick={() => {
+                      clearWebToken();
+                      window.location.reload();
+                    }}
+                  >
+                    <LogOut size={16} strokeWidth={1.75} aria-hidden="true" />
+                    <span>{t('web.auth.logout')}</span>
+                  </button>
+                ) : null}
               </div>
 
               <div className="sidebar-utility">

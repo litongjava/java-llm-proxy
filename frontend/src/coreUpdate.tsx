@@ -1,5 +1,6 @@
 import { checkLatestCore } from './services/coreVersions';
 import type { CoreLatest } from './services/coreVersions';
+import { isWebMode } from './services/platform';
 import { compareSemanticVersions } from './services/semanticVersion';
 import {
   createContext,
@@ -111,6 +112,7 @@ export function CoreUpdateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isWebMode()) return;
     if (!latestAutoCheckStarted) {
       latestAutoCheckStarted = true;
       void check();

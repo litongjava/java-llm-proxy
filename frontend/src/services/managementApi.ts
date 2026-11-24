@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './native';
 import { getCurrentLocale, translate } from '../i18n';
 
 export type ManagementJson = Record<string, unknown> | unknown[] | string | number | boolean | null;
