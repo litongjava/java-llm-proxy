@@ -15,6 +15,9 @@ import nexus.io.llm.proxy.model.RequestRecord;
 import nexus.io.model.exception.BusinessException;
 import nexus.io.tio.utils.environment.EnvUtils;
 import nexus.io.tio.utils.json.JsonUtils;
+import nexus.io.tio.utils.snowflake.SnowflakeIdUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -23,6 +26,7 @@ import okhttp3.Response;
 import java.util.concurrent.TimeUnit;
 
 public class ManagementService {
+  private static final Logger LOG = LoggerFactory.getLogger(ManagementService.class);
   private final long started = System.currentTimeMillis();
 
   public Kv status() {
@@ -155,24 +159,121 @@ public class ManagementService {
     long timeout = Math.min(120_000, Math.max(1_000, ProxyJson.number(input, "timeoutMs", 15_000)));
     Request.Builder builder = new Request.Builder().url(url)
         .post(RequestBody.create(data, MediaType.get("application/json")));
-    boolean hasSession = false;
+    Kv outboundHeaders = Kv.create();
+    String session = null;
     for (Object key : headers.keySet()) {
       String name = String.valueOf(key);
       Object value = headers.get(name);
-      if (name.equalsIgnoreCase("x-opencode-session")) { hasSession = true; }
+      if (name.equalsIgnoreCase("x-opencode-session")) { session = String.valueOf(value); }
       if (HeaderService.transport(name) || name.equalsIgnoreCase("host") || name.equalsIgnoreCase("content-length")) { continue; }
       builder.header(name, String.valueOf(value));
+      outboundHeaders.set(name, String.valueOf(value));
     }
-    if ("opencode.ai".equalsIgnoreCase(URI.create(url).getHost()) && !hasSession) {
-      builder.header("x-opencode-session", "desktop-health-" + UUID.randomUUID());
+    if ("opencode.ai".equalsIgnoreCase(URI.create(url).getHost()) && session == null) {
+      session = "desktop-health-" + UUID.randomUUID();
+      builder.header("x-opencode-session", session);
+      outboundHeaders.set("x-opencode-session", session);
     }
     OkHttpClient client = new OkHttpClient.Builder().callTimeout(timeout, TimeUnit.MILLISECONDS)
         .followRedirects(false).build();
     long start = System.currentTimeMillis();
+    RequestRecord record = probeRecord(input, url, data, outboundHeaders, session, start);
     try (Response response = UniChatClient.execute(client, builder.build())) {
-      if (response.body() != null) { response.body().string(); }
+      long firstByteMs = System.currentTimeMillis() - start;
+      String body = response.body() == null ? "" : response.body().string();
+      record.status = response.code();
+      record.firstByteMs = firstByteMs;
+      record.durationMs = System.currentTimeMillis() - start;
+      record.upstreamResponseHeaders = HeaderService.redact(response.headers().toMultimap());
+      record.responseHeaders = record.upstreamResponseHeaders;
+      applyProbeBody(record, body);
+      try {
+        Aop.get(ProtocolFormatService.class).usage(record, body);
+      } catch (RuntimeException ignored) {
+        // A health probe must not fail because the usage parser did not recognize the frame.
+      }
+      persistProbe(record);
       return Kv.create().set("healthy", response.isSuccessful()).set("status", response.code())
-          .set("latencyMs", (int) (System.currentTimeMillis() - start));
+          .set("latencyMs", (int) (System.currentTimeMillis() - start)).set("requestId", record.id);
+    } catch (Exception error) {
+      record.status = 502;
+      record.durationMs = System.currentTimeMillis() - start;
+      record.error = error.getMessage();
+      persistProbe(record);
+      throw error;
+    }
+  }
+
+  private RequestRecord probeRecord(Kv input, String url, String data,
+      Kv outboundHeaders, String session, long start) {
+    URI uri = URI.create(url);
+    String model = input.getStr("model");
+    if (model == null || model.isBlank()) {
+      try {
+        model = ProxyJson.text(ProxyJson.parse(data), "model", "");
+      } catch (RuntimeException ignored) {
+        model = "";
+      }
+    }
+    RequestRecord record = new RequestRecord();
+    record.id = String.valueOf(SnowflakeIdUtils.id());
+    record.timestamp = start;
+    record.method = "POST";
+    record.path = uri.getPath();
+    record.protocol = probeProtocol(input.getStr("protocol"), uri.getPath());
+    record.model = model;
+    record.requestedModel = model;
+    record.provider = "opencode.ai".equalsIgnoreCase(uri.getHost()) ? "opencode" : uri.getHost();
+    record.apiKeyName = "provider-health";
+    record.source = "provider-health-check";
+    record.originator = "provider-health-check";
+    record.session_id = session;
+    record.stream = true;
+    record.requestHeaders = HeaderService.redact(outboundHeaders);
+    record.upstreamRequestHeaders = HeaderService.redact(outboundHeaders);
+    record.requestBody = data;
+    record.upstreamRequestBody = data;
+    return record;
+  }
+
+  private static String probeProtocol(String protocol, String path) {
+    if (protocol == null) {
+      return path != null && path.endsWith("/responses") ? "responses" : "openai";
+    }
+    return switch (protocol) {
+    case "openai-responses" -> "responses";
+    case "openai-chat" -> "openai";
+    case "claude" -> "anthropic";
+    default -> protocol;
+    };
+  }
+
+  private void applyProbeBody(RequestRecord record, String body) {
+    ProxySettings settings = Aop.get(SettingsService.class).snapshot();
+    String originalRequest = record.requestBody;
+    if (!settings.captureBodies) {
+      record.requestBody = null;
+      record.upstreamRequestBody = null;
+      record.responseBody = null;
+      record.upstreamResponseBody = null;
+      return;
+    }
+    int limit = EnvUtils.getInt("proxy.capture.max-bytes", 4194304);
+    String requestBody = Utf8Capture.prefix(originalRequest, limit);
+    String responseBody = Utf8Capture.prefix(body, limit);
+    record.requestBody = requestBody;
+    record.upstreamRequestBody = requestBody;
+    record.requestTruncated = requestBody.length() < originalRequest.length();
+    record.responseBody = responseBody;
+    record.upstreamResponseBody = responseBody;
+    record.responseTruncated = responseBody.length() < body.length();
+  }
+
+  private void persistProbe(RequestRecord record) {
+    try {
+      Aop.get(StorageService.class).record(record);
+    } catch (RuntimeException error) {
+      LOG.warn("Could not persist provider health probe {}", record.id, error);
     }
   }
 }
