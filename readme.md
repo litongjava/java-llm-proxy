@@ -52,7 +52,18 @@ java -jar target/java-llm-proxy-1.0.0.jar --server.address=0.0.0.0 --server.port
 
 浏览器打开 `http://<server>:8318/`，输入管理密钥（即 `proxy.management-token`）登录。静态页面公开，所有 `/api`、`/v8/management` 数据接口仍要求 `Authorization: Bearer <token>`。公网部署请使用 HTTPS 反向代理，不要直接暴露明文 HTTP。
 
-OAuth 提供方若只登记了回环回调地址，服务器上的回调地址对管理员浏览器不可达；此时把浏览器地址栏中的回调 URL 粘贴到 OAuth 页面即可完成授权。也可以把 `proxy.oauth.<provider>.redirect-uri` 配成公网地址（例如 `https://proxy.example.com/v8/management/oauth/callback`），该 GET 回调接口无需管理密钥，但会校验 OAuth state。
+### 管理密钥从哪来
+
+Java 只读取 `proxy.management-token`，不会生成或落盘：
+
+- 独立部署必须显式传入 `--proxy.management-token=<token>`，或设置同名环境变量；只改 `config.yaml` 的 `management.secret-key` 不会改变运行中进程的鉴权值。
+- 桌面端默认管理密钥是 `123456`，点“生成”后才是随机值 `webui-<48位十六进制>`；它保存在 `<安装目录>/config.toml` 的 `management-secret-key` 和 `cpa-core/config.yaml` 的 `management.secret-key`，启动内核时由桌面端注入环境变量。
+- 浏览器把登录密钥保存在 `localStorage` 的 `cpa-gui.web-token.v1`；修改密钥后需要重启 Java 内核并重新登录。
+- 客户端 API Key 与管理密钥不是一回事：客户端 Key 用于 `/v1` 等代理端点，管理密钥只用于 `/api`、`/v8/management` 控制接口。
+
+OAuth 内置的 authorization-code 提供方会登记回环回调地址（如 `http://localhost:1455/auth/callback`），`OAuthService.startCallbackServer` 只接受 `localhost`/`127.0.0.1`。远程部署时不能直接把 `proxy.oauth.<provider>.redirect-uri` 改成公网地址；请在管理员浏览器完成授权后，把地址栏中的完整回调 URL 粘贴回 OAuth 页面。`GET /v8/management/oauth/callback` 无需管理密钥但会校验 state，可用于外部回调转发；前端发送的 `is_webui=true` 目前不会被 Java 读取。
+
+反向代理至少需要允许 32 MiB 请求体、关闭 SSE 响应缓冲，并转发 `/v1/responses`、`/v1/realtime` 等路径的 WebSocket Upgrade。更完整的部署、鉴权、Usage、OAuth 和反向代理说明见 `java-llm-proxy-docs` 的 Web 模式章。
 
 Web 模式界面（无头 Chrome 实测）：
 
