@@ -12,7 +12,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(args.get('--output') ?? join(root, 'bin-work'));
-const binary = resolve(args.get('--binary') ?? join(root, 'src-tauri', 'target', 'release', process.platform === 'win32' ? 'cpa-gui.exe' : 'cpa-gui'));
+const binary = resolve(args.get('--binary') ?? join(root, 'src-tauri', 'target', 'release', process.platform === 'win32' ? 'llm-proxy-gui.exe' : 'llm-proxy-gui'));
 const targetOS = args.get('--os') ?? ({ linux: 'linux', darwin: 'darwin', win32: 'windows' })[process.platform];
 const targetArch = args.get('--arch') ?? ({ x64: 'amd64', arm64: 'aarch64' })[process.arch];
 const shouldDownload = args.get('--download') === 'true';
@@ -76,9 +76,11 @@ if (verification && verification.actual !== verification.expected) {
 }
 
 await mkdir(output, { recursive: true });
-const outputBinary = join(output, targetOS === 'windows' ? 'LLMPoroxyUI.exe' : 'LLMPoroxyUI');
-const legacyOutputBinary = join(output, targetOS === 'windows' ? 'cpa-gui.exe' : 'cpa-gui');
-await rm(legacyOutputBinary, { force: true });
+const outputBinary = join(output, targetOS === 'windows' ? 'llm-proxy-gui.exe' : 'llm-proxy-gui');
+const legacyOutputBinaries = ['LLMPoroxyUI', 'cpa-gui'].map((name) =>
+  join(output, targetOS === 'windows' ? `${name}.exe` : name),
+);
+await Promise.all(legacyOutputBinaries.map((path) => rm(path, { force: true })));
 await copyFile(binary, outputBinary);
 if (targetOS !== 'windows') await chmod(outputBinary, 0o755);
 await copyFile(join(root, 'core-version.txt'), join(output, 'core-version.txt'));

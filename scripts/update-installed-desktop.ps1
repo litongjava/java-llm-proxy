@@ -3,26 +3,32 @@ param(
     [switch]$BackendOnly
 )
 
+# -BackendOnly builds and installs cpa-core/java-llm-proxy.jar without requiring or replacing the desktop executable.
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 $installPath = (Resolve-Path -LiteralPath $InstallDirectory).Path
-$installedExe = Join-Path $installPath 'LLMPoroxyUI.exe'
-$builtExe = Join-Path $projectDirectory 'frontend\src-tauri\target\release\cpa-gui.exe'
 $installedJar = Join-Path $installPath 'cpa-core\java-llm-proxy.jar'
 $builtJar = Join-Path $projectDirectory 'target\java-llm-proxy-1.0.0.jar'
 
-if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
-    throw "Installed desktop executable not found: $installedExe"
-}
 if (-not (Test-Path -LiteralPath $installedJar -PathType Leaf)) {
     throw "Installed Java kernel not found: $installedJar"
 }
 
+if (-not $BackendOnly) {
+    $installedExe = Join-Path $installPath 'llm-proxy-gui.exe'
+    $builtExe = Join-Path $projectDirectory 'frontend\src-tauri\target\release\llm-proxy-gui.exe'
+    if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
+        throw "Installed desktop executable not found: $installedExe"
+    }
+}
+
 function Assert-DesktopClosed {
-    $running = Get-Process -Name LLMPoroxyUI -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -eq $installedExe }
-    if ($running) {
-        throw 'Exit LLM Poroxy UI from its tray menu, then run this script again.'
+    if (-not $BackendOnly) {
+        $running = Get-Process -Name @('llm-proxy-gui', 'LLMPoroxyUI') -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -eq $installedExe }
+        if ($running) {
+            throw 'Exit LLM Poroxy UI from its tray menu, then run this script again.'
+        }
     }
     $kernel = Get-CimInstance Win32_Process -Filter "Name = 'java.exe' OR Name = 'javaw.exe'" |
         Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($installedJar, [StringComparison]::OrdinalIgnoreCase) -ge 0 }

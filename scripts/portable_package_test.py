@@ -33,7 +33,7 @@ proxy-url = ""
 allow-lan = false
 close-behavior = "exit"
 ''',encoding='utf-8')
-    process = subprocess.Popen([str(folder/'LLMPoroxyUI.exe')],cwd=folder)
+    process = subprocess.Popen([str(folder/'llm-proxy-gui.exe')],cwd=folder)
     try:
         status = None
         for _ in range(180):

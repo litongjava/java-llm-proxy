@@ -133,9 +133,9 @@ const MAX_CODEX_MODEL_CATALOG_BYTES: usize = 4 * 1024 * 1024;
 const APP_UPDATE_PROGRESS_EVENT: &str = "app-update-progress";
 const PORTABLE_APP_MANIFEST_FILE: &str = "portable-app.json";
 #[cfg(windows)]
-const PORTABLE_APP_BINARY: &str = "LLMPoroxyUI.exe";
+const PORTABLE_APP_BINARY: &str = "llm-proxy-gui.exe";
 #[cfg(target_os = "linux")]
-const PORTABLE_APP_BINARY: &str = "LLMPoroxyUI";
+const PORTABLE_APP_BINARY: &str = "llm-proxy-gui";
 const CORE_INSTALL_PROGRESS_EVENT: &str = "core-install-progress";
 const CORE_STATUS_EVENT: &str = "core-status-changed";
 const CONFIG_FILES_CHANGED_EVENT: &str = "config-files-changed";

@@ -17,7 +17,7 @@ npm.cmd run tauri -- dev
 ```
 
 `tauri dev` 模式的桌面窗口从 `http://localhost:1420` 加载页面，需要保持 Vite 开发服务运行。
-直接重新打开该模式生成的 `cpa-gui.exe` 不会自动启动 Vite；如果出现 `localhost refused to connect`，
+直接重新打开该模式生成的 `llm-proxy-gui.exe` 不会自动启动 Vite；如果出现 `localhost refused to connect`，
 请先在 `frontend` 目录执行 `npm.cmd run dev`，再刷新或重新打开桌面窗口。Java 内核的 `8318` 端口正常并不代表前端服务已启动。
 开发模式下普通浏览器访问开发地址默认使用 Mock 数据。需要连接真实 Java 服务时，先在 `frontend` 执行 `npm.cmd run dev`，再访问 `http://localhost:1420/?mock=off`；Vite 会把 `/api`、`/v8`、`/v1`、`/v0` 代理到 `127.0.0.1:8318`。
 
@@ -139,7 +139,7 @@ OAuth 提供方支持 `proxy.oauth.<provider>.authorize-url`、`token-url`、`de
 两个组件共享发行仓库，发布时请使 Java、Cargo 和发行标签版本保持一致，在同一 Release 上传桌面清单、桌面包、六个平台内核包及摘要文件。打包脚本只生成文件：
 
 ```powershell
-python scripts/package_release.py --version 1.0.0 --jar target/java-llm-proxy-1.0.0.jar --desktop windows-amd64=frontend/src-tauri/target/debug/cpa-gui.exe --output target/release-review
+python scripts/package_release.py --version 1.0.0 --jar target/java-llm-proxy-1.0.0.jar --desktop windows-amd64=frontend/src-tauri/target/debug/llm-proxy-gui.exe --output target/release-review
 ```
 
 该示例生成用于验收的调试桌面包。正式发布应先构建 release 桌面程序，再把 `--desktop` 指向对应产物。便携包仍需要本机 Java 21；macOS 应使用 Tauri 的应用包与签名流程。发布产物尚未上传到远端。

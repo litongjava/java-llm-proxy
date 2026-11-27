@@ -22,7 +22,7 @@ def archive(path, files):
             for name, content in files.items():
                 entry = tarfile.TarInfo(name)
                 entry.size = len(content)
-                entry.mode = 0o755 if name.endswith('/LLMPoroxyUI') else 0o644
+                entry.mode = 0o755 if name.endswith('/llm-proxy-gui') else 0o644
                 output.addfile(entry, io.BytesIO(content))
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     path.with_name(path.name + '.sha256').write_text(f'{digest}  {path.name}\n', encoding='utf-8')
@@ -33,7 +33,7 @@ def run():
     parser.add_argument('--version', required=True)
     parser.add_argument('--jar', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=Path('target/release'))
-    parser.add_argument('--desktop', action='append', default=[], help='windows-amd64=path/to/cpa-gui.exe (or linux-aarch64=path)')
+    parser.add_argument('--desktop', action='append', default=[], help='windows-amd64=path/to/llm-proxy-gui.exe (or linux-aarch64=path)')
     args = parser.parse_args()
     version = args.version.removeprefix('v')
     if not re.fullmatch(r'\d+\.\d+\.\d+', version):
@@ -62,7 +62,7 @@ def run():
             parser.error('portable desktop packaging supports windows/linux with amd64/aarch64; use Tauri DMG packaging for macOS')
         display = system.title()
         root = f'LLMPoroxyUI-v{desktop_version}-{display}-{arch}'
-        binary = 'LLMPoroxyUI.exe' if system == 'windows' else 'LLMPoroxyUI'
+        binary = 'llm-proxy-gui.exe' if system == 'windows' else 'llm-proxy-gui'
         suffix = 'zip' if system == 'windows' else 'tar.gz'
         path = args.output / f'{root}.{suffix}'
         marker = dict(schemaVersion=1, application='LLMPoroxyUI', version=desktop_version, platform=system, arch=arch, autoUpdate=True)

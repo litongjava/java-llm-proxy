@@ -46,7 +46,7 @@ fn portable_update_helper_writes_a_distinct_startup_ack() {
 #[test]
 fn macos_update_helper_stays_inside_the_signed_app_bundle() {
     let current_exe =
-        PathBuf::from("/Applications/LLM Poroxy UI.app/Contents/MacOS/LLMPoroxyUI");
+        PathBuf::from("/Applications/LLM Poroxy UI.app/Contents/MacOS/llm-proxy-gui");
 
     assert_eq!(macos_update_helper_path(&current_exe), current_exe);
 }
@@ -732,7 +732,7 @@ fn portable_update_zip_accepts_the_complete_release_package() {
             &valid_zip,
             &[
                 (
-                    "LLMPoroxyUI-v1.2.3-Windows-amd64/LLMPoroxyUI.exe",
+                    "LLMPoroxyUI-v1.2.3-Windows-amd64/llm-proxy-gui.exe",
                     b"new executable",
                     None,
                 ),
@@ -777,7 +777,7 @@ fn portable_update_zip_accepts_the_complete_release_package() {
     write_portable_update_zip(
         &traversal_zip,
         &[
-            ("../LLMPoroxyUI.exe", b"malicious", None),
+            ("../llm-proxy-gui.exe", b"malicious", None),
             (
                 "LLMPoroxyUI-v1.2.3-Windows-amd64/portable-app.json",
                 manifest,
@@ -795,7 +795,7 @@ fn portable_update_zip_accepts_the_complete_release_package() {
         let mut archive = zip::ZipWriter::new(file);
         archive
             .add_symlink(
-                "LLMPoroxyUI-v1.2.3-Windows-amd64/LLMPoroxyUI.exe",
+                "LLMPoroxyUI-v1.2.3-Windows-amd64/llm-proxy-gui.exe",
                 "target.exe",
                 SimpleFileOptions::default(),
             )
@@ -945,7 +945,7 @@ fn portable_update_tar_gz_accepts_the_complete_linux_release() {
     let manifest = br#"{"schemaVersion":1,"application":"LLMPoroxyUI","version":"1.2.3","platform":"linux","arch":"amd64","autoUpdate":true}"#;
     for (path, contents, mode) in [
         (
-            format!("{package_root}/LLMPoroxyUI"),
+            format!("{package_root}/llm-proxy-gui"),
             b"binary".as_slice(),
             0o755,
         ),
@@ -994,7 +994,7 @@ fn macos_update_descriptor_is_confined_to_the_app_and_temp_directories() {
     let root = agent_test_home("portable-macos-descriptor");
     let work_dir = root.join("LLMPoroxyUI-update-1.2.3-1-1");
     let current_app = root.join("Applications").join("LLM Poroxy UI.app");
-    let executable_relative_path = PathBuf::from("Contents/MacOS/cpa-gui");
+    let executable_relative_path = PathBuf::from("Contents/MacOS/llm-proxy-gui");
     let current_exe = current_app.join(&executable_relative_path);
     let staged_app = work_dir.join("staging").join("LLM Poroxy UI.app");
     let staged_exe = staged_app.join(&executable_relative_path);
