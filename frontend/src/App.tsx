@@ -137,9 +137,10 @@ const pages = [
 type PageId = (typeof pages)[number]['id'];
 type AppPageId = PageId | `/plugin-pages/${string}`;
 
-// Data, OAuth and quota views are backed by management HTTP endpoints; the rest
-// stay desktop-only until their native commands have server equivalents.
-const WEB_NAV_PAGE_IDS = new Set<string>(['home', 'oauth', 'quota', 'usage-records']);
+// Data, OAuth, quota and provider configuration views are backed by management
+// HTTP endpoints; the rest stay desktop-only until their native commands have
+// server equivalents.
+const WEB_NAV_PAGE_IDS = new Set<string>(['home', 'api', 'oauth', 'quota', 'usage-records']);
 
 type WindowsClosePrompt = {
   resolvingAction: WindowsCloseAction | null;

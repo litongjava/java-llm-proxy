@@ -94,6 +94,8 @@ public class LLMProxyAppConfig {
     router.get("/api/webui/usage/status", new WebUsageStatusHandler()::handle);
     router.get("/api/webui/models", new WebModelsHandler()::handle);
     router.get("/api/webui/settings", new WebSettingsHandler()::handle);
+    router.post("/api/webui/api-access/remarks/resolve", new WebApiAccessRemarksResolveHandler()::handle);
+    router.post("/api/webui/api-access/remarks", new WebApiAccessRemarksSaveHandler()::handle);
     router.get("/v8/management/observability/usage/queue", new UsageQueueHandler()::handle);
     router.post("/v8/management/observability/usage/ack", new UsageAcknowledgeHandler()::handle);
     for (String tool : ToolScopeService.TOOLS) {

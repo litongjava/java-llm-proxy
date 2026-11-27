@@ -201,6 +201,25 @@ function normalizeUsageEvents(value: unknown): JsonObject {
   return page;
 }
 
+async function resolveApiAccessRemarks(queries: unknown[]): Promise<string[]> {
+  const response = await fetchResponse('/api/webui/api-access/remarks/resolve', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ queries }),
+  });
+  const value = await readJsonResponse(response);
+  return Array.isArray(value) ? value.map(textOf) : [];
+}
+
+async function saveApiAccessRemark(update: unknown): Promise<void> {
+  const response = await fetchResponse('/api/webui/api-access/remarks', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(update ?? {}),
+  });
+  await readJsonResponse(response);
+}
+
 const OAUTH_WEBUI_CALLBACK_PROVIDERS = new Set(['codex', 'claude', 'antigravity', 'xai', 'devin']);
 
 function normalizeOAuthProvider(value: unknown, pluginProvider: boolean): string {
@@ -396,6 +415,11 @@ export async function webInvoke<T>(command: string, args: JsonObject = {}): Prom
       return await managementRequest(args) as T;
     case 'get_plugin_support':
       return await pluginSupport() as T;
+    case 'resolve_api_access_remarks':
+      return await resolveApiAccessRemarks(Array.isArray(args.queries) ? args.queries : []) as T;
+    case 'save_api_access_remark':
+      await saveApiAccessRemark(args.update);
+      return null as T;
     case 'start_oauth_login':
       return await startOAuthLogin(args) as T;
     case 'get_oauth_status':
